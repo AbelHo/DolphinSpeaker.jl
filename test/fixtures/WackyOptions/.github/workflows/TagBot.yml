@@ -1,0 +1,44 @@
+name: TagBot
+on:
+  issue_comment:
+    types:
+      - created
+  workflow_dispatch:
+    inputs:
+      lookback:
+        default: 3
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  deployments: read
+  issues: read
+  discussions: read
+  packages: read
+  pages: read
+  pull-requests: read
+  repository-projects: read
+  security-events: read
+  statuses: read
+jobs:
+  TagBot:
+    if: github.event_name == 'workflow_dispatch' || github.actor == 'OtherUser'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: JuliaRegistries/TagBot@v1
+        with:
+          token: ${{ secrets.MYTOKEN }}
+          ssh: ${{ secrets.SSHKEY }}
+          ssh_password: ${{ secrets.SSHPASS }}
+          changelog: |
+            Line 1
+            Line 2
+
+            Line 4
+          changelog_ignore: foo, bar
+          gpg: ${{ secrets.GPGKEY }}
+          gpg_password: ${{ secrets.GPGPASS }}
+          registry: Foo/Bar
+          branches: false
+          dispatch: true
+          dispatch_delay: 20
