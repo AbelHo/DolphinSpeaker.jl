@@ -5,3 +5,5 @@
 /Manifest.toml
 /test/fixtures/*/test/Manifest.toml
 /docs/Manifest.toml
+.DS_Store
+.vscode/settings.json
