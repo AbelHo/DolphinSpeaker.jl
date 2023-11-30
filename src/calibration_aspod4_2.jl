@@ -1,5 +1,5 @@
-using Pkg
-Pkg.activate(".")
+# using Pkg
+# Pkg.activate(".")
 using FileIO, FLAC, DSP, SignalAnalysis, SignalAnalysis.Units
 using Optim
 using VideoIO, FFMPEG
