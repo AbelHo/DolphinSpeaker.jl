@@ -246,7 +246,7 @@ function compensate_imu(angs, datetimes, df)
 	
 end
 
-default_getTDOA_func = get_tdoa_envelope#get_tdoa_raw_MaxEnergyRefChannel
+default_getTDOA_func = get_tdoa_raw #get_tdoa_envelope#get_tdoa_raw_MaxEnergyRefChannel
 include("config.jl")
 
 @info "localization.jl loaded"

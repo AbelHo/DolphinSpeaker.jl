@@ -93,6 +93,13 @@ outfol_clicks = outfol * "_clicks.mp4"
 
 @ffmpeg_env run(`ffmpeg -framerate 30 -i $outfol_img -c:v libx264 -r 30 -pix_fmt yuv420p $outfol_clicks`)
 
+plotlyjs()
+scatter(res_impulse.pind_good_inS, angs[1].|>rad2deg; markershape=:xcross, alpha=res_impulse.ppeak.^2/maximum(res_impulse.ppeak.^2), labels=["azimuth" "inclination"]); 
+p=title!(aufname|>basename; xlabel="Time(s)", ylabel="Angle(°)");# |> display
+savefig(outfol * "_clicks.png")
+savefig(outfol * "_clicks.html")
+display(p)
+
 
 if false
 
