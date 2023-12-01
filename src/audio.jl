@@ -10,6 +10,45 @@ include("media_info.jl")
 include("config.jl")
 using Dates
 
+
+function FLAC.save(f::File{format"FLAC"}, data::Array{T,2}, samplerate; bits_per_sample = 24, compression_level = 3) where T<:Real
+    @info "NEW SAVE FLAC %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+    
+    encoder = StreamEncoderPtr()
+
+    # Set encoder parameters
+    set_compression_level(encoder, compression_level)
+    num_samples = prod(size(data))
+    set_total_samples_estimate(encoder, num_samples)
+    set_channels(encoder, size(data)[2])
+    set_sample_rate(encoder, samplerate)
+    set_bits_per_sample(encoder, bits_per_sample)
+
+    # Open file, make sure encoder was properly initialized
+    initfile!(encoder, f.filename)
+    if get_state(encoder) != EncoderOK
+        throw(InvalidStateException("Encoder state after init_file is $(get_state(en))"))
+    end
+
+    # Shove interleaved samples into the encoder by transposing, and convert to Int32
+    data_t = data'
+    if eltype(data) <: AbstractFloat
+        data_t = round.(Int32, data'*2^(bits_per_sample - 1))
+    elseif eltype(data_t) != Int32
+        data_t = Int32.(data_t)
+    end
+
+    blocksize = get_blocksize(encoder)
+    for idx in 1:div(num_samples, blocksize)
+        block_idxs = ((idx - 1) * blocksize + 1):(idx * blocksize)
+        process_interleaved(encoder, data_t[block_idxs])
+    end
+    process_interleaved(encoder, data_t[end - rem(num_samples, blocksize) + 1:end])
+    finish(encoder)
+    return nothing
+end
+
+
 function readAudio(aufname; fname2timestamp_func=nothing)
     opt = nothing; nbits = nothing; timestamp=nothing;
     filetype = splitext(aufname)[2] |> lowercase
