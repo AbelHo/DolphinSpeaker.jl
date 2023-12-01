@@ -6,7 +6,8 @@ using VideoIO, FFMPEG
 using Plots
 # plotlyjs()
 include("pinger_calibration.jl")
-include("../../../research/analysis_interface/Scripts/readImages.jl")
+include("readImages.jl")
+# include("../../../research/analysis_interface/Scripts/readImages.jl")
 
 # aufname = "/Users/abel/Documents/data/aspod/field/bahamas_2022/Aud_2022-06-25_10.33.28.wav"
 # vidfname = "/Users/abel/Documents/data/aspod/field/bahamas_2022/Vid_2022-06-25_10.33.28.mkv"
