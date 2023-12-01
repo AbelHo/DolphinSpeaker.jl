@@ -12,13 +12,27 @@
 ## Installation
 
 Install with the Julia package manager [Pkg](https://pkgdocs.julialang.org/), just like any other registered Julia package:
-1. Press "]"
+1. Press "]" key
 2.
 ```
 add https://github.com/AbelHo/DolphinSpeaker.jl
 ```
 
+## Update software
+1. Press "]" key
+2.
+```
+update
+```
+
 ## Usage
+### Ininitialize
+```
+using DolphinSpeaker
+```
+
+### Others
+
 Convert .mat to .flac audio file
 Format:
 ```
