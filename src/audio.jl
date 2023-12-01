@@ -12,8 +12,8 @@ include("config.jl")
 using Dates
 
 
-function FileIO.save(f::File{format"FLAC"}, data::Array{T,2}, samplerate; bits_per_sample = 24, compression_level = 3) where T<:Real
-    @info "NEW SAVE FLAC 1004 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+function FLAC.save(f::File{format"FLAC"}, data::Array{T,2}, samplerate; bits_per_sample = 24, compression_level = 3) where T<:Real
+    @info "NEW SAVE FLAC 1003 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
     
     encoder = StreamEncoderPtr()
 
@@ -49,6 +49,10 @@ function FileIO.save(f::File{format"FLAC"}, data::Array{T,2}, samplerate; bits_p
     return nothing
 end
 
+function readAudio(aufname::Array{String,1}; kwargs...)
+    d = readAudio.(aufname; kwargs...)
+    return vcat(map( x -> x[1], d)...), d[1][2], d[1][3], d[1][4], d[1][5]
+end
 
 function readAudio(aufname; fname2timestamp_func=nothing)
     opt = nothing; nbits = nothing; timestamp=nothing;
