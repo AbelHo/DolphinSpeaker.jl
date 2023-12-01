@@ -2,7 +2,7 @@ using Plots
 using ProgressMeter
 import GLMakie
 using Pipe: @pipe
-include("map.jl")
+# include("map.jl")
 using Base.Threads
 
 function vline2(xvals, previus_plot, max_y=3000)
