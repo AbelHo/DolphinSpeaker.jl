@@ -1,6 +1,6 @@
 using WAV
 using FileIO
-using FLAC2
+using FLAC
 using JSON
 using SignalAnalysis, SignalAnalysis.Units
 using FFMPEG
