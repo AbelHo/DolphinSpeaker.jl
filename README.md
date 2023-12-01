@@ -22,6 +22,25 @@ julia> using Pkg; Pkg.add("https://github.com/AbelHo/DolphinSpeaker.jl")
 ```
 
 ## Usage
+Convert .mat to .flac audio file
+Format:
+```
+mat2flac(input_folderpath; outfilepath=output_folderpath)
+```
+Example:
+```
+mat2flac("/Users/abel/Documents/data/calf/Clicktest/20190913"; outfilepath="/Users/abel/Documents/data/calf/Clicktest/20190913/flac")
+```
+
+Process and overlay one set of video and acoustic recording, provided to results directory/folder
+format:
+```
+process_one_set(vidfname, aufname, res_dir)
+```
+Example:
+```
+process_one_set("/Users/abel/Documents/data/calf/Clicktest/20231129/20231129_15.20.54_log.mkv", "/Users/abel/Documents/data/calf/Clicktest/20231129/20231129_15.20.54_log.flac", "/Users/abel/Documents/data_res/calf/temp/test_laptop")
+```
 
 ### 
 
