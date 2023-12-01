@@ -12,13 +12,10 @@
 ## Installation
 
 Install with the Julia package manager [Pkg](https://pkgdocs.julialang.org/), just like any other registered Julia package:
-
-```jl
-pkg> add https://github.com/AbelHo/DolphinSpeaker.jl  # Press ']' to enter the Pkg REPL mode.
+1. Press "]"
+2.
 ```
-or
-```jl
-julia> using Pkg; Pkg.add("https://github.com/AbelHo/DolphinSpeaker.jl")
+add https://github.com/AbelHo/DolphinSpeaker.jl
 ```
 
 ## Usage
