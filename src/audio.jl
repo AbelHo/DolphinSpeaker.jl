@@ -236,10 +236,10 @@ f_dynamic_cost(x,dd, nbits_m1=15) = @pipe (dd.keys .- x[2]) ./ x[1] .* 2^nbits_m
 
 # f_dynamic(dd; trial_vrange_offset=[10.0 0.1]) = optimize(x -> f_dynamic_cost(x, dd), trial_vrange_offset, ParticleSwarm()) #, GradientDescent(); autodiff = :forward)
 
-using Distributed
-@everywhere function f_dynamic(dd; trial_vrange_offset=[10.0 0.01], optimizer=NelderMead())
-    return optimize(x -> f_dynamic_cost(x, dd), trial_vrange_offset, optimizer)
-end
+# using Distributed
+# @everywhere function f_dynamic(dd; trial_vrange_offset=[10.0 0.01], optimizer=NelderMead())
+#     return optimize(x -> f_dynamic_cost(x, dd), trial_vrange_offset, optimizer)
+# end
 
 
 # @time dd = find_DataDynamicRange_multich(data)
