@@ -1,6 +1,7 @@
 using WAV
 using FileIO
 using FLAC
+import FLAC
 using JSON
 using SignalAnalysis, SignalAnalysis.Units
 using FFMPEG
@@ -11,8 +12,8 @@ include("config.jl")
 using Dates
 
 
-function FLAC.save(f::File{format"FLAC"}, data::Array{T,2}, samplerate; bits_per_sample = 24, compression_level = 3) where T<:Real
-    @info "NEW SAVE FLAC %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+function FileIO.save(f::File{format"FLAC"}, data::Array{T,2}, samplerate; bits_per_sample = 24, compression_level = 3) where T<:Real
+    @info "NEW SAVE FLAC 1004 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
     
     encoder = StreamEncoderPtr()
 
