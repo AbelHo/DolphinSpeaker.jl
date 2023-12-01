@@ -10,7 +10,7 @@ include("detector_impulsive.jl")
 include("config.jl")
 include("synchronization.jl")
 band_pass = tonal_band_pass
-threshold_tonal = -20
+threshold_tonal = -15
 
 #############################
 
