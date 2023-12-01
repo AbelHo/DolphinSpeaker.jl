@@ -139,6 +139,9 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
     # end
     @debug "IN"
     data, fs = readAudio(aufname)
+    if aufname isa Array
+        aufname = aufname[1]
+    end
     pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect, fs = process_audioVideo( (aufname,data,fs), vidfname, res_dir)
     detection_b = process_audioVideo_tonal1( (aufname,data,fs), vidfname, res_dir)
     detector_set = [detection_b,
