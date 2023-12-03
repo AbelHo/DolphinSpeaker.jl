@@ -320,7 +320,7 @@ mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=
 
 # FIXME: implement reduction of bit-depth if dynamic range is found to be small
 # using Base64
-function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing)
+function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1e-4)
     if isdir(filepath)
         @info "Directory! Recursively converting entire directory"
         return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list)
@@ -436,6 +436,15 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     @info conversion_error
 
     @debug outfilepath
+
+    if remove_original
+        if maximum( abs.(conversion_error)) < remove_original_errortolerance
+            rm(filepath)
+            @info "-- deleted: " * filepath
+        else
+            @error "Conversion Error < $remove_original_errortolerance, not removing original file: $filepath....................."
+        end
+    end
     return conversion_error #data_new, correction
 end
 
