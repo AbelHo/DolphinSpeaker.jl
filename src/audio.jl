@@ -323,7 +323,7 @@ mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=
 function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1e-4)
     if isdir(filepath)
         @info "Directory! Recursively converting entire directory"
-        return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list)
+        return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list, remove_original=remove_original, remove_original_errortolerance=remove_original_errortolerance)
         # broadcast(mat2wav, readdir(filepath; join=true) |> skiphiddenfiles, Fs,  joinpath.(Ref(outfilepath),(readdir(filepath)|> skiphiddenfiles) .*".wav") )
         # mat2wav.(filepath.*readdir(filepath); Fs=Fs, outfilepath=outfilepath)
     end
