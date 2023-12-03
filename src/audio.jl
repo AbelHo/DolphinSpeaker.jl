@@ -18,16 +18,16 @@ function FLAC.save(f::File{format"FLAC"}, data::Array{T,2}, samplerate; bits_per
     encoder = StreamEncoderPtr()
 
     # Set encoder parameters
-    set_compression_level(encoder, compression_level)
+    FLAC.set_compression_level(encoder, compression_level)
     num_samples = prod(size(data))
-    set_total_samples_estimate(encoder, num_samples)
-    set_channels(encoder, size(data)[2])
-    set_sample_rate(encoder, samplerate)
-    set_bits_per_sample(encoder, bits_per_sample)
+    FLAC.set_total_samples_estimate(encoder, num_samples)
+    FLAC.set_channels(encoder, size(data)[2])
+    FLAC.set_sample_rate(encoder, samplerate)
+    FLAC.set_bits_per_sample(encoder, bits_per_sample)
 
     # Open file, make sure encoder was properly initialized
     initfile!(encoder, f.filename)
-    if get_state(encoder) != EncoderOK
+    if FLAC.get_state(encoder) != EncoderOK
         throw(InvalidStateException("Encoder state after init_file is $(get_state(en))"))
     end
 
@@ -39,13 +39,13 @@ function FLAC.save(f::File{format"FLAC"}, data::Array{T,2}, samplerate; bits_per
         data_t = Int32.(data_t)
     end
 
-    blocksize = get_blocksize(encoder)
+    blocksize = FLAC.get_blocksize(encoder)
     for idx in 1:div(num_samples, blocksize)
         block_idxs = ((idx - 1) * blocksize + 1):(idx * blocksize)
-        process_interleaved(encoder, data_t[block_idxs])
+        FLAC.process_interleaved(encoder, data_t[block_idxs])
     end
-    process_interleaved(encoder, data_t[end - rem(num_samples, blocksize) + 1:end])
-    finish(encoder)
+    FLAC.process_interleaved(encoder, data_t[end - rem(num_samples, blocksize) + 1:end])
+    FLAC.finish(encoder)
     return nothing
 end
 
