@@ -91,7 +91,8 @@ function readAudio(aufname; fname2timestamp_func=nothing)
                 end
             end
         end
-    elseif filetype == ".flac"
+    elseif filetype in [".flac", ".ogg"]
+        @info "Reading flac/ogg file via ffmpeg..."
         data, fs = get_videos_audiodata_all(aufname)
     else
         data, fs = load(aufname)
@@ -242,10 +243,23 @@ using Pipe:@pipe
 min_vals(vallist) = [(filter( <(0), vallist) |> sort)[end]; (filter( >(0), vallist) |> sort)[1]]
 
 function voltage2binary_find(vallist)
-    minval = min_vals(vallist) 
-    small_arg = minval .|> abs |> argmin
-    # return [diff(minval); (minval[1]-diff(minval)[1]*3)]
-    return [diff(minval); small_arg==1 ? minval[small_arg] : minval[small_arg] ]
+    try # FIXME: this is a hack to deal with the case where the data is biased from 0, can be improved to do better stats analyzing the best output with the entire data value list
+        minval = min_vals(vallist) 
+        small_arg = minval .|> abs |> argmin
+        # return [diff(minval); (minval[1]-diff(minval)[1]*3)]
+        return [diff(minval); small_arg==1 ? minval[small_arg] : minval[small_arg] ]
+    catch err
+        if length(vallist) == 1
+            return [1; vallist[1]]
+        end
+        @warn "bias in data from 0"
+        dif = (vallist|> sort |> diff)[1]#[1:3]
+        if sum(dif |> x -> x .- x[1]) == 0
+            dif = dif[1]
+        end
+
+        return [ dif; vallist[length(vallist)÷2] ]
+    end
 end
 
 function voltage2binary(vallist, correction)
@@ -304,17 +318,18 @@ f_dynamic_cost(x,dd, nbits_m1=15) = @pipe (dd.keys .- x[2]) ./ x[1] .* 2^nbits_m
 # using JSON
 mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=Fs, outfilepath, kwargs)
 
+# FIXME: implement reduction of bit-depth if dynamic range is found to be small
 # using Base64
-function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false)
+function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing)
     if isdir(filepath)
         @info "Directory! Recursively converting entire directory"
-        return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone)
+        return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list)
         # broadcast(mat2wav, readdir(filepath; join=true) |> skiphiddenfiles, Fs,  joinpath.(Ref(outfilepath),(readdir(filepath)|> skiphiddenfiles) .*".wav") )
         # mat2wav.(filepath.*readdir(filepath); Fs=Fs, outfilepath=outfilepath)
     end
     
     filepath[end-3:end] != ".mat" && return
-    filepath[end-4] == '2' && return
+    filepath[end-5:end-4] == "_2" && return
     @info filepath|>basename
 
     
@@ -327,8 +342,8 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
         outfilepath = joinpath(outfilepath, basename(filepath)[1:end-3] *"flac")
     end
     @debug outfilepath
-    if skipdone && isfile(outfilepath) 
-        @info("SKIPPED: "*outfilepath);
+    if skipdone && (isfile(outfilepath) || isfile(splitext(outfilepath)[1] * ".ogg") )
+        @info("SKIPPED: "*filepath);
         return
     end
 
@@ -344,6 +359,19 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     #     Fs = vars["fs"]
     # end
 
+    data_old=nothing; data_binchan=nothing;
+    if !isnothing(binary_channel_list)
+        data_old = data;
+        data_binchan = @view(data_old[:,binary_channel_list])
+        maxi = maximum(data_binchan; dims=1)
+        for i in 1:size(data_binchan,2)
+            maxi = maximum(data_binchan[:,i])
+            data_binchan[:,i] = maxi==0 ? Int16.(data_binchan[:,i]) : (data_binchan[:,i] ./ maxi .|> Int16)
+        end
+        # data_binchan = maxi==0 ? Int16.(data_binchan) : (data_binchan ./ maxi .|> Int16)
+        data = @view(data_old[:, setdiff(1:end, binary_channel_list)])
+    end
+    
     # @info extrema(data, dims=1)
     @info "Finding Dynamic Range............"
     @time dd = find_DataDynamicRange_multich(data)
@@ -356,17 +384,23 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     # end
 
     @time data_new = hcat( voltage2binary_round.(eachcol(data), correction)...)
+    if !isnothing(binary_channel_list)
+        data_new = hcat(data_new, data_binchan)
+        data = data_old
+        push!(correction, [1;0])
+    end
+    
     comments = JSON.json(Dict("correction"=>correction)) |> string
     if size(data_new,2) < 9
         save(outfilepath, data_new, fs; bits_per_sample=16)#, raw_Int_data=true)
-    
+        # FIXME: combine the two steps above and below into one
         @ffmpeg_env run(`ffmpeg -i "$outfilepath" -metadata comment="$comments" -acodec copy "$outfilepath"_meta.flac -loglevel error`)
         mv(outfilepath*"_meta.flac", outfilepath; force=true)
-    else
+    else # merge into .ogg file from multiple .flac due to max 8 channels max limit for flac
         fnames = []
-        for ind = 1:div(size(data,2), 8, RoundUp)
+        for ind = 1:div(size(data_new,2), 8, RoundUp)
             max_channel = ind*8
-            max_channel > size(data,2) && (max_channel = size(data,2))  
+            max_channel > size(data_new,2) && (max_channel = size(data_new,2))  
 
             fname = splitext(outfilepath)[1]*"_n$ind.flac"
             save( fname, data_new[:,((ind-1)*8)+1:max_channel], fs; bits_per_sample=16)#, raw_Int_data=true)
