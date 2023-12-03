@@ -13,7 +13,7 @@ using Dates
 
 
 function FLAC.save(f::File{format"FLAC"}, data::Array{T,2}, samplerate; bits_per_sample = 24, compression_level = 3) where T<:Real
-    @info "NEW SAVE FLAC 1003 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+    # @info "NEW SAVE FLAC v2023-12-03T15:04:45.469 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
     
     encoder = StreamEncoderPtr()
 
@@ -27,7 +27,7 @@ function FLAC.save(f::File{format"FLAC"}, data::Array{T,2}, samplerate; bits_per
 
     # Open file, make sure encoder was properly initialized
     initfile!(encoder, f.filename)
-    if FLAC.get_state(encoder) != EncoderOK
+    if FLAC.get_state(encoder) != FLAC.EncoderOK
         throw(InvalidStateException("Encoder state after init_file is $(get_state(en))"))
     end
 

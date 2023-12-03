@@ -1,4 +1,5 @@
 module DolphinSpeaker
+@info "version v2023-12-03T15:04:45.469 =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-"
     include("audio.jl")
     export mat2flac, mat2wav
 
