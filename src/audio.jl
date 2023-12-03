@@ -332,14 +332,14 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     filepath[end-5:end-4] == "_2" && return
     @info filepath|>basename
 
-    
+    outfilepath == :inplace && (outfilepath=dirname(filepath))
     mkpath(outfilepath)
     if isnothing(outfilepath)
         outfilepath,_ = splitext(filepath)
         outfilepath = outfilepath*".flac"
     elseif isdir(outfilepath)
         @debug basename(filepath)[1:end-3] *"flac"
-        outfilepath = joinpath(outfilepath, basename(filepath)[1:end-3] *"flac")
+        outfilepath = joinpath(outfilepath, splitext(basename(filepath))[1] *"flac")
     end
     @debug outfilepath
     if skipdone && (isfile(outfilepath) || isfile(splitext(outfilepath)[1] * ".ogg") )
