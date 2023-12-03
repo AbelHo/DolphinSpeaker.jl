@@ -192,6 +192,7 @@ function get_videos_audiodata_direct(vidfname)
 	reinterpret(Int16, strs), get_framerate(vidfname, 0, "a")
 end
 
+## FIXME: output codec to automatically convert to raw form
 function get_videos_audiodata_all(vidfname, streamno=:all)
 	if streamno == :all
 		info = get_media_info(vidfname)
@@ -214,7 +215,7 @@ function get_videos_audiodata_all(vidfname, streamno=:all)
 	# ltoh.(reinterpret(Int16, strs)), get_framerate(vidfname, 0, "a")
 	# method 3, fastest, doesnt create array, does the job
 	vid_audiodata = reinterpret(Int16, strs)#, get_framerate(vidfname, 0, "a")
-	if get_whatever(vidfname, 0, "a"; entries_custom="channels")>1
+	if get_whatever(vidfname, streamno, "a"; entries_custom="channels")>1
 		vid_audiodata = reshape(vid_audiodata, get_whatever(vidfname, 0, "a"; entries_custom="channels")|>Int, :)'
 	end
 	vid_audiodata, get_framerate(vidfname, 0, "a")
