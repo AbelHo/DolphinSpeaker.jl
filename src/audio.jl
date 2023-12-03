@@ -436,11 +436,13 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     @info conversion_error
 
     @debug outfilepath
-
+    @debug "remove_original:    .........    .........."
+    @debug remove_original
     if remove_original
         @info "check & Removing original file: $filepath....................."
-        @info maximum( abs.(conversion_error))
-        if maximum( abs.(conversion_error)) < remove_original_errortolerance
+        maxi = map( x-> abs.(x) |> maximum, conversion_error) |>  maximum
+        @info maxi
+        if maxi < remove_original_errortolerance
             rm(filepath)
             @info "-- deleted: " * filepath
         else
