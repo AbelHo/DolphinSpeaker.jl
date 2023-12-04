@@ -251,6 +251,11 @@ function voltage2binary_find(vallist)
         dif = diff(minval)[1]
         min_dif = (vallist |> sort |> diff |> sort)[1]
         @debug (dif, min_dif)
+        @debug abs(min_diff-dif)<1e-16 ? dif : min_dif
+        @debug minval[small_arg]
+        @debug [abs(min_diff-dif)<1e-16 ? dif : min_dif;
+            minval[small_arg] ]
+
         return [abs(min_diff-dif)<1e-16 ? dif : min_dif;
             minval[small_arg] ]
     catch err
