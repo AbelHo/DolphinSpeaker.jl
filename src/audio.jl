@@ -248,13 +248,17 @@ function voltage2binary_find(vallist)
         small_arg = minval .|> abs |> argmin
         # return [diff(minval); (minval[1]-diff(minval)[1]*3)]
         # return [diff(minval); small_arg==1 ? minval[small_arg] : minval[small_arg] ]
-        return [(vallist |> sort |> diff |> sort)[1]; small_arg==1 ? minval[small_arg] : minval[small_arg] ]
+        dif = diff(minval)
+        min_dif = (vallist |> sort |> diff |> sort)[1]
+
+        return [abs(min_diff-dif)<1e-16 ? diff(minval) : (vallist |> sort |> diff |> sort)[1];
+            small_arg==1 ? minval[small_arg] : minval[small_arg] ]
     catch err
         if length(vallist) == 1
             return [1; vallist[1]]
         end
         @warn "bias in data from 0"
-        dif = (vallist|> sort |> diff)[1]#[1:3]
+        dif = (vallist|> sort |> diff |> sort)[1]#[1:3]
         if sum(dif |> x -> x .- x[1]) == 0
             dif = dif[1]
         end
