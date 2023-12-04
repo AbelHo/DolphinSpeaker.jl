@@ -446,10 +446,10 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     if maxi < remove_original_errortolerance
         print_color = :green
         error_word = "Passed!"
-        printstyled( "$error_word _________________________________________  error < $remove_original_errortolerance\n"; color=print_color)
+        printstyled( "$error_word _________________________________________  $remove_original_errortolerance > error: $maxi\n"; color=print_color)
     else
         @warn "Conversion Error too large!!!!"
-        printstyled( "$error_word _________________________________________  error > $remove_original_errortolerance\n"; color=print_color)
+        printstyled( "$error_word _________________________________________  $remove_original_errortolerance < error: $maxi\n"; color=print_color)
     end
 
     @debug outfilepath
