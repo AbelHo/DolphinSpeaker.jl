@@ -320,7 +320,8 @@ mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=
 
 # FIXME: implement reduction of bit-depth if dynamic range is found to be small
 # using Base64
-function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1e-4)
+function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1.4e-4)
+    # @info "version 2023-12-04T09:06"
     if isdir(filepath)
         @info "Directory! Recursively converting entire directory"
         return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list, remove_original=remove_original, remove_original_errortolerance=remove_original_errortolerance)
@@ -435,12 +436,22 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     @info "Conversion Error:"
     @info conversion_error
 
+    maxi = map( x-> abs.(x) |> maximum, conversion_error) |>  maximum
+    print_color = :red; error_word = "FAILED!"
+    if maxi < remove_original_errortolerance
+        print_color = :green
+        error_word = "Passed!"
+    else
+        @warn "Conversion Error too large!!!!"
+    end
+    printstyled( "$error_word _________________________________________  error < $remove_original_errortolerance\n"; color=print_color)
+
     @debug outfilepath
     @debug "remove_original:    .........    .........."
     @debug remove_original
     if remove_original
         @info "check & Removing original file: $filepath....................."
-        maxi = map( x-> abs.(x) |> maximum, conversion_error) |>  maximum
+        
         @info maxi
         if maxi < remove_original_errortolerance
             rm(filepath)
