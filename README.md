@@ -26,7 +26,7 @@ update
 ```
 
 ## Usage
-### Ininitialize
+### Initialize
 ```
 using DolphinSpeaker
 ```
