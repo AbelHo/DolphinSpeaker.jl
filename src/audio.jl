@@ -250,11 +250,6 @@ function voltage2binary_find(vallist)
         # return [diff(minval); small_arg==1 ? minval[small_arg] : minval[small_arg] ]
         dif = diff(minval)[1]
         min_dif = (vallist |> sort |> diff |> sort)[1]
-        @debug (dif, min_dif)
-        @debug abs(min_diff-dif)<1e-16 ? dif : min_dif
-        @debug minval[small_arg]
-        @debug [abs(min_dif-dif)<1e-16 ? dif : min_dif;
-            minval[small_arg] ]
 
         return [abs(min_dif-dif)<1e-16 ? dif : min_dif;
             minval[small_arg] ]
@@ -330,7 +325,7 @@ mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=
 
 # FIXME: implement reduction of bit-depth if dynamic range is found to be small
 # using Base64
-function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1.4e-4)
+function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1.4e-4, accum_res=nothing)
     @info "version 2023-12-04T16:25 dev"
     if isdir(filepath)
         @info "Directory! Recursively converting entire directory"
@@ -471,6 +466,7 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
             @error "Conversion Error > $remove_original_errortolerance, not removing original file: $filepath....................."
         end
     end
+    isnothing(accum_res) || push!(accum_res, (filepath, maxi))
     return conversion_error #data_new, correction
 end
 
