@@ -247,7 +247,8 @@ function voltage2binary_find(vallist)
         minval = min_vals(vallist) 
         small_arg = minval .|> abs |> argmin
         # return [diff(minval); (minval[1]-diff(minval)[1]*3)]
-        return [diff(minval); small_arg==1 ? minval[small_arg] : minval[small_arg] ]
+        # return [diff(minval); small_arg==1 ? minval[small_arg] : minval[small_arg] ]
+        return [(vallist |> sort |> diff |> sort)[1]; small_arg==1 ? minval[small_arg] : minval[small_arg] ]
     catch err
         if length(vallist) == 1
             return [1; vallist[1]]
@@ -441,10 +442,11 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     if maxi < remove_original_errortolerance
         print_color = :green
         error_word = "Passed!"
+        printstyled( "$error_word _________________________________________  error < $remove_original_errortolerance\n"; color=print_color)
     else
         @warn "Conversion Error too large!!!!"
+        printstyled( "$error_word _________________________________________  error > $remove_original_errortolerance\n"; color=print_color)
     end
-    printstyled( "$error_word _________________________________________  error < $remove_original_errortolerance\n"; color=print_color)
 
     @debug outfilepath
     @debug "remove_original:    .........    .........."
