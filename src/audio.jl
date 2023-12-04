@@ -321,6 +321,12 @@ f_dynamic_cost(x,dd, nbits_m1=15) = @pipe (dd.keys .- x[2]) ./ x[1] .* 2^nbits_m
 # @time redo_data = hcat(binary2voltage.(eachcol(data_new), correction)...)
 # extrema(redo_data - data; dims=1)
 
+function mat2flac_check(filepath; kwargs...)
+    accum_res = [];
+    mat2flac(filepath; accum_res=accum_res, kwargs...)
+    return accum_res
+end
+
 # using JSON
 mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=Fs, outfilepath, kwargs)
 
@@ -468,7 +474,7 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
         end
     end
     isnothing(accum_res) || push!(accum_res, (filepath, maxi))
-    return conversion_error #data_new, correction
+    return accum_res #conversion_error #data_new, correction
 end
 
 
