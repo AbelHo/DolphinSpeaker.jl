@@ -403,7 +403,7 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
             max_channel = ind*8
             max_channel > size(data_new,2) && (max_channel = size(data_new,2))  
 
-            fname = joinpath(pwd, splitext(basename(outfilepath))[1]*"_n$ind.flac")  #splitext(outfilepath)[1]*"_n$ind.flac"
+            fname = joinpath(pwd(), splitext(basename(outfilepath))[1]*"_n$ind.flac")  #splitext(outfilepath)[1]*"_n$ind.flac"
             save( fname, data_new[:,((ind-1)*8)+1:max_channel], fs; bits_per_sample=16)#, raw_Int_data=true)
             push!(fnames, fname)
         end
