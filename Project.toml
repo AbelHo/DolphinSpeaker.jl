@@ -1,7 +1,7 @@
 name = "DolphinSpeaker"
 uuid = "a5340efd-1a1e-46c0-b5f5-ffa99f3394da"
 authors = ["AbelHo <21101710+AbelHo@users.noreply.github.com>"]
-version = "0.0.1"
+version = "0.0.2"
 
 [deps]
 AbstractPlotting = "537997a7-5e4e-5d89-9595-2241ea00577e"

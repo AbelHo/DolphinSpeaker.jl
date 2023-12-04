@@ -324,6 +324,7 @@ f_dynamic_cost(x,dd, nbits_m1=15) = @pipe (dd.keys .- x[2]) ./ x[1] .* 2^nbits_m
 function mat2flac_check(filepath; kwargs...)
     accum_res = [];
     mat2flac(filepath; accum_res=accum_res, kwargs...)
+    showall(accum_res)
     return accum_res
 end
 
