@@ -253,10 +253,10 @@ function voltage2binary_find(vallist)
         @debug (dif, min_dif)
         @debug abs(min_diff-dif)<1e-16 ? dif : min_dif
         @debug minval[small_arg]
-        @debug [abs(min_diff-dif)<1e-16 ? dif : min_dif;
+        @debug [abs(min_dif-dif)<1e-16 ? dif : min_dif;
             minval[small_arg] ]
 
-        return [abs(min_diff-dif)<1e-16 ? dif : min_dif;
+        return [abs(min_dif-dif)<1e-16 ? dif : min_dif;
             minval[small_arg] ]
     catch err
         if length(vallist) == 1
