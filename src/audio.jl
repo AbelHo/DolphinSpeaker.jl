@@ -244,6 +244,7 @@ min_vals(vallist) = [(filter( <(0), vallist) |> sort)[end]; (filter( >(0), valli
 
 function voltage2binary_find(vallist)
     try # FIXME: this is a hack to deal with the case where the data is biased from 0, can be improved to do better stats analyzing the best output with the entire data value list
+        length(vallist) == 1 && return [1; vallist[1]]
         minval = min_vals(vallist) 
         small_arg = minval .|> abs |> argmin
         # return [diff(minval); (minval[1]-diff(minval)[1]*3)]
@@ -254,9 +255,9 @@ function voltage2binary_find(vallist)
         return [abs(min_dif-dif)<1e-16 ? dif : min_dif;
             minval[small_arg] ]
     catch err
-        if length(vallist) == 1
-            return [1; vallist[1]]
-        end
+        # if length(vallist) == 1
+        #     return [1; vallist[1]]
+        # end
         @warn "bias in data from 0"
         dif = (vallist|> sort |> diff |> sort)[1]#[1:3]
         if sum(dif |> x -> x .- x[1]) == 0
@@ -329,7 +330,7 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     @info "version 2023-12-04T16:25 dev"
     if isdir(filepath)
         @info "Directory! Recursively converting entire directory"
-        return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list, remove_original=remove_original, remove_original_errortolerance=remove_original_errortolerance)
+        return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list, remove_original=remove_original, remove_original_errortolerance=remove_original_errortolerance, accum_res=accum_res)
         # broadcast(mat2wav, readdir(filepath; join=true) |> skiphiddenfiles, Fs,  joinpath.(Ref(outfilepath),(readdir(filepath)|> skiphiddenfiles) .*".wav") )
         # mat2wav.(filepath.*readdir(filepath); Fs=Fs, outfilepath=outfilepath)
     end
