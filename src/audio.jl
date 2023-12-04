@@ -475,7 +475,7 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
         end
     end
     isnothing(accum_res) || push!(accum_res, (filepath, maxi))
-    return accum_res #conversion_error #data_new, correction
+    return conversion_error #data_new, correction
 end
 
 
