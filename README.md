@@ -33,7 +33,7 @@ using DolphinSpeaker
 
 ### Others
 
-Convert .mat to .flac audio file
+#### Convert .mat to .flac audio file
 Format:
 ```
 mat2flac(input_folderpath; outfilepath=output_folderpath)
@@ -43,7 +43,7 @@ Example:
 mat2flac("/Users/abel/Documents/data/calf/Clicktest/20190913"; outfilepath="/Users/abel/Documents/data/calf/Clicktest/20190913/flac")
 ```
 
-Process and overlay one set of video and acoustic recording, provided to results directory/folder
+#### Process and overlay one set of video and acoustic recording, provided to results directory/folder
 format:
 ```
 process_one_set(vidfname, aufname, res_dir)
@@ -53,7 +53,29 @@ Example:
 process_one_set("/Users/abel/Documents/data/calf/Clicktest/20231129/20231129_15.20.54_log.mkv", "/Users/abel/Documents/data/calf/Clicktest/20231129/20231129_15.20.54_log.flac", "/Users/abel/Documents/data_res/calf/temp/test_laptop")
 ```
 
-### 
+### Advance
+#### Display conversion error results clearly
+```
+mat2flac_check(input_folderpath; outfilepath=output_folderpath)
+```
+
+#### Delete original input files(if conversion error is negligible)
+```
+mat2flac_check(input_folderpath; outfilepath=output_folderpath, remove_original=true)
+```
+
+#### Convert to flac and output to the same filepath as input_folder
+```
+mat2flac_check(input_folderpath; outfilepath=:inplace)
+```
+1. Convert to flac and output to the same filepath as input_folder
+2. Delete original input files(if conversion error is negligible)
+```
+mat2flac_check(input_folderpath; outfilepath=:inplace, remove_original=true)
+```
+
+
+
 
 ## Contributing
 
