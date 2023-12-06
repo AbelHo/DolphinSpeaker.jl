@@ -256,7 +256,7 @@ function voltage2binary_find(vallist)
         # return [abs(min_dif-dif)<1e-10 ? dif : min_dif;
         #     minval[small_arg] ]
         default_dif = 1/2^15 * 10;
-        return [ abs(min_dif-default_dif)/default_dif < 0.11 ? dif : min_dif;
+        return [ abs(dif-default_dif)/default_dif < 0.11 ? dif : min_dif;
             minval[small_arg] ]
     catch err
         # if length(vallist) == 1
