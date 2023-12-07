@@ -10,6 +10,7 @@ include("utils.jl")
 include("media_info.jl")
 include("config.jl")
 using Dates
+include("PAM.jl")
 
 
 function FLAC.save(f::File{format"FLAC"}, data::Array{T,2}, samplerate; bits_per_sample = 24, compression_level = 3) where T<:Real
@@ -54,7 +55,8 @@ function readAudio(aufname::Array{String,1}; kwargs...)
     return vcat(map( x -> x[1], d)...), d[1][2], d[1][3], d[1][4], d[1][5]
 end
 
-function readAudio(aufname; fname2timestamp_func=nothing)
+function readAudio(aufname; fname2timestamp_func=nothing, 
+    channels=4, datatype=Float64, fs=500_000)
     opt = nothing; nbits = nothing; timestamp=nothing;
     filetype = splitext(aufname)[2] |> lowercase
     if ".wav" == filetype 
@@ -94,6 +96,8 @@ function readAudio(aufname; fname2timestamp_func=nothing)
     elseif filetype in [".flac", ".ogg"]
         @info "Reading flac/ogg file via ffmpeg..."
         data, fs = get_videos_audiodata_all(aufname)
+    elseif ".bin" == filetype
+        data = loadDataBin2(aufname; channels=channels, datatype=datatype, fs=fs)
     else
         data, fs = load(aufname)
     end
@@ -337,16 +341,17 @@ mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=
 
 # FIXME: implement reduction of bit-depth if dynamic range is found to be small
 # using Base64
-function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1.4e-4, accum_res=nothing)
-    @debug "version 2023-12-04T19:25 dev"
+function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1.4e-4, accum_res=nothing,
+    filetype=".mat")
+    @debug "version 2023-12-07T08:25 dev"
     if isdir(filepath)
         @info "Directory! Recursively converting entire directory"
-        return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list, remove_original=remove_original, remove_original_errortolerance=remove_original_errortolerance, accum_res=accum_res)
+        return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list, remove_original=remove_original, remove_original_errortolerance=remove_original_errortolerance, accum_res=accum_res, filetype=filetype)
         # broadcast(mat2wav, readdir(filepath; join=true) |> skiphiddenfiles, Fs,  joinpath.(Ref(outfilepath),(readdir(filepath)|> skiphiddenfiles) .*".wav") )
         # mat2wav.(filepath.*readdir(filepath); Fs=Fs, outfilepath=outfilepath)
     end
     
-    filepath[end-3:end] != ".mat" && return
+    filepath[end-3:end] != filetype && return
     filepath[end-5:end-4] == "_2" && return
     @info filepath|>basename
 
