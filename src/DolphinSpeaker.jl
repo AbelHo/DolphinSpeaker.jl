@@ -4,7 +4,7 @@ module DolphinSpeaker
     export showall
     
     include("audio.jl")
-    export mat2flac, mat2wav, mat2flac_check
+    export mat2flac, mat2wav, mat2flac_check, bin2flac, bin2flac_check
 
     include("synchronization.jl")
     export findBlip_bothVidAudio, flac2signal
