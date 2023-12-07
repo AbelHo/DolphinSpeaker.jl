@@ -329,6 +329,9 @@ f_dynamic_cost(x,dd, nbits_m1=15) = @pipe (dd.keys .- x[2]) ./ x[1] .* 2^nbits_m
 # @time redo_data = hcat(binary2voltage.(eachcol(data_new), correction)...)
 # extrema(redo_data - data; dims=1)
 
+bin2flac(args...; kwargs...) = mat2flac(args...; filetype=".bin", kwargs...)
+bin2flac_check(args...; kwargs...) = mat2flac_check(args...; filetype=".bin", kwargs...)
+
 function mat2flac_check(filepath; kwargs...)
     accum_res = [];
     mat2flac(filepath; accum_res=accum_res, kwargs...)
@@ -337,7 +340,7 @@ function mat2flac_check(filepath; kwargs...)
 end
 
 # using JSON
-mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=Fs, outfilepath, kwargs)
+mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=Fs, outfilepath, kwargs...)
 
 # FIXME: implement reduction of bit-depth if dynamic range is found to be small
 # using Base64
