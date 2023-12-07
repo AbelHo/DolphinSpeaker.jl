@@ -12,13 +12,13 @@ end
 
 function loadDataBin2(fname; skiplen_inS=0, channels=5, duration=nothing,fs=400000,datatype=Int16)
     f = open(fname)
-    skip = skiplen_inS*channels*fs*datatype.size 
-    skip = skip-mod(skip,channels*datatype.size) |> Int # round it down to the beginnning of the 1st channel instead of being in between channels
+    skip = skiplen_inS*channels*fs*sizeof(datatype) 
+    skip = skip-mod(skip,channels*sizeof(datatype)) |> Int # round it down to the beginnning of the 1st channel instead of being in between channels
     
     seek(f, skip)
 
     if duration == nothing # load the entire file
-        duration = (stat(fname).size - skip)/channels/fs/datatype.size #16 bits per sample, 2 bytes
+        duration = (stat(fname).size - skip)/channels/fs/sizeof(datatype) #16 bits per sample, 2 bytes
     end
     data = Array{datatype}(undef, Int(fs*duration*channels))
     read!(f, data)
@@ -31,9 +31,9 @@ function loadDataBinEndFile(fname;channels=5, duration=nothing,fs=400000,datatyp
     f = open(fname)
     # println(position(f))
     if duration == nothing # load the entire file
-        duration = stat(fname).size/channels/fs/datatype.size #16 bits per sample, 2 bytes
+        duration = stat(fname).size/channels/fs/sizeof(datatype) #16 bits per sample, 2 bytes
     end
-    posi = Int(round(stat(f).size-duration*fs*channels*datatype.size));
+    posi = Int(round(stat(f).size-duration*fs*channels*sizeof(datatype)));
     seek(f, posi)
     println(position(f))
     # data = datatype.(read(f,Int(fs*duration*channels)))
@@ -61,9 +61,9 @@ function loadDataBinEnd(fol;channels=5, duration=nothing,fs=400000,datatype=Int1
     f = open(fname)
     # println(position(f))
     if duration == nothing # load the entire file
-        duration = stat(fname).size/channels/fs/datatype.size #16 bits per sample, 2 bytes
+        duration = stat(fname).size/channels/fs/sizeof(datatype) #16 bits per sample, 2 bytes
     end
-    posi = Int(round(stat(f).size-duration*fs*channels*datatype.size));
+    posi = Int(round(stat(f).size-duration*fs*channels*sizeof(datatype)));
     try
         seek(f, posi)        
     catch e
@@ -94,9 +94,9 @@ function loadDataBinEndRegular(fol;channels=5, duration=nothing,fs=400000,dataty
     f = open(fname)
     # println(position(f))
     if duration == nothing # load the entire file
-        duration = stat(fname).size/channels/fs/datatype.size #16 bits per sample, 2 bytes
+        duration = stat(fname).size/channels/fs/sizeof(datatype) #16 bits per sample, 2 bytes
     end
-    winlen=duration*fs*channels*datatype.size
+    winlen=duration*fs*channels*sizeof(datatype)
     posi = round(stat(f).size-winlen);
     posi = posi-mod(posi,winlen)
     try
