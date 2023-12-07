@@ -43,6 +43,10 @@ Example:
 mat2flac("/Users/abel/Documents/data/calf/Clicktest/20190913"; outfilepath="/Users/abel/Documents/data/calf/Clicktest/20190913/flac")
 ```
 
+#### Convert .bin to .flac audio file
+Assumes Sampling Rate of _500kHz_ and _Float64/double_ precision data .bin binary file. 
+Usage same as all the ```mat2flac``` examples, just change the commnad to ```bin2flac(...)``` & ```bin2flac_check(...)``` instead
+
 #### Process and overlay one set of video and acoustic recording, provided to results directory/folder
 format:
 ```
