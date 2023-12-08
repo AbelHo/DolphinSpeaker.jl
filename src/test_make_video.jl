@@ -69,7 +69,14 @@ function process_video(vidfname, res_fol; func=(a,b,c)->(a,b,c), extra_arg=nothi
     newvidname = joinpath(res_fol, reduce((a,b) -> a*"_overlaid"*postfix*b , splitext(basename(vidfname))))
     
     vid = VideoIO.openvideo(vidfname)
-    img = read(vid)
+    img = nothing
+    try
+        img = read(vid)
+    catch err
+        @warn "Failed to read vide first frame, trying again"
+        @warn err
+        img = read(vid)
+    end
     imsize = raw_frame_size(vid)
 
     img2 = func(img, 1, extra_arg)
