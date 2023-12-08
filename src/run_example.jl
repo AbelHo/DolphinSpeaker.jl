@@ -225,7 +225,7 @@ function process_folder(foldername; outfolder=foldername, skipdone=false)
             process_one_set(joinpath(foldername, fname_split*".mkv"), fname, outfolder)
         catch err
             @error(err)
-            @error("Failed to process: "*fname)
+            @error "Failed to process: "*fname exception=(err, catch_backtrace())
         end
         # combine_2v1a(joinpath(dname,"cam_topview",fname_split*"_topview.mkv"), joinpath(dname,"cam_uw1",fname_split*"_uw1.mkv"), joinpath(aufolder,fname), joinpath(outfolder,fname_split*"_norm.mp4"))
     end
