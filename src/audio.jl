@@ -402,14 +402,14 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     @info "Finding Dynamic Range............"
     @time dd = find_DataDynamicRange_multich(data)
     @debug size(dd)
-    @time correction = voltage2binary_find.(map(x->x.keys,dd))
+    correction = voltage2binary_find.(map(x->x.keys,dd))
     @debug correction
     # data_new = Array{Int}(undef, size(data))#similar(data)
     # @time Threads.@threads for ind = 1:size(data,2)
     #     data_new[:,ind] = voltage2binary_round(@view(data[:,ind]), correction[ind])
     # end
 
-    @time data_new = hcat( voltage2binary_round.(eachcol(data), correction)...)
+    data_new = hcat( voltage2binary_round.(eachcol(data), correction)...)
     if !isnothing(binary_channel_list)
         data_new = hcat(data_new, data_binchan)
         data = data_old
@@ -456,7 +456,7 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     # run(cmds);
 
 
-    @time redo_data = hcat(binary2voltage.(eachcol(data_new), correction)...)
+    redo_data = hcat(binary2voltage.(eachcol(data_new), correction)...)
     conversion_error = extrema(redo_data - data; dims=1)
     @info "Conversion Error:"
     @info conversion_error
