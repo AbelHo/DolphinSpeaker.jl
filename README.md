@@ -31,7 +31,7 @@ update
 using DolphinSpeaker
 ```
 
-### Others
+### Data Processing
 
 #### Convert .mat to .flac audio file
 Format:
@@ -55,6 +55,16 @@ process_one_set(vidfname, aufname, res_dir)
 Example:
 ```
 process_one_set("/Users/abel/Documents/data/calf/Clicktest/20231129/20231129_15.20.54_log.mkv", "/Users/abel/Documents/data/calf/Clicktest/20231129/20231129_15.20.54_log.flac", "/Users/abel/Documents/data_res/calf/temp/test_laptop")
+```
+
+#### Process entire folder automatically
+format:
+```
+process_folder(foldername; outfolder=res_dir)
+```
+Example:
+```
+process_folder("/Users/abel/Documents/data/calf/Clicktest/20231129"; outfolder="/Users/abel/Documents/data_res/calf/temp")
 ```
 
 ### Advance
