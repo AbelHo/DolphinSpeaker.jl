@@ -97,7 +97,7 @@ function findBlip_bothVidAudio(folname; filename_only=false, vidtype=r".mkv|.MP4
     return trigger_times
 end
 
-function split_vid_au(folname; vidtype=r".mkv|.MP4|.avi|.mp4", autype=r".wav|.mat|.flac.mp3")
+function split_vid_au(folname; vidtype=r".mkv|.MP4|.avi|.mp4", autype=r".wav|.mat|.flac|.mp3")
     flist = readdir(folname; join=true) |> skiphiddenfiles
     filter( x -> occursin(vidtype, x), flist), filter( x -> occursin(autype, x), flist)
 end
