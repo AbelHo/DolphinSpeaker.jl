@@ -205,3 +205,28 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
 end
 
 # process_dir(folname; func=process_vidau_dir, arg=res_dir, no_overwrite_func=check_output_exist)
+
+function process_folder(foldername; outfolder=foldername, skipdone=false)
+    mkpath(outfolder)
+    a=split_vid_au(foldername)
+    # process_one_set.(a[1], a[2], outfolder)
+
+    for fname in a[2] |> skiphiddenfiles #readdir(foldername)|>skiphiddenfiles
+        fname_split = splitext(fname)[1]
+        
+        if skipdone 
+            if !isempty(filter( x->occursin(Regex("(?=.*" *basename(fname_split)* ")(?=.*_normalized-audio.mp4)"),x), readdir(outfolder)))
+                @info "Done! Skipping: $fname"
+                continue
+            end
+        end
+
+        try
+            process_one_set(joinpath(foldername, fname_split*".mkv"), fname, outfolder)
+        catch err
+            @error(err)
+            @error("Failed to process: "*fname)
+        end
+        # combine_2v1a(joinpath(dname,"cam_topview",fname_split*"_topview.mkv"), joinpath(dname,"cam_uw1",fname_split*"_uw1.mkv"), joinpath(aufolder,fname), joinpath(outfolder,fname_split*"_norm.mp4"))
+    end
+end
