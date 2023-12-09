@@ -13,13 +13,13 @@ function skiphiddenfiles(list)
     filter(!startswith('.') ∘  basename, list)
 end
 
-function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2), band_pass=nothing) # plot_window_inS=[-.1 .1]
+function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2), band_pass=nothing, argmax_len=0.5) # plot_window_inS=[-.1 .1]
     # @debug ref_channel
     # @debug abs.(data[:,ref_channel])
     !isnothing(band_pass) && (data = filter_simple(data, band_pass; fs=fs))
     trigger = findfirst(abs.(data[:,ref_channel]) .> maximum(data[:,ref_channel])*threshold_percentMAX )
     @debug trigger
-    trigger = argmax(data[trigger:trigger+fs÷2,ref_channel]) -1 +trigger
+    isnothing(argmax_len) || iszero(argmax_len) || (trigger = argmax(@view(data[trigger:trigger+round(Int, fs*argmax_len),ref_channel])) -1 +trigger)
     @debug trigger
     isnothing(plot_window_inS) && return trigger
     # @debug fs
