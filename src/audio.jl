@@ -418,10 +418,17 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     
     comments = JSON.json(Dict("correction"=>correction)) |> string
     if size(data_new,2) < 9
-        save(outfilepath, data_new, fs; bits_per_sample=16)#, raw_Int_data=true)
+        outfilepath_temp = outfilepath * "_temp.flac"
+        save(outfilepath_temp, data_new, fs; bits_per_sample=16)#, raw_Int_data=true)
         # FIXME: combine the two steps above and below into one
-        @ffmpeg_env run(`ffmpeg -i "$outfilepath" -metadata comment="$comments" -acodec copy "$outfilepath"_meta.flac -loglevel error`)
-        mv(outfilepath*"_meta.flac", outfilepath; force=true)
+        @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -acodec copy "$outfilepath" -loglevel error`)
+        # mv(outfilepath*"_meta.flac", outfilepath; force=true)
+        try 
+            rm(outfilepath_temp)
+        catch err
+            @warn "Failed to remove temp file"
+            @warn err
+        end
     else # merge into .ogg file from multiple .flac due to max 8 channels max limit for flac
         fnames = []
         for ind = 1:div(size(data_new,2), 8, RoundUp)
