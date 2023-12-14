@@ -345,11 +345,11 @@ mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=
 # FIXME: implement reduction of bit-depth if dynamic range is found to be small
 # using Base64
 function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1.4e-4, accum_res=nothing,
-    filetype=".mat")
+    filetype=".mat", kwargs...)
     @debug "version 2023-12-07T08:25 dev"
     if isdir(filepath)
         @info "Directory! Recursively converting entire directory"
-        return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list, remove_original=remove_original, remove_original_errortolerance=remove_original_errortolerance, accum_res=accum_res, filetype=filetype)
+        return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list, remove_original=remove_original, remove_original_errortolerance=remove_original_errortolerance, accum_res=accum_res, filetype=filetype, kwargs...)
         # broadcast(mat2wav, readdir(filepath; join=true) |> skiphiddenfiles, Fs,  joinpath.(Ref(outfilepath),(readdir(filepath)|> skiphiddenfiles) .*".wav") )
         # mat2wav.(filepath.*readdir(filepath); Fs=Fs, outfilepath=outfilepath)
     end
@@ -375,7 +375,7 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
 
     data=nothing;fs=nothing;opt=nothing;timestamp=nothing
     try
-        data,fs,_,opt,timestamp = readAudio(filepath);
+        data,fs,_,opt,timestamp = readAudio(filepath; kwargs...);
     catch err
         @error(err)
         return
