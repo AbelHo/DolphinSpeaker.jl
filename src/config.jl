@@ -53,6 +53,7 @@ elseif device_name=="calf_hk"
     window_impulsive = -300:700; #-50:200; #-5000:10000 #-50:300
 
     threshold_tonal = nothing #-110#calf_hk -15#aspod2
+    tonal_band_pass = [2500, 24000]
 
     rx = 0.4/sqrt(3) .* exp.(im.* deg2rad.([150 -90 30]) ) # calf_hk
     imsize=(2160, 3840)

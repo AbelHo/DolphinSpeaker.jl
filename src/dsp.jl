@@ -14,7 +14,11 @@ function filter_simple(data, band_pass; fs=1, butterworth_size=butterworth_size)
 
         filter_weight = digitalfilter(filter_type, Butterworth(butterworth_size))
         # data_filt = mapslices( x -> filtfilt( filter_weight, x), data, dims=1)
-        data_filt = mapslices2( x -> filtfilt( filter_weight, x), data)
+        if size(data,2) > 1
+            data_filt = mapslices2( x -> filtfilt( filter_weight, x), data)
+        else
+            data_filt = filtfilt( filter_weight, data)
+        end
     end
     return data_filt
 end
