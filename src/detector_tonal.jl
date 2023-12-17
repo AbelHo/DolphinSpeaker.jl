@@ -300,7 +300,7 @@ conv_onesided_centreMID(u,v) = conv(u, v)[ (length(v)+1:end-(length(v)-1)) .- le
 function combine_detections_conv(data, res_new, nfft=1280, infl_len=30;
     winfunc=gaussian, σ=0.1,
     threshold=0.01, thresh_continue=0.00001,
-    res_dir=res_dir)
+    res_dir=nothing)
 # σ=0.1; nfft=1280; infl_len=30;
 new_dat = zeros(size(data,1),1)
 new_dat[res_new.pind_good] .= 1
