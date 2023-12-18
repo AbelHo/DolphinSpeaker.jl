@@ -408,8 +408,15 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     # @time Threads.@threads for ind = 1:size(data,2)
     #     data_new[:,ind] = voltage2binary_round(@view(data[:,ind]), correction[ind])
     # end
-
-    data_new = hcat( voltage2binary_round.(eachcol(data), correction)...)
+    try
+        data_new = hcat( voltage2binary_round.(eachcol(data), correction)...)
+    catch err
+        @error "FAILED: Convertion to newdata!! Skipping......"
+        @error filepath
+        @error exception=(err, catch_backtrace())
+        @info extrema(hcat( voltage2binary.(eachcol(data), correction)...); dims=1)
+        return
+    end
     if !isnothing(binary_channel_list)
         data_new = hcat(data_new, data_binchan)
         data = data_old
@@ -419,7 +426,8 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     comments = JSON.json(Dict("correction"=>correction)) |> string
     if size(data_new,2) < 9
         if isfile(outfilepath)
-            s = input("File($outfilepath) already exists. Overwrite? (y/n): ")
+            println("File($outfilepath) already exists. Overwrite? (y/n): ")
+            s = readline()
             if lowercase(s) != "y"
                 @warn "not overwriting. Skipping file......"
                 return
