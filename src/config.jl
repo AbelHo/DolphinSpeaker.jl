@@ -44,7 +44,7 @@ if device_name=="aspod2"
 elseif device_name=="calf_hk"
     impulsive_band_pass = [1000, Inf] #fs/2*.98]
     threshold_impulsive = nothing #.1# .003#calf_hk
-    impulsive_autothreshold_median_ratio = 10;
+    impulsive_autothreshold_median_ratio = 4;#10;
     # dist_impulsive = 400#800# 15000#pinger
 
     click_train_minlen = 5#calf 7 #5 20  #[n+1]clicks within (click_train_check_interval)seconds
@@ -68,13 +68,11 @@ elseif device_name=="punnet"
     rx = 0.5/sqrt(3) .* exp.(im.* deg2rad.([90 -30 210]) ) #0.5/sqrt(3) .* exp.(im.* deg2rad.([-30 90 -150]) )
 elseif device_name=="calf_hk_clicker"
     impulsive_band_pass = [1000, Inf] #fs/2*.98]
-    threshold_impulsive = nothing #.1# .003#calf_hk
-    impulsive_autothreshold_median_ratio = 10;
-
+    threshold_impulsive = .1# .003#calf_hk
     threshold_tonal = nothing #-110#calf_hk -15#aspod2
     click_train_minlen = 2#calf 7 #5 20
     click_train_check_interval = 5#calf 1 #.01
-    window_impulsive = -1000:1500 # -300:700 #-50:100
+    window_impulsive = -300:700 #-50:100
     dist_impulsive = 15000# 15000#pinger
 
     rx = 0.4/sqrt(3) .* exp.(im.* deg2rad.([150 -90 30]) ) # calf_hk
