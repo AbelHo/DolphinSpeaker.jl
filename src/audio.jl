@@ -418,10 +418,19 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     
     comments = JSON.json(Dict("correction"=>correction)) |> string
     if size(data_new,2) < 9
+        if isfile(outfilepath)
+            s = input("File($outfilepath) already exists. Overwrite? (y/n): ")
+            if lowercase(s) != "y"
+                @warn "not overwriting. Skipping file......"
+                return
+            end
+            @warn "Overwriting file: $outfilepath"
+        end
+
         outfilepath_temp = outfilepath * "_temp.flac"
         save(outfilepath_temp, data_new, fs; bits_per_sample=16)#, raw_Int_data=true)
         # FIXME: combine the two steps above and below into one
-        @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -acodec copy "$outfilepath" -loglevel error`)
+        @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -acodec copy "$outfilepath" -loglevel error -y`)
         # mv(outfilepath*"_meta.flac", outfilepath; force=true)
         try 
             rm(outfilepath_temp)
