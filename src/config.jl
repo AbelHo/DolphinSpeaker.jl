@@ -58,6 +58,10 @@ elseif device_name=="calf_hk"
     rx = 0.4/sqrt(3) .* exp.(im.* deg2rad.([150 -90 30]) ) # calf_hk
     imsize=(2160, 3840)
     fov_angle=[54,34,0]
+
+    threshold_boat = Inf #1e3
+    band_pass_boat = [1 500]
+
 elseif device_name=="punnet"
     # threshold_impulsive = .005*32767#aspod2 .003#calf_hk #0.01 # 0.1#pinger/clickler #0.2
     threshold_tonal = -20#aspod2 -110#calf_hk 

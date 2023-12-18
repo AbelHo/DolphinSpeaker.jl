@@ -294,7 +294,7 @@ function get_pixelLoc(pts, fig, vidfname, pind_good_inS, data, pind_threshold_in
 	return pts
 end
 
-function plot_ang(res_new, ang, aufname="", res_dir=nothing; type="Amplitude")
+function plot_ang(res_new, ang, aufname="", res_dir=nothing; type="Amplitude", ylabel="Azimuth(°)", label="clicks")
 	maxi = res_new.ppeak |> maximum
 	
 	if lowercase(type)==lowercase("Amplitude")
@@ -307,14 +307,14 @@ function plot_ang(res_new, ang, aufname="", res_dir=nothing; type="Amplitude")
 	end
 
 	p = scatter(res_new.pind_good_inS, ang.|>rad2deg; alpha=transparency,
-    xlabel="Time(s)", ylabel="Azimuth(°)", label="clicks",
+    xlabel="Time(s)", ylabel=ylabel, label=label,
     title="Detection "*type*"(Transparency)",
 	markershape=:auto)
 
 	if !isnothing(res_dir)
 		mkpath(res_dir)
-		savefig(joinpath(res_dir, splitext(basename(aufname))[1] *"_click"*type*".html"))
-		savefig(joinpath(res_dir, splitext(basename(aufname))[1] *"_click"*type*".png"))
+		savefig(joinpath(res_dir, splitext(basename(aufname))[1] *"_$label"*type*".html"))
+		savefig(joinpath(res_dir, splitext(basename(aufname))[1] *"_$label"*type*".png"))
 	end
 	p
 end
@@ -626,6 +626,34 @@ end
 # plot_detection_summary("/Volumes/One Touch/res/Hawaii_2022-09/punnet_yellow/4/2022-09-17/counts.csv"; res_dir="/Volumes/One Touch/res/Hawaii_2022-09/punnet_yellow/4/summary")
 # plot_detection_summary("/Volumes/One Touch/res/Hawaii_2022-09/punnet_yellow/4/2022-09-27/counts.csv"; res_dir="/Volumes/One Touch/res/Hawaii_2022-09/punnet_yellow/4/summary", filetype=".html", plotly_flag=true)
 
+function detectionsfiles2plot(fname; res_dir=nothing)
+    df = CSV.read(fname, DataFrame)
+    df.datetime = ZonedDateTime.(String.(df.datetime)) .|> DateTime
+    # plot(df.datetime, [df.num_tonal df.num_noise]; label=["tonal" "noise"])
+
+    p = PlotlyJS.plot([
+        PlotlyJS.scatter(df, x=:datetime, y=:num_tonal; name="tonal"),
+        PlotlyJS.scatter(df, x=:datetime, y=:num_noise; name="noise")
+        ],
+        PlotlyJS.Layout(
+            title="Detections ("* string(df.datetime[1] |> Date) *")",
+            xaxis_title="DateTime",
+            yaxis_title="Number of Detections"
+            # label=["noise" "tonal"]
+            # legend_title="Legend Title"
+        )
+    )
+
+    mkpath(res_dir)
+    open(joinpath(res_dir,basename(dirname(fname))*".html"), "w") do io
+        PlotlyBase.to_html(io, p.plot)
+    end
+    # open(joinpath(res_dir,basename(dirname(fname))*".png"), "w") do io
+    #     PlotlyBase.to_image(io, p.plot)
+    # end
+    PlotlyJS.savefig(p.plot, joinpath(res_dir,basename(dirname(fname))*".png"))
+
+end
 
 # 	a=PlotlyJS.plot(x=df.datetime .|> DateTime, y=df.num_noise, name="noise")
 # 	b=PlotlyJS.scatter(x=df.datetime .|> DateTime, y=df.num_tonal, name="tonal")
@@ -653,3 +681,4 @@ end
 #     legend_title="Legend Title")
 # 	# ; labels=["noise";"tonal"]
 # 	)
+

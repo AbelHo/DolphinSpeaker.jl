@@ -291,7 +291,7 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     end
     
     pind_good = round.(Int, pind_good_inS.*fs)
-    return (;fft_max, time_index , tonal_indices, pind_good_inS, freqss, num_detection, percent_quiet, freq_maxbandwidth, threshold=thresh_tonal, ppeak=fft_max[tonal_indices], quietest, aufname, fs, outfname, pind_good, len_data=size(data,1))#, mag_max, specs) #mag, mag_ft, mag_mean, mag_max, 
+    return (;fft_max, time_index , tonal_indices, pind_good_inS, freqss, num_detection, percent_quiet, freq_maxbandwidth, threshold=thresh_tonal, ppeak=fft_max[tonal_indices], quietest, aufname, fs, outfname, pind_good, len_data=size(data,1), band_pass)#, mag_max, specs) #mag, mag_ft, mag_mean, mag_max, 
     # return (;pind=, ppeak, pind_good, pind_good_inS, threshold_indices)
 end
 

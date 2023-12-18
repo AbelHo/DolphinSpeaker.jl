@@ -174,7 +174,7 @@ function detect_impulsetrain(res, res_dir=res_dir;
         pind = res.pind_good,
         train_start, train_end,
         num_detection=train_count, num_click_in_trains=length(click_in_trains),
-        train_start_ind)
+        train_start_ind, click_train_check_interval, click_train_minlen)
 
         
     if res_dir isa String

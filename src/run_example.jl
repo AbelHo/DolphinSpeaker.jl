@@ -9,6 +9,7 @@ include("plotting.jl")
 include("detector_impulsive.jl")
 include("config.jl")
 include("synchronization.jl")
+include("aspod.jl")
 band_pass = tonal_band_pass
 threshold_tonal = -15
 
@@ -142,42 +143,49 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
     if aufname isa Array
         aufname = aufname[1]
     end
-    pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect, fs = process_audioVideo( (aufname,data,fs), vidfname, res_dir)
-    detection_b = process_audioVideo_tonal1( (aufname,data,fs), vidfname, res_dir)
-    detector_set = [detection_b,
-                    (pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect)
-                    ]
-    pt_config = [((1,1,0),25), ((1,0,0),30)]
+    # pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect, fs = process_audioVideo( (aufname,data,fs), vidfname, res_dir)
+    # detection_b = process_audioVideo_tonal1( (aufname,data,fs), vidfname, res_dir)
+    # detector_set = [detection_b,
+    #                 (pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect)
+    #                 ]
+    pt_config = [((1,1,0),25), ((1,0,0),30), ((0,1,0),20)]
     
     fps = get_fps(vidfname)
     vidau_syncdiff = findVidAudioBlip(vidfname; plot_window_inS=nothing, band_pass=[2900 3100]) - findAudioBlip(aufname; plot_window_inS=nothing, band_pass=[2900 3100])
-    @info "Audio started later by $(vidau_syncdiff)s"
-    # pixel_related = map( (x,y)->(x[1:2]..., y...), detector_set, pt_config)
-    pixel_related = map( (x,y)->((x[1] .+(vidau_syncdiff*fps) .|>round.|>Int,x[2])..., y...), detector_set, pt_config)
+    # @info "Audio started later by $(vidau_syncdiff)s"
+    # # pixel_related = map( (x,y)->(x[1:2]..., y...), detector_set, pt_config)
+    # pixel_related = map( (x,y)->((x[1] .+(vidau_syncdiff*fps) .|>round.|>Int,x[2])..., y...), detector_set, pt_config)
+
+    pixel_estimated_set = process_detections(aufname, vidfname; res_dir=res_dir)
+    pixel_related = map( (x,y)->((x[1] .+(vidau_syncdiff*fps) .|>round.|>Int,x[2])..., y...), pixel_estimated_set, pt_config)
+
 
     try
         if savejld
+            savefname = splitext(basename(aufname))[1] *"_t"*string(impulsive_autothreshold_median_ratio)*"_d"*string(dist_impulsive)*".jld2"
             if !Sys.islinux()
-                jldsave(joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".jld2"); pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect,  vidfname, aufname, res_dir, detector_set)
+                jldsave(joinpath(res_dir, savefname); pixel_estimated_set, pixel_related)
+                # jldsave(joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".jld2"); pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect,  vidfname, aufname, res_dir, detector_set, pixel_related)
             #@error(err)
             #@error("Cant save jld2 file, saving locally and copying instead")
             #rm(joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".jld2"))
             else
-                jldsave(joinpath("", splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".jld2"); pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect,  vidfname, aufname, res_dir, detector_set)
-                mv(joinpath("", splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".jld2"),
-                    joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".jld2"))
+                jldsave(joinpath("", savefname); pixel_estimated_set, pixel_related)
+                mv(joinpath("", savefname),
+                    joinpath(res_dir, savefname))
             end
             
         end
     catch err
         @error(err)
-        @error joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".jld2")
+        savefname = splitext(basename(aufname))[1] *"_t"*string(impulsive_autothreshold_median_ratio)*"_d"*string(dist_impulsive)*".jld2"
+        @error joinpath(res_dir,savefname)
         @error("Failed to save JLD file")
     end
 
     # newvidname = process_video(vidfname, res_dir; func=overlay_points!, extra_arg=pixel_related, postfix="_t"*string(thresh)*"_d"*string(dist),
     #              func2=plot_summary!, extra_arg2=(data, fs, vidau_syncdiff))
-    newvidname = process_video(vidfname, res_dir; func=overlay_points!, extra_arg=pixel_related, postfix="_t"*string(thresh)*"_d"*string(dist),
+    newvidname = process_video(vidfname, res_dir; func=overlay_points!, extra_arg=pixel_related, postfix="_t"*string(impulsive_autothreshold_median_ratio)*"_d"*string(dist_impulsive),
                  extra_arg2=(data, fs, vidau_syncdiff))
     # newvidname = process_video(vidfname, res_dir; func=overlay_points!, extra_arg=pixel_related, postfix="_t"*string(thresh)*"_d"*string(dist),
                 #  func2=plot_summary_plots_img!, extra_arg2=(data, fs, vidau_syncdiff))
@@ -200,8 +208,9 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
     end
 
    
+    return aufname, vidfname, vidau_syncdiff, pixel_estimated_set
 
-    return pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect, newvidname
+    # return pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect, newvidname
 end
 
 # process_dir(folname; func=process_vidau_dir, arg=res_dir, no_overwrite_func=check_output_exist)

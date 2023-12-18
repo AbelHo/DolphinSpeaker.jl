@@ -73,7 +73,7 @@ function process_video(vidfname, res_fol; func=(a,b,c)->(a,b,c), extra_arg=nothi
     try
         img = read(vid)
     catch err
-        @warn "Failed to read vide first frame, trying again"
+        @warn "Failed to read video first frame, trying again"
         @warn err
         img = read(vid)
     end
@@ -99,7 +99,18 @@ function process_video(vidfname, res_fol; func=(a,b,c)->(a,b,c), extra_arg=nothi
         # while !eof(vid)
         @showprogress "Encoding video frames.." for i in 1:num_of_frames
             # @debug string([counter, num_of_frames])
-            read!(vid, img)
+            try
+                read!(vid, img)
+            catch err
+                @error "Failed to read video frame $counter/$fps, trying again"
+                @warn "producing a blank frame and continue...................................."
+                img = zeros(eltype(img), size(img))
+                try 
+                    seekstart(vid); seek(vid, (counter+1)/fps)
+                catch err
+                    @error "failed seeking to next frame, skip frame again......"
+                end
+            end
             func(img, counter, extra_arg;)
             # display_corners!(img, [[mod(counter, imsize[1]);200]])
             # Do something with frames
