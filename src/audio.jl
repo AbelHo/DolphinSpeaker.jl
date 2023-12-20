@@ -246,11 +246,12 @@ using Pipe:@pipe
 
 min_vals(vallist) = [(filter( <(0), vallist) |> sort)[end]; (filter( >(0), vallist) |> sort)[1]]
 
-function voltage2binary_find(vallist)
+function voltage2binary_find(vallist; int_type=Int16)#, normal_zero_centered=true)
     try # FIXME: this is a hack to deal with the case where the data is biased from 0, can be improved to do better stats analyzing the best output with the entire data value list
         length(vallist) == 1 && return [1; vallist[1]]
         minval = min_vals(vallist) 
         small_arg = minval .|> abs |> argmin
+        bias = minval[small_arg] #median(vallist) #vallist[ (vallist .- (extrema(vallist) |> mean)) .|> abs |> argmin] ]
         # return [diff(minval); (minval[1]-diff(minval)[1]*3)]
         # return [diff(minval); small_arg==1 ? minval[small_arg] : minval[small_arg] ]
         dif = diff(minval)[1]
@@ -260,8 +261,15 @@ function voltage2binary_find(vallist)
         # return [abs(min_dif-dif)<1e-10 ? dif : min_dif;
         #     minval[small_arg] ]
         default_dif = 1/2^15 * 10;
-        return [ abs(dif-default_dif)/default_dif < 0.11 ? dif : min_dif;
-            minval[small_arg] ]
+        correction = [ abs(dif-default_dif)/default_dif < 0.11 ? dif : min_dif;
+            bias]
+
+        if voltage2binary( extrema(vallist) .|> abs |>maximum, correction)  > 2^(sizeof(int_type)*8 - 1)
+            @warn "voltage2binary_find: dynamic range too large, trying to find better correction..."
+            @info voltage2binary( extrema(vallist) .|> abs |>maximum, correction) 
+            correction[2] = vallist[ (vallist .- (extrema(vallist) |> mean)) .|> abs |> argmin] # = voltage2binary_find( map(x->x.keys,dd[ch_exceed_dynamicrange]); normal_zero_centered=false)
+        end
+        return correction
     catch err
         # if length(vallist) == 1
         #     return [1; vallist[1]]
@@ -285,9 +293,13 @@ voltage2binary_round(vallist, correction; int_type=Int16) = round.(int_type,volt
 binary2voltage(vallist, correction) = vallist .* correction[1] .+ correction[2]
 
 function flac2signal(aufname::String; kwargs...)
-    info = @ffmpeg_env read(`$ffprobe "$aufname" -loglevel error  -v quiet -print_format json -show_format -show_streams`, String) |> JSON.parse
-    # correction = JSON.parse(info["format"]["tags"]["comment"])["correction"]
-    correction = JSON.parse(info["streams"][1]["tags"]["comment"])["correction"]
+    info = @ffmpeg_env read(`ffprobe "$aufname" -loglevel error  -v quiet -print_format json -show_format -show_streams`, String) |> JSON.parse
+    
+    if haskey(info["format"], "tags")
+        correction = JSON.parse(info["format"]["tags"]["comment"])["correction"]
+    else
+        correction = JSON.parse(info["streams"][1]["tags"]["comment"])["correction"]
+    end
     # correction = map(x->(x["tags"]["comment"]|>JSON.parse)["correction"], info["streams"])
 
     data, fs = get_videos_audiodata_all(aufname);
@@ -345,7 +357,7 @@ mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=
 # FIXME: implement reduction of bit-depth if dynamic range is found to be small
 # using Base64
 function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1.4e-4, accum_res=nothing,
-    filetype=".mat", kwargs...)
+    filetype=".mat", int_type=Int16, kwargs...)
     @debug "version 2023-12-07T08:25 dev"
     if isdir(filepath)
         @info "Directory! Recursively converting entire directory"
@@ -402,8 +414,12 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     @info "Finding Dynamic Range............"
     @time dd = find_DataDynamicRange_multich(data)
     @debug size(dd)
-    correction = voltage2binary_find.(map(x->x.keys,dd))
+    correction = voltage2binary_find.(map(x->x.keys,dd); int_type=int_type)
     @debug correction
+    #~ check correction of dd extrema is still within Nbit range
+    # ch_exceed_dynamicrange = findall( >(sizeof(int_type)*8), voltage2binary.( map( x-> extrema(x.keys).|>abs|>maximum, dd), correction))
+    # correction[ch_exceed_dynamicrange] = voltage2binary_find.( map(x->x.keys,dd[ch_exceed_dynamicrange]); normal_zero_centered=false)
+
     # data_new = Array{Int}(undef, size(data))#similar(data)
     # @time Threads.@threads for ind = 1:size(data,2)
     #     data_new[:,ind] = voltage2binary_round(@view(data[:,ind]), correction[ind])
@@ -415,6 +431,7 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
         @error filepath
         @error exception=(err, catch_backtrace())
         @info extrema(hcat( voltage2binary.(eachcol(data), correction)...); dims=1)
+        @info correction
         return
     end
     if !isnothing(binary_channel_list)
