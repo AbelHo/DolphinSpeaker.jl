@@ -6,6 +6,7 @@ using JSON
 using SignalAnalysis, SignalAnalysis.Units
 using FFMPEG
 # require package MAT for reading .mat file
+using MAT
 include("utils.jl")
 include("media_info.jl")
 include("config.jl")
