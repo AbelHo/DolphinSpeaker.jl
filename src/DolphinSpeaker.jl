@@ -1,5 +1,5 @@
 module DolphinSpeaker
-@info "version v2023-12-18T18:00 =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-"
+@info "version v2024-01-04T23:00 =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-"
     include("utils.jl")
     export showall
     
@@ -10,6 +10,6 @@ module DolphinSpeaker
     export findBlip_bothVidAudio, flac2signal
 
     include("run_example.jl")
-    export process_one_set, process_folder
+    export process_one_set, process_folder, process_dir
 
 end

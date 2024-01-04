@@ -1,7 +1,7 @@
 name = "DolphinSpeaker"
 uuid = "a5340efd-1a1e-46c0-b5f5-ffa99f3394da"
 authors = ["AbelHo <21101710+AbelHo@users.noreply.github.com>"]
-version = "0.0.3"
+version = "0.0.4"
 
 [deps]
 AbstractPlotting = "537997a7-5e4e-5d89-9595-2241ea00577e"
@@ -25,6 +25,7 @@ GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 Geodesy = "0ef565a4-170c-5f04-8de2-149903a85f3d"
 Glob = "c27321d9-0574-5035-807b-f59d2c89b15c"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
+ImageCore = "a09fc81d-aa75-5fe9-8630-4744c3626534"
 ImageDraw = "4381153b-2b60-58ae-a1ba-fd683676385f"
 ImageShow = "4e3cecfd-b093-5904-9786-8bbb286a6a31"
 ImageView = "86fae568-95e7-573e-a6b2-d8a6b900c9ef"
