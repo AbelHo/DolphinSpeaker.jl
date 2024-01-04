@@ -208,10 +208,22 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     
     pixel_related_tonal_short = [pind_vidframes_tonal_short, p_pixels_tonal_short]
 
+    open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Tonal-short_t"*string(res_new.threshold)*"tonal_bp"*string(res_new.band_pass[1])*"_"*string(res_new.band_pass[2])*".csv"), "w") do io
+        writedlm(io, ["p_pixel" "px" "py"], ',')
+        writedlm(io, [pind_vidframes_tonal_short p_pixels_tonal_short], ',')
+    end
+
 
     pixel_related_impulsive = [pind_vidframes, p_pixels]
     pixel_related_tonal = [pind_vidframes_tonal, p_pixels_tonal]
 
+    @info res_dir
+    @info res.fname
+    if !isnothing(res_dir)
+        savejld(joinpath(res_dir, splitext(res.fname)[1]*"_angles.jld2"); ang_impulsive=angs, ang_tonal=ang_tonal, ang_tonal_short=ang_tonal_short,
+            pixel_related_impulsive=pixel_related_impulsive, pixel_related_tonal=pixel_related_tonal, pixel_related_tonal_short=pixel_related_tonal_short)
+    end
+    
     return [pixel_related_tonal, pixel_related_impulsive, pixel_related_tonal_short]
 
 end
