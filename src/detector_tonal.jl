@@ -33,7 +33,7 @@ function data2ft(data, fs; nfft_inS=nfft_inS, ref_channel=1)
     mapslices( x -> stft_norm(x, nfft, 0; fs=fs), data, dims=1)
 end
 
-function plot_fft(ft::NamedTuple)
+function plot_ft(ft::NamedTuple)
     plot( ft.freq, maximum(abs.(ft.ampl); dims=2) )
 end
 
