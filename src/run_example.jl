@@ -1,4 +1,7 @@
 include("test_run.jl")
+# using Pipe
+# using DelimitedFiles
+# using ProgressMeter
 include("config.jl")
 include("test_make_video.jl")
 include("tonal_detector.jl")
@@ -215,7 +218,10 @@ end
 
 # process_dir(folname; func=process_vidau_dir, arg=res_dir, no_overwrite_func=check_output_exist)
 
-function process_folder(foldername; outfolder=foldername, skipdone=false)
+process_folder(foldername, outfolder; kwargs...) = process_folder(foldername; outfolder=outfolder, kwargs...)
+
+
+function process_folder(foldername; outfolder=foldername, skipdone=false, kwargs...)
     mkpath(outfolder)
     a=split_vid_au(foldername)
     # process_one_set.(a[1], a[2], outfolder)
@@ -231,7 +237,7 @@ function process_folder(foldername; outfolder=foldername, skipdone=false)
         end
 
         try
-            process_one_set(joinpath(foldername, fname_split*".mkv"), fname, outfolder)
+            process_one_set(joinpath(foldername, fname_split*".mkv"), fname, outfolder; kwargs...)
         catch err
             @error(err)
             @error "Failed to process: "*fname exception=(err, catch_backtrace())
