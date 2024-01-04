@@ -731,3 +731,12 @@ end
 # 	# ; labels=["noise";"tonal"]
 # 	)
 
+
+plot_fft(snip, fs=1.0) = plot( 0:(fs÷size(snip,1)):fs÷2, rfft(snip) .|> abs)
+
+function plot_time_fft(snip, fs=1.0; layout=@layout [a b])
+	# a = plot(signal(snip,fs))
+	a = plot(snip)
+	b = plot_fft(snip,fs)
+	plot(a,b, layout=layout)
+end
