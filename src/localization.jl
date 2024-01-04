@@ -12,6 +12,7 @@ if !@isdefined default_c
 end
 
 # include("config.jl")
+get_tdoa_raw(data, peaks, ref_channel; window = default_window) = get_tdoa_raw(data, peaks; window = window , ref_channel=ref_channel)
 
 function get_tdoa_raw(data, peaks; window = default_window , ref_channel=ref_channel)
 	tdoa = Array{Int}(undef,length(peaks),size(data,2))
@@ -73,10 +74,11 @@ function get_tdoa_raw_flexi(data, windows = default_window ; window = default_wi
 	return tdoa
 end
 
+get_tdoa_envelope(data, peaks, ref_channel; window = default_window) =  get_tdoa_envelope(data, peaks; window = window , ref_channel=ref_channel)
 function get_tdoa_envelope(data, peaks; window = default_window, ref_channel=ref_channel)
-	tdoa = Array{Int}(undef,length(peaks),size(data,2)-1)
+	tdoa = Array{Int}(undef,length(peaks),size(data,2))
 	for i in eachindex(peaks)
-		for ch in 1:size(data,2)-1
+		for ch in 1:size(data,2)
 			@debug (i,ch)
 			if ch==ref_channel
 				tdoa[i,ch]=0
@@ -88,6 +90,7 @@ function get_tdoa_envelope(data, peaks; window = default_window, ref_channel=ref
 	tdoa
 end
 
+get_tdoa_max(data, peaks, ref_channel; window = default_window) = get_tdoa_max(data, peaks; window = window , ref_channel=ref_channel)
 function get_tdoa_max(data, peaks; window = default_window , ref_channel=ref_channel)
 	tdoa = Array{Int}(undef,length(peaks),size(data,2))
 	for i in eachindex(peaks)
@@ -99,6 +102,7 @@ function get_tdoa_max(data, peaks; window = default_window , ref_channel=ref_cha
 	return tdoa
 end
 
+get_tdoa_min(data, peaks, ref_channel; window = default_window) = get_tdoa_min(data, peaks; window = window , ref_channel=ref_channel)
 function get_tdoa_min(data, peaks; window = default_window , ref_channel=ref_channel, func=findmax)
 	tdoa = Array{Int}(undef,length(peaks),size(data,2))
 	for i in eachindex(peaks)
@@ -246,7 +250,11 @@ function compensate_imu(angs, datetimes, df)
 	
 end
 
-default_getTDOA_func = get_tdoa_raw #get_tdoa_envelope#get_tdoa_raw_MaxEnergyRefChannel
+
+
+
+default_getTDOA_func = get_tdoa_raw_MaxEnergyRefChannel #get_tdoa_raw #get_tdoa_envelope#get_tdoa_raw_MaxEnergyRefChannel
 include("config.jl")
 
 @info "localization.jl loaded"
+
