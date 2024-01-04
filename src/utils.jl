@@ -4,7 +4,7 @@
 # using Dates
 # import TimeZones
 # include("audio.jl")
-import FileIO.load
+import FileIO, FileIO.load
 
 showall(x) = show(stdout, "text/plain", x)
 
