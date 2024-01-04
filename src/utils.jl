@@ -4,6 +4,7 @@
 # using Dates
 # import TimeZones
 # include("audio.jl")
+import FileIO.load
 
 showall(x) = show(stdout, "text/plain", x)
 
@@ -25,6 +26,10 @@ function savejld(savefname; kwargs...)
             savefname)
     end
     @info "Saved to: " * savefname
+end
+
+function FileIO.load(filenames::Array{String,1}; kwargs...)
+    merge( load.(filenames; kwargs...)...)
 end
 
 # function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2)) # plot_window_inS=[-.1 .1]
