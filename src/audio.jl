@@ -56,7 +56,7 @@ function readAudio(aufname::Array{String,1}; kwargs...)
     return vcat(map( x -> x[1], d)...), d[1][2], d[1][3], d[1][4], d[1][5]
 end
 
-function readAudio(aufname; fname2timestamp_func=nothing, 
+function readAudio(aufname; fname2timestamp_func=DEFAULT_fname2timestamp_func, 
     channels=4, datatype=Float64, fs=500_000)
     opt = nothing; nbits = nothing; timestamp=nothing;
     filetype = splitext(aufname)[2] |> lowercase
@@ -456,7 +456,11 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
         outfilepath_temp = outfilepath * "_temp.flac"
         save(outfilepath_temp, data_new, fs; bits_per_sample=16)#, raw_Int_data=true)
         # FIXME: combine the two steps above and below into one
-        @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -acodec copy "$outfilepath" -loglevel error -y`)
+        if isnothing(timestamp)
+            @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -acodec copy "$outfilepath" -loglevel error -y`)
+        else
+            @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -metadata title="$timestamp" -acodec copy "$outfilepath" -loglevel error -y`)
+        end
         # mv(outfilepath*"_meta.flac", outfilepath; force=true)
         try 
             rm(outfilepath_temp)

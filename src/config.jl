@@ -1,4 +1,4 @@
-
+using Dates
 # rx = 0.14722/sqrt(3) .* exp.(im.* deg2rad.([-30 90 -150]) ) #aspod 2
 # rx = 0.4/sqrt(3) .* exp.(im.* deg2rad.([30 -90 150]) ) # calf_hk
 # rx_vect = [real(rx); imag(rx); zeros(1,3)]
@@ -33,6 +33,10 @@ winlen=0.01s # tdoa estimation window length
 threshold_boat = 8e-6
 band_pass_boat = [1 500]
 
+#~ audio
+DEFAULT_fname2timestamp_func = nothing
+
+calf_timestamp_func(fname) = DateTime(basename(fname)[1:17], DateFormat("yyyymmdd_HH.MM.SS"))
 
 function set_device__hk_clicker()
     global impulsive_band_pass = [1000, Inf] #fs/2*.98]
@@ -72,7 +76,7 @@ function set_device__calf_hk()
     global band_pass_boat = [1 500]
     # global default_getTDOA_func = get_tdoa_raw_MaxEnergyRefChannel
 
-
+    global DEFAULT_fname2timestamp_func = calf_timestamp_func
 end
 
 function set_device__aspod2()
