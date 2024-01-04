@@ -11,6 +11,22 @@ function skiphiddenfiles(list)
     filter(!startswith('.') ∘  basename, list)
 end
 
+function savejld(savefname; kwargs...)
+    # savefname = splitext(basename(aufname))[1] *"_t"*string(impulsive_autothreshold_median_ratio)*"_d"*string(dist_impulsive)*".jld2"
+    if !Sys.islinux()
+        jldsave(savefname; kwargs...)
+        # jldsave(joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".jld2"); pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect,  vidfname, aufname, res_dir, detector_set, pixel_related)
+    #@error(err)
+    #@error("Cant save jld2 file, saving locally and copying instead")
+    #rm(joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".jld2"))
+    else
+        jldsave(joinpath("", savefname|>basename); kwargs...)
+        mv(joinpath("", savefname|>basename),
+            savefname)
+    end
+    @info "Saved to: " * savefname
+end
+
 # function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2)) # plot_window_inS=[-.1 .1]
 #     # @debug ref_channel
 #     # @debug abs.(data[:,ref_channel])
