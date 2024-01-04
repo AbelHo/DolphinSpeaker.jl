@@ -261,9 +261,10 @@ function get_pixel(img)
 			push!(pts, event.data)
 		end
 	end
+	return pts
 end
 
-function get_pixelLoc(pts, fig, vidfname, pind_good_inS, data, pind_threshold_indices, tdoa, window, ang)
+function get_pixelLoc(pts, fig, vidfname, pind_good_inS)#, data, pind_threshold_indices, tdoa, window, ang)
     vid = VideoIO.openvideo(vidfname)
     imsize = raw_frame_size(vid)
     # mkpath(event_plots_dir)
@@ -281,18 +282,66 @@ function get_pixelLoc(pts, fig, vidfname, pind_good_inS, data, pind_threshold_in
 			push!(pts, event.data)
 			
 			i += 1
+			@info i
 			image!(ax1, readImage(vid, pind_good_inS[i]))
 			ax1.title = string(i)
 		end
 	end
-	# while i <= length(d["pind_good_inS"])
-	# 	sleep(5)
-	# 	# print(int2str(i))
-	# end
+	while i <= length(pind_good_inS)
+		sleep(1)
+		# print(int2str(i))
+	end
 	println("done checking")
 
 	return pts
 end
+
+function get_pixelLoc2(vidfname, timestamps)
+    # Open the video
+    vid = VideoIO.openvideo(vidfname)
+
+    # Initialize an array to store the clicked coordinates
+    pts = []
+
+    # Create a figure and axis
+    fig = Figure()
+    ax1 = Axis(fig[1,1])
+	image(@view(img[end:-1:1, :])')
+
+    # Register a mouse click interaction
+    register_interaction!(ax1, :my_interaction) do event::GLMakie.MouseEvent, axis
+        if event.type === MouseEventTypes.leftclick
+            println("You clicked on the axis at datapos $(event.data)")
+			global i
+			@info i
+			image!(ax1, readImage(vid, timestamps[i]))
+			ax1.title = string(i)
+
+			i += 1
+            push!(pts, event.data)
+        end
+    end
+
+    # Loop over the timestamp
+	i = 1; pts = [];
+    while i < length(timestamps) i in 1:length(timestamps)
+        # Read the frame at the current timestamp
+        img = readImage(vid, timestamps[i])
+
+        # Display the frame
+        # image!(ax1, img); #
+		image(ax1,@view(img[end:-1:1, :])')
+        ax1.title = string(i)
+
+        # Wait for a click
+        # while length(pts) < i
+            sleep(0.1)
+        # end
+    end
+
+    return pts
+end
+
 
 function plot_ang(res_new, ang, aufname="", res_dir=nothing; type="Amplitude", ylabel="Azimuth(°)", label="clicks")
 	maxi = res_new.ppeak |> maximum
