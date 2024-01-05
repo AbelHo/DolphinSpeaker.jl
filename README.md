@@ -88,9 +88,21 @@ mat2flac_check(input_folderpath; outfilepath=:inplace)
 mat2flac_check(input_folderpath; outfilepath=:inplace, remove_original=true)
 ```
 
+#### Changing Parameters
+click threshold:
+```
+DolphinSpeaker.impulsive_autothreshold_median_ratio = 4
+```
+frequency filter:
+```
+DolphinSpeaker.impulsive_band_pass = [5000, 180_000]
+```
+
+change settings for clicker detection:
+```
+DolphinSpeaker.set_device__hk_clicker()
+```
 
 
-
-## Contributing
 
 
