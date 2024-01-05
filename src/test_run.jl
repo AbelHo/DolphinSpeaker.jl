@@ -19,27 +19,27 @@ process_audioVideo(aufname, vidfname, "/Users/abel/Documents/data_res/aspod/real
 
 # aufname = "/Users/abel/Documents/data/aspod/field/bahamas_2022/Aud_2022-06-25_10.33.28.wav"
 # vidfname = "/Users/abel/Documents/data/aspod/field/bahamas_2022/Vid_2022-06-25_10.33.28.mkv"
-function readAudio(aufname)
-    filetype = splitext(aufname)[2] |> lowercase
-    if ".wav" == filetype 
-        data, fs = wavread(aufname, format="native")
-    elseif ".mat" == filetype
-        d = load(aufname)
-        data = d["data"]
-        haskey(d, "fs") ? fs=d["fs"] : fs=500_000
+# function readAudio(aufname)
+#     filetype = splitext(aufname)[2] |> lowercase
+#     if ".wav" == filetype 
+#         data, fs = wavread(aufname, format="native")
+#     elseif ".mat" == filetype
+#         d = load(aufname)
+#         data = d["data"]
+#         haskey(d, "fs") ? fs=d["fs"] : fs=500_000
 
-        if aufname[end-5:end-4] == "_1"
-            if isfile( splitext(aufname)[1][1:end-1]*"2.mat" )
-                @debug("Loading 2nd File: "*splitext(aufname)[1][1:end-1]*"2.mat")
-                d = load(splitext(aufname)[1][1:end-1]*"2.mat")
-                data = vcat(data, d["data"])
-            end
-        end
-    else
-        data, fs = load(aufname)
-    end
-    return data, Int(fs)
-end
+#         if aufname[end-5:end-4] == "_1"
+#             if isfile( splitext(aufname)[1][1:end-1]*"2.mat" )
+#                 @debug("Loading 2nd File: "*splitext(aufname)[1][1:end-1]*"2.mat")
+#                 d = load(splitext(aufname)[1][1:end-1]*"2.mat")
+#                 data = vcat(data, d["data"])
+#             end
+#         end
+#     else
+#         data, fs = load(aufname)
+#     end
+#     return data, Int(fs)
+# end
 
 
 # aufname = "/Users/abel/Documents/aspod/data/2022-05-13_nus-pool/0015_wav/Aud_20131219_101319_20131219_101320.wav"
