@@ -114,7 +114,7 @@ function detect_impulseNtonal(aufname_data_fs_timestamp::Tuple, res_dir;
 
     if !isnothing(res_dir)
         try #if !Sys.islinux()
-            jldsave(joinpath(res_dir, fname); aufname, timestamp,
+            savejld(joinpath(res_dir, fname); aufname, timestamp,
                 res_impulse= hasproperty(res_impulse, :data_filt) ? Base.structdiff(res_impulse, NamedTuple{(:data_filt,)}) : res_impulse,
                 res_impulsetrain, res_tonal, res_tonalsegment, res_boat,
                 threshold_impulsive, dist_impulsive, click_train_check_interval, fs
