@@ -86,7 +86,7 @@ function set_device__calf_hk()
 
     # bin file parameters
     global FILE_device_ID = "ophk_acoustic_D1.2.0"
-    global FILE_location_ID = "MMBRC"
+    global FILE_location_ID = "MMBRC_pool2"
     global FILE_gain_setting = "0011"
 end
 
