@@ -48,6 +48,7 @@ Assumes Sampling Rate of _500kHz_ and _Float64/double_ precision data .bin binar
 Usage same as all the ```mat2flac``` examples, just change the commnad to ```bin2flac(...)``` & ```bin2flac_check(...)``` instead
 
 #### Change Audio File Metadata
+Execute these commands to change the metadata parameter before running flac conversion
 ```
 DolphinSpeaker.FILE_device_ID = "ophk_acoustic_D1.2.0"
 ```
