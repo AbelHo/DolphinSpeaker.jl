@@ -47,6 +47,17 @@ mat2flac("/Users/abel/Documents/data/calf/Clicktest/20190913"; outfilepath="/Use
 Assumes Sampling Rate of _500kHz_ and _Float64/double_ precision data .bin binary file. 
 Usage same as all the ```mat2flac``` examples, just change the commnad to ```bin2flac(...)``` & ```bin2flac_check(...)``` instead
 
+#### Change Audio File Metadata
+```
+DolphinSpeaker.FILE_device_ID = "ophk_acoustic_D1.2.0"
+```
+```
+DolphinSpeaker.FILE_location_ID = "MMBRC_pool2"
+```
+```
+DolphinSpeaker.FILE_gain_setting = "0011"
+```
+
 #### Process and overlay one set of video and acoustic recording, provided to results directory/folder
 format:
 ```
