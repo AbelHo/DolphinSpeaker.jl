@@ -33,6 +33,12 @@ winlen=0.01s # tdoa estimation window length
 threshold_boat = 8e-6
 band_pass_boat = [1 500]
 
+#~ bin file parameters
+FILE_device_ID = ""
+FILE_location_ID = ""
+FILE_gain_setting = ""
+FILE_device_location = ""
+
 #~ audio
 DEFAULT_fname2timestamp_func = nothing
 
@@ -77,6 +83,11 @@ function set_device__calf_hk()
     # global default_getTDOA_func = get_tdoa_raw_MaxEnergyRefChannel
 
     global DEFAULT_fname2timestamp_func = calf_timestamp_func
+
+    # bin file parameters
+    global FILE_device_ID = "ophk_acoustic_D1.2.0"
+    global FILE_location_ID = "MMBRC"
+    global FILE_gain_setting = "0011"
 end
 
 function set_device__aspod2()

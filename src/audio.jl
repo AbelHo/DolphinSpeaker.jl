@@ -358,7 +358,7 @@ mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=
 # FIXME: implement reduction of bit-depth if dynamic range is found to be small
 # using Base64
 function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1.4e-4, accum_res=nothing,
-    filetype=".mat", int_type=Int16, kwargs...)
+    filetype=".mat", int_type=Int16, metadata=(device_ID=FILE_device_ID, location_ID=FILE_location_ID, gain_setting=FILE_gain_setting, device_location=FILE_device_location), kwargs...)
     @debug "version 2023-12-07T08:25 dev"
     if isdir(filepath)
         @info "Directory! Recursively converting entire directory"
@@ -457,9 +457,17 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
         save(outfilepath_temp, data_new, fs; bits_per_sample=16)#, raw_Int_data=true)
         # FIXME: combine the two steps above and below into one
         if isnothing(timestamp)
-            @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -acodec copy "$outfilepath" -loglevel error -y`)
+            if isnothing(metadata)
+                @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -acodec copy "$outfilepath" -loglevel error -y`)
+            else
+                @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -metadata artist="$(metadata.device_ID)" -metadata genre="$(metadata.location_ID)" -metadata track="$(metadata.gain_setting)" -metadata album="$(metadata.device_location)" -acodec copy "$outfilepath" -loglevel error -y`)
+            end
         else
-            @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -metadata title="$timestamp" -acodec copy "$outfilepath" -loglevel error -y`)
+            if isnothing(metadata)
+                @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -metadata title="$timestamp" -acodec copy "$outfilepath" -loglevel error -y`)
+            else
+                @ffmpeg_env run(`ffmpeg -i "$outfilepath_temp" -metadata comment="$comments" -metadata title="$timestamp" -metadata artist="$(metadata.device_ID)" -metadata genre="$(metadata.location_ID)" -metadata track="$(metadata.gain_setting)" -metadata album="$(metadata.device_location)" -acodec copy "$outfilepath" -loglevel error -y`)
+            end
         end
         # mv(outfilepath*"_meta.flac", outfilepath; force=true)
         try 
