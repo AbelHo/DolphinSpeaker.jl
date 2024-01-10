@@ -58,6 +58,8 @@ DolphinSpeaker.FILE_location_ID = "MMBRC_pool2"
 ```
 DolphinSpeaker.FILE_gain_setting = "0011"
 ```
+##### Example Audio File with Metadata
+![example_audio-metadata.jpg](img/example_audio-metadata.jpg)
 
 #### Process and overlay one set of video and acoustic recording, provided to results directory/folder
 format:
