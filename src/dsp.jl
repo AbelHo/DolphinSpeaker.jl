@@ -1,7 +1,7 @@
 using DSP
 import SignalAnalysis.findsignal
 
-function filter_simple(data, band_pass; fs=1, butterworth_size=butterworth_size)
+function filter_simple(data, band_pass, band_stop=nothing; fs=1, butterworth_size=butterworth_size)
     data_filt = data;
     if !iszero(band_pass[1]) || !isinf(band_pass[2])
         filter_type = nothing
@@ -14,6 +14,20 @@ function filter_simple(data, band_pass; fs=1, butterworth_size=butterworth_size)
         end
 
         filter_weight = digitalfilter(filter_type, Butterworth(butterworth_size))
+        if !isnothing(band_stop)
+            if eltype(band_stop) <: Number
+                @debug band_stop
+                filter_type = Bandstop(band_stop[1], band_stop[2]; fs=fs)
+                filter_weight = filter_weight * digitalfilter(filter_type, Butterworth(butterworth_size))
+            else
+                for bs in band_stop
+                    @debug bs
+                    filter_type = Bandstop(bs[1], bs[2]; fs=fs)
+                    filter_weight = filter_weight * digitalfilter(filter_type, Butterworth(butterworth_size))
+                end
+            end
+
+        end
         # data_filt = mapslices( x -> filtfilt( filter_weight, x), data, dims=1)
         if size(data,2) > 1
             data_filt = mapslices2( x -> filtfilt( filter_weight, x), data)
