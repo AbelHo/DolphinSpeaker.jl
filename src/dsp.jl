@@ -292,3 +292,44 @@ function findsignal(r, s, n=1; prominence=0.0, finetune=2, mingap=1, mfo=false)
     ndx = sortperm(t)
     (time=t[ndx], amplitude=a[ndx], mfo=mfo ? m : empty(m))
   end
+
+#~ find extrema
+extrema_in_file(aufname; res_dir=nothing) = extrema_in_file(aufname, res_dir)
+function extrema_in_file(aufname, res_dir=nothing)
+    if isdir(aufname)
+        return extrema_in_file.( readdir.(aufname; join=true) |> skiphiddenfiles, Ref(res_dir) )
+    end
+
+    try
+        if length(aufname) < 4 
+            return
+        elseif aufname[end-3:end] == "flac"
+            data, fs = flac2signal(aufname)
+        elseif aufname[end-2:end] == "mat"
+            data, fs, _,_, timestamp = readAudio(aufname)
+        else
+            return
+        end
+        @info aufname
+        mkpath(res_dir)
+
+        # data, fs, _,_, timestamp = readAudio(aufname)
+        # data, fs = flac2signal(aufname)
+        res = (extrema_and_indices(data), energy(data), aufname)
+        res_dict = Dict("extrema_and_indices" => res[1], "energy" => res[2], "aufname" => aufname)
+        if res_dir != nothing
+            open(joinpath(res_dir, basename(aufname)*".json"), "w") do f
+                JSON.print(f,res_dict,4)
+                # write(f, res_dict)
+            end
+            save(joinpath(res_dir, basename(aufname)*".jld2"), "res", res)
+        else
+            JSON.print(stdout,res_dict,4)
+        end
+
+    catch err
+        @error(aufname)
+        println(err)
+        return
+    end
+end

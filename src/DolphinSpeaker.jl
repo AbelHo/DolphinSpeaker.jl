@@ -1,5 +1,5 @@
 module DolphinSpeaker
-@info "version v2024-01-11T01:00 =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-"
+@info "version v2024-01-12T10:00 =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-"
     include("utils.jl")
     export showall
     
@@ -11,5 +11,8 @@ module DolphinSpeaker
 
     include("run_example.jl")
     export process_one_set, process_folder, process_dir
+
+    # from dsp.jl
+    export extrema_in_file
 
 end
