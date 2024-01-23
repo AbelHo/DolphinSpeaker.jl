@@ -32,6 +32,41 @@ function FileIO.load(filenames::Array{String,1}; kwargs...)
     merge( load.(filenames; kwargs...)...)
 end
 
+function process_files(folname; func=(a,b)->x, arg=nothing, no_overwrite_func=nothing)
+    arg isa String && mkpath(arg)
+    for (root, dirs, files) in walkdir(folname)
+        # println("Directories in $root")
+        # for dir in dirs
+        #     println(joinpath(root, dir)) # path to directories
+        #     try
+        #         func(joinpath(root, dir), joinpath(arg, dir); no_overwrite_func=no_overwrite_func)
+        #     catch err
+        #         try 
+        #             func(joinpath(root, dir), joinpath(arg, dir))
+        #         catch err
+        #             @error exception=(err, catch_backtrace())
+        #             @error (joinpath(root, dir), joinpath(arg, dir))
+        #         end
+        #     end
+        # end
+        # println("Files in $root")
+        for file in files
+            println(joinpath(root, file)) # path to files
+            try
+                # @info joinpath(root, file), joinpath(arg, file)
+                func(joinpath(root, file), joinpath(arg, file); no_overwrite_func=no_overwrite_func)
+            catch err
+                try 
+                    func(joinpath(root, file), joinpath(arg, file))
+                catch err
+                    @error exception=(err, catch_backtrace())
+                    @error (joinpath(root, file), joinpath(arg, file))
+                end
+            end
+        end
+    end
+end
+
 # function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2)) # plot_window_inS=[-.1 .1]
 #     # @debug ref_channel
 #     # @debug abs.(data[:,ref_channel])
