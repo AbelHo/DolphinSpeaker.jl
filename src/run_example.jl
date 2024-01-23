@@ -102,8 +102,12 @@ function process_dir(folname; func=(a,b)->x, arg=nothing, no_overwrite_func=noth
             try
                 func(joinpath(root, dir), joinpath(arg, dir); no_overwrite_func=no_overwrite_func)
             catch err
-                @error exception=(err, catch_backtrace())
-                @error (joinpath(root, dir), joinpath(arg, dir))
+                try 
+                    func(joinpath(root, dir), joinpath(arg, dir))
+                catch err
+                    @error exception=(err, catch_backtrace())
+                    @error (joinpath(root, dir), joinpath(arg, dir))
+                end
             end
         end
         # println("Files in $root")
