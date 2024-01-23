@@ -99,7 +99,7 @@ function detect_impulseNtonal(aufname_data_fs_timestamp::Tuple, res_dir;
     # freq_width_db=3
     # percent_quiet = 0.001
 
-    res_tonal = detect_tonal((aufname, data, fs), res_dir; 
+    res_tonal = detect_tonal((aufname, @view(data[:,1:size(rx_vect,2)]), fs), res_dir; 
                 ref_channel=ref_channel, thresh_tonal=threshold_tonal,
                 band_pass=tonal_band_pass,
                 freq_maxbandwidth=freq_maxbandwidth, freq_width_db=freq_width_db,
