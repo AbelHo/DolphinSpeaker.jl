@@ -115,6 +115,8 @@ function readAudio(aufname; fname2timestamp_func=DEFAULT_fname2timestamp_func,
 end
 
 simple_fname2dt(aufname) = DateTime(basename(aufname)[1:17], dateformat"yyyymmdd_H.M.S")
+fname2dt_dashdot(aufname) = DateTime(basename(aufname)[1:19], dateformat"yyyy-mm-dd_H.M.S")
+fname2dt_ls1(aufname) = DateTime(basename(aufname)[1:19], dateformat"yyyymmdd_HMS")
 
 function writeWAV(data, fpath; Fs=1)
     nbits = parse(Int64, string(eltype(data))[end-1:end])

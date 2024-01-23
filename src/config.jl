@@ -99,6 +99,15 @@ function set_device__aspod2()
     global fov_angle=[62.61721188568244,35.793211268714096,71.6855447884958]
 end
 
+function set_device__rwsnus()
+    global DEFAULT_fname2timestamp_func = fname2dt_dashdot
+
+    # bin file parameters
+    global FILE_device_ID = "rwsnus_array_1.0.0"
+    global FILE_location_ID = "rws"
+    global FILE_gain_setting = "0000"
+end
+
 #~ default
     impulsive_band_pass = [1000, Inf] #fs/2*.98]
     threshold_impulsive = nothing #.1# .003#calf_hk
