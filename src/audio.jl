@@ -382,6 +382,13 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
         @debug basename(filepath)[1:end-3] *"flac"
         outfilepath = joinpath(outfilepath, splitext(basename(filepath))[1] *".flac")
     end
+    #~ for ophk when file is split into 2 parts. #FIXME
+    if splitext(outfilepath)[1][end-2:end] == "._1"
+        splitted = splitext(outfilepath)
+        outfilepath = splitted[1][1:end-3] * splitted[2]
+        @info "___removed '._1' from output filename"
+    end
+
     @debug outfilepath
     if skipdone && (isfile(outfilepath) || isfile(splitext(outfilepath)[1] * ".ogg") )
         @info("SKIPPED: "*filepath);
