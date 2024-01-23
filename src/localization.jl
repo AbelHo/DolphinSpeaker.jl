@@ -240,6 +240,22 @@ function cost_tdoa2ang3(tdoa,ang,rx_vect,fs; c=default_c, ref_channel=ref_channe
 	sum( (dt-tdoa).^2)
 end
 
+get_tdoa_minmax(data, peaks, ref_channel=nothing; window = default_window) = get_tdoa_max(data, peaks; window = window , ref_channel=ref_channel)
+function get_tdoa_minmax(data, peaks; window = default_window , ref_channel=ref_channel)
+	tdoa = Array{Int}(undef,length(peaks),size(data,2))
+	for i in eachindex(peaks)
+		ex = extrema_and_indices(data[window.+peaks[i], : ])
+		max_or_min = ex .|> x -> x[2] > x[1]
+		@debug max_or_min
+		if sum(max_or_min) > length(ex)/2
+			tdoa[i,:] =  ex .|> x -> x[4]
+		else
+			tdoa[i,:] =  ex .|> x -> x[3]
+		end
+	end
+	return tdoa
+end
+
 
 #~ 
 ang2vect(ang) = [sin(ang[1])*cos(ang[2]) sin(ang[2]) cos(ang[1])*cos(ang[2])]
@@ -253,7 +269,7 @@ end
 
 
 
-default_getTDOA_func = get_tdoa_raw_MaxEnergyRefChannel #get_tdoa_raw #get_tdoa_envelope#get_tdoa_raw_MaxEnergyRefChannel
+default_getTDOA_func = get_tdoa_minmax #get_tdoa_raw_MaxEnergyRefChannel #get_tdoa_raw #get_tdoa_envelope#get_tdoa_raw_MaxEnergyRefChannel
 include("config.jl")
 
 @info "localization.jl loaded"
