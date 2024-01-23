@@ -1,4 +1,4 @@
-# using Pipe:@pipe
+using Pipe:@pipe
 # using FFMPEG
 # include("detector_impulsive.jl")
 # include("localization.jl")
@@ -152,7 +152,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     # detection2angle(res_new.data_filt, res_impulse.pind_good, rx_vect; fs=res_new.fs, return_residual=true, window=window)
     # angs = detection2angle(res_new.data_filt, res_new.pind_good, rx_vect; fs=fs, window=window, return_residual=true)
     angs = detection2angle(res.res_impulse.data_filt, res_new.pind_good, rx_vect; fs=fs, window=window, return_residual=true)
-    res = (;  Base.structdiff(res, NamedTuple{(:res_impulse,)})..., res_impulse=Base.structdiff(res.res_impulse, NamedTuple{(:data_filt,)}))
+    # res = (;  Base.structdiff(res, NamedTuple{(:res_impulse,)})..., res_impulse=Base.structdiff(res.res_impulse, NamedTuple{(:data_filt,)}))
     ang = angs[1][1]
     # plot_ang(res_new, ang; label=["azimuth" "inclination"], type="Power")
     # for list
@@ -170,9 +170,31 @@ function process_detections(aufname, vidfname; res_dir=nothing)
 
     [pind_vidframes, p_pixels]
 
+
+
+    #~ impulse xcorr
+    res_new = res.res_impulsetrain
+    window = -130:130#window_impulsive
+    angs2 = detection2angle(res.res_impulse.data_filt, res_new.pind_good, rx_vect;
+        fs=fs, window=window, return_residual=true,
+        getTDOA_func=get_tdoa_raw_MaxEnergyRefChannel)
+    ang2 = angs2[1][1]
+
+    # convert to pixel
+    p_pixels2 = angle2px(ang2, fov_angle)
+    pind_vidframes2 = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
+
+    pixel_related_impulsive2 = [pind_vidframes2, p_pixels2]
+    open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse2_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
+        writedlm(io, ["p_pixel" "px" "py"], ',')
+        writedlm(io, pixel_related_impulsive2, ',')
+    end
+
+    res = (;  Base.structdiff(res, NamedTuple{(:res_impulse,)})..., res_impulse=Base.structdiff(res.res_impulse, NamedTuple{(:data_filt,)}))
+
+
+
     #~ tonal to angle to pixel
-
-
     res_new = res.res_tonalsegment
     windows_tonal = map( i -> res_new.train_start[i]:res_new.train_end[i], eachindex(res_new.train_start))
     data_filt = filter_simple(data, tonal_band_pass; fs=fs)
@@ -224,7 +246,8 @@ function process_detections(aufname, vidfname; res_dir=nothing)
             pixel_related_impulsive=pixel_related_impulsive, pixel_related_tonal=pixel_related_tonal, pixel_related_tonal_short=pixel_related_tonal_short)
     end
     
-    return [pixel_related_tonal, pixel_related_impulsive, pixel_related_tonal_short]
+    # return [pixel_related_tonal, pixel_related_impulsive, pixel_related_tonal_short]
+    return [pixel_related_tonal, pixel_related_impulsive, pixel_related_impulsive2]
 
 end
 
