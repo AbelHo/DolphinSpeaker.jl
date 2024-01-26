@@ -506,8 +506,8 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
             push!(cmds2, "-map")
             push!(cmds2, val)
         end
-        outfilepath_new = splitext(outfilepath)[1] * ".ogg"
-        @ffmpeg_env run(`ffmpeg $cmds $cmds2 -c:a flac -metadata comment="$comments" $outfilepath_new -loglevel error -y`)
+        outfilepath = splitext(outfilepath)[1] * ".ogg"
+        @ffmpeg_env run(`ffmpeg $cmds $cmds2 -c:a flac -metadata comment="$comments" $outfilepath -loglevel error -y`)
         rm.(fnames)
     end
 
@@ -533,6 +533,15 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     else
         @warn "Conversion Error too large!!!!"
         printstyled( "$error_word _________________________________________  $remove_original_errortolerance < error: $maxi\n"; color=print_color)
+        try
+            open(outfilepath * "__error.json", "a") do io
+                write(io, "{\"$outfilepath\": $conversion_error }")
+            end
+            mv(outfilepath, splitext(outfilepath)[1] * "__error" * splitext(outfilepath)[2]; force=true)
+        catch err
+            @warn "Failed to write error file"
+            @warn err
+        end
     end
 
     @debug outfilepath
