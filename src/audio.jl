@@ -507,7 +507,19 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
             push!(cmds2, val)
         end
         outfilepath = splitext(outfilepath)[1] * ".ogg"
-        @ffmpeg_env run(`ffmpeg $cmds $cmds2 -c:a flac -metadata comment="$comments" $outfilepath -loglevel error -y`)
+        if !isnothing(timestamp)
+            if !isnothing(metadata)
+                @ffmpeg_env run(`ffmpeg $cmds $cmds2 -c:a flac -metadata comment="$comments" -metadata title="$timestamp" -metadata artist="$(metadata.device_ID)" -metadata genre="$(metadata.location_ID)" -metadata track="$(metadata.gain_setting)" -metadata album="$(metadata.device_location)" $outfilepath -loglevel error -y`)
+            else
+                @ffmpeg_env run(`ffmpeg $cmds $cmds2 -c:a flac -metadata comment="$comments" -metadata title="$timestamp" $outfilepath -loglevel error -y`)
+            end
+        else
+            if isnothing(metadata)
+                @ffmpeg_env run(`ffmpeg $cmds $cmds2 -c:a flac -metadata comment="$comments" $outfilepath -loglevel error -y`)
+            else
+                @ffmpeg_env run(`ffmpeg $cmds $cmds2 -c:a flac -metadata comment="$comments" -metadata artist="$(metadata.device_ID)" -metadata genre="$(metadata.location_ID)" -metadata track="$(metadata.gain_setting)" -metadata album="$(metadata.device_location)" $outfilepath -loglevel error -y`)
+            end
+        end
         rm.(fnames)
     end
 
