@@ -48,7 +48,7 @@ function detect_impulseNtonal(aufname::String, res_dir; kwargs...)
     detect_impulseNtonal((aufname, data, fs, timestamp), res_dir; opt=opt, kwargs...)
 end
 function detect_impulseNtonal(aufname_data_fs_timestamp::Tuple, res_dir;
-    threshold_tonal = nothing, freq_maxbandwidth = freq_maxbandwidth, freq_width_db=3,
+    threshold_tonal = nothing, freq_maxbandwidth = freq_maxbandwidth, freq_width_db=freq_width_db,
     percent_quiet = percent_quiet, tonal_band_pass=tonal_band_pass,
     impulsive_band_pass=impulsive_band_pass,
     processed_skip_flag = false, opt=nothing,
