@@ -333,3 +333,18 @@ function extrema_in_file(aufname, res_dir=nothing)
         return
     end
 end
+
+
+function previousfastfft(n, lessby=0)
+    if nextfastfft(n-lessby) == nextfastfft(n)
+        return previousfastfft(n, lessby+1)
+    else
+        return nextfastfft(n-lessby)
+    end
+end
+
+function truncate_fft_end(data)
+    newdata = @view(data[begin:previousfastfft(size(data,1)), :])
+    size(newdata,1) < size(data,1) && @info("truncated data for FFT")
+    newdata
+end
