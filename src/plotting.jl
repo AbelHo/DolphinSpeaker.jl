@@ -732,7 +732,13 @@ end
 # 	)
 
 
-plot_fft(snip, fs=1.0) = plot( 0:(fs÷size(snip,1)):fs÷2, rfft(snip) .|> abs)
+function plot_fft(snip, fs=1.0; type=:amplitude) 
+	fft_val = rfft(snip) .|> abs
+	freqss =  0:(fs/size(snip,1)):fs÷2
+
+	type == :log && (fft_val = 20 .* log10.(fft_val))
+	plot(freqss, fft_val)
+end
 
 function plot_time_fft(snip, fs=1.0; layout=@layout [a b])
 	# a = plot(signal(snip,fs))
@@ -740,3 +746,6 @@ function plot_time_fft(snip, fs=1.0; layout=@layout [a b])
 	b = plot_fft(snip,fs)
 	plot(a,b, layout=layout)
 end
+
+plot_norm(args...; norm_func=x->maximum(abs.(x)), kwargs...) = plot(args[1]./norm_func(args[1]), args[2:end]...; kwargs...)
+plot_norm!(args...; norm_func=x->maximum(abs.(x)), kwargs...) = plot!(args[1]./norm_func(args[1]), args[2:end]...; kwargs...)
