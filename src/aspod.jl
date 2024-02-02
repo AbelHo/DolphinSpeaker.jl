@@ -190,6 +190,25 @@ function process_detections(aufname, vidfname; res_dir=nothing)
         writedlm(io, pixel_related_impulsive2, ',')
     end
 
+    #~ impulse lowpassed hilbert
+    res_new = res.res_impulsetrain
+    window = window_impulsive#-130:130#
+    angs3 = detection2angle(res.res_impulse.data_filt, res_new.pind_good, rx_vect;
+        fs=fs, window=window, return_residual=true,
+        getTDOA_func=get_tdoa_envelope_filtered)
+    ang3 = angs3[1][1]
+
+    # convert to pixel
+    p_pixels3 = angle2px(ang3, fov_angle)
+    pind_vidframes3 = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
+
+    pixel_related_impulsive3 = [pind_vidframes3, p_pixels3]
+    open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse3_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
+        writedlm(io, ["p_pixel" "px" "py"], ',')
+        writedlm(io, pixel_related_impulsive3, ',')
+    end
+
+
     res = (;  Base.structdiff(res, NamedTuple{(:res_impulse,)})..., res_impulse=Base.structdiff(res.res_impulse, NamedTuple{(:data_filt,)}))
 
 
@@ -247,7 +266,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     end
     
     # return [pixel_related_tonal, pixel_related_impulsive, pixel_related_tonal_short]
-    return [pixel_related_tonal, pixel_related_impulsive, pixel_related_impulsive2]
+    return [pixel_related_tonal, pixel_related_impulsive, pixel_related_impulsive2, pixel_related_impulsive3]
 
 end
 

@@ -1,5 +1,6 @@
 using Optim
 using SignalAnalysis.Units
+include("dsp.jl")
 
 default_tdoa2dir_solver = NelderMead
 default_window = -5000:10000
@@ -85,6 +86,24 @@ function get_tdoa_envelope(data, peaks; window = default_window, ref_channel=ref
 				continue
 			end
 			tdoa[i,ch] = finddelay(data[window.+peaks[i], ch ] |> hilbert .|> abs, data[window.+peaks[i], ref_channel ] |> hilbert .|> abs)
+		end
+	end
+	tdoa
+end
+
+envelope_lpfiltered(data; lpf_maxFreq=10_000, fs=500_000) = filter_simple(abs.(hilbert(data)), [0 lpf_maxFreq]; fs=fs)
+
+get_tdoa_envelope_filtered(data, peaks, ref_channel; window = default_window) =  get_tdoa_envelope(data, peaks; window = window , ref_channel=ref_channel)
+function get_tdoa_envelope_filtered(data, peaks; window = default_window, ref_channel=ref_channel)
+	tdoa = Array{Int}(undef,length(peaks),size(data,2))
+	for i in eachindex(peaks)
+		for ch in 1:size(data,2)
+			@debug (i,ch)
+			if ch==ref_channel
+				tdoa[i,ch]=0
+				continue
+			end
+			tdoa[i,ch] = finddelay(data[window.+peaks[i], ch ] |> envelope_lpfiltered, data[window.+peaks[i], ref_channel ] |> envelope_lpfiltered)
 		end
 	end
 	tdoa

@@ -155,15 +155,16 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
     # detector_set = [detection_b,
     #                 (pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect)
     #                 ]
-    pt_config = [((1,1,0),25), ((1,0,0),30), ((0,1,0),20)]
+    pt_config = [((1,1,0),25), ((1,0,0),30), ((0,1,0),20), ((1,0,1),15)]
     
     fps = get_fps(vidfname)
     vidau_syncdiff = findVidAudioBlip(vidfname; plot_window_inS=nothing, band_pass=[2900 3100]) - findAudioBlip(aufname; plot_window_inS=nothing, band_pass=[2900 3100])
-    # @info "Audio started later by $(vidau_syncdiff)s"
+    @info "Audio started later by $(vidau_syncdiff)s"
     # # pixel_related = map( (x,y)->(x[1:2]..., y...), detector_set, pt_config)
     # pixel_related = map( (x,y)->((x[1] .+(vidau_syncdiff*fps) .|>round.|>Int,x[2])..., y...), detector_set, pt_config)
 
     pixel_estimated_set = process_detections(aufname, vidfname; res_dir=res_dir)
+    pt_config = pt_config[1:length(pixel_estimated_set)]
     pixel_related = map( (x,y)->((x[1] .+(vidau_syncdiff*fps) .|>round.|>Int,x[2])..., y...), pixel_estimated_set, pt_config)
 
 
