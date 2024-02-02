@@ -228,6 +228,7 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     freq_filt = 2:Int(nfft/2+1)
     if !isnothing(band_pass)
         freq_filt = Int(round(band_pass[1]/fs*nfft)):Int(round(band_pass[2]/fs*nfft)) #50:140
+        freq_filt[begin]==0 && (freq_filt=1:freq_filt[end])
     end
     # filter_weight = digitalfilter(Bandpass(band_pass[1],band_pass[2], fs=fs), Butterworth(butterworth_size)) #Bandpass(5000,14000, fs=fs)
 
@@ -235,6 +236,7 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     specs = mapslices( x -> spectrogram(x, nfft, 0; fs=fs), data, dims=1)
     mag_ft = broadcast( x -> pow2db.(x.power) ,specs)
 
+    @debug size(mag_ft[ref_channel]), freq_filt
     mag = mag_ft[ref_channel][freq_filt,:]
     # magsum = zeros(size(mag))
     # for i in 1:length(mag_ft)
@@ -258,6 +260,8 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
         end
         quietest = maximum(mag_max[:,sortperm(sum(mag_max, dims=1)[:])[1:num_bins]], dims=2)
         mag_max = mag_max .- quietest
+        # median_noise = median(mag_max, dims=2)
+        # mag_max = mag_max .- median_noise
     end
     freqss = first(specs).freq[freq_filt]
     time_index = first(specs).time#[window]
@@ -266,6 +270,7 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
 
     #~ filtering for small bandwidth timeframe only
     maxi_t = maximum(mag, dims=1)
+    @debug freqss[2]
     small_bands = (sum((maxi_t .- mag ) .< freq_width_db, dims=1) .*freqss[2] ) .< freq_maxbandwidth
     small_bands = [ele==0 ? -Inf : 0 for ele in small_bands]
     # @debug size(fft_max)
@@ -291,7 +296,7 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     end
     
     pind_good = round.(Int, pind_good_inS.*fs)
-    return (;fft_max, time_index , tonal_indices, pind_good_inS, freqss, num_detection, percent_quiet, freq_maxbandwidth, threshold=thresh_tonal, ppeak=fft_max[tonal_indices], quietest, aufname, fs, outfname, pind_good, len_data=size(data,1), band_pass)#, mag_max, specs) #mag, mag_ft, mag_mean, mag_max, 
+    return (;fft_max, time_index , tonal_indices, pind_good_inS, freqss, num_detection, percent_quiet, freq_maxbandwidth, threshold=thresh_tonal, ppeak=fft_max[tonal_indices], quietest, aufname, fs, outfname, pind_good, len_data=size(data,1), band_pass)#, maxi_t, mag)#, mag_max, specs) #mag, mag_ft, mag_mean, mag_max, 
     # return (;pind=, ppeak, pind_good, pind_good_inS, threshold_indices)
 end
 
