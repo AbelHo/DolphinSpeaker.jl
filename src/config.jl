@@ -42,6 +42,9 @@ FILE_device_location = ""
 #~ audio
 DEFAULT_fname2timestamp_func = nothing
 
+#~ bin file parameters
+DEFAULT_bin_channels = 4
+
 calf_timestamp_func(fname) = DateTime(basename(fname)[1:17], DateFormat("yyyymmdd_HH.MM.SS"))
 
 function set_device__hk_clicker()

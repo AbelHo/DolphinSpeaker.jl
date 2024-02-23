@@ -57,7 +57,7 @@ function readAudio(aufname::Array{String,1}; kwargs...)
 end
 
 function readAudio(aufname; fname2timestamp_func=DEFAULT_fname2timestamp_func, 
-    channels=4, datatype=Float64, fs=500_000)
+    channels=DEFAULT_bin_channels, datatype=Float64, fs=500_000)
     opt = nothing; nbits = nothing; timestamp=nothing;
     filetype = splitext(aufname)[2] |> lowercase
     if ".wav" == filetype 
