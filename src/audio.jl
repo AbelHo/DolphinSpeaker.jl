@@ -121,7 +121,7 @@ fname2dt_ls1(aufname) = DateTime(basename(aufname)[1:15], dateformat"yyyymmdd_HH
 function writeWAV(data, fpath; Fs=1)
     nbits = parse(Int64, string(eltype(data))[end-1:end])
     @debug nbits
-    wavwrite(data, fpath; Fs=Fs, nbits=64)
+    wavwrite(data, fpath; Fs=Fs, nbits=nbits)
 end  
 
 #~ matlab files
