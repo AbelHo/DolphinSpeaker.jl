@@ -398,6 +398,8 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     data=nothing;fs=nothing;opt=nothing;timestamp=nothing
     try
         data,fs,_,opt,timestamp = readAudio(filepath; kwargs...);
+        @debug size(data), fs
+        # plot(signal(data,fs)); title!("1") |> display
     catch err
         @error(err)
         return
@@ -463,7 +465,18 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
         end
 
         outfilepath_temp = outfilepath * "_temp.flac"
-        save(outfilepath_temp, data_new, fs; bits_per_sample=16)#, raw_Int_data=true)
+        @debug size(data_new), fs
+        @debug typeof(data_new), typeof(fs)
+        # plot(signal(data_new,fs)); title!("2") |> display
+        if reduce(|, size(data_new,2) .== [5,6,7])
+            wavfile_temp = splitext(outfilepath_temp)[1] * "_temp.wav"
+            writeWAV(data_new, wavfile_temp; Fs=fs)
+            @ffmpeg_env run(`ffmpeg -i $wavfile_temp -acodec flac $outfilepath_temp -loglevel error -y`)
+            rm(wavfile_temp)
+            # @ffmpeg_env run(`ffmpeg -i $temp_wavfile -metadata comment="$comments" -acodec flac $outfilepath_temp -loglevel error -y`)
+        else
+            save(outfilepath_temp, data_new, fs; bits_per_sample=16)#, raw_Int_data=true)
+        end
         # FIXME: combine the two steps above and below into one
         if isnothing(timestamp)
             if isnothing(metadata)
