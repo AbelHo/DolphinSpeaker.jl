@@ -108,6 +108,24 @@ function set_device__rwsnus()
     global FILE_gain_setting = "0000"
 end
 
+function set_device__LS1()
+    global impulsive_band_pass = [5000, Inf] #fs/2*.98]
+    global ref_channel = 1
+    global tonal_band_pass = [900 Inf]
+    global freq_width_db = 3 #3
+    global freq_maxbandwidth = 1910
+    global nfft_inS = 0.02
+
+    global DEFAULT_fname2timestamp_func = fname2dt_ls1
+
+    global rx_vect = [0;0;0]
+
+    # bin file parameters
+    # global FILE_device_ID = "rwsnus_array_1.0.0"
+    # global FILE_location_ID = "rws"
+    # global FILE_gain_setting = "0000"
+end
+
 #~ default
     impulsive_band_pass = [1000, Inf] #fs/2*.98]
     threshold_impulsive = nothing #.1# .003#calf_hk
