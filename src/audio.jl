@@ -464,12 +464,12 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
             @warn "Overwriting file: $outfilepath"
         end
 
-        outfilepath_temp = outfilepath * "_temp.flac"
+        outfilepath_temp = joinpath(tempdir(), basename(outfilepath * "_temp.flac"))
         @debug size(data_new), fs
         @debug typeof(data_new), typeof(fs)
         # plot(signal(data_new,fs)); title!("2") |> display
         if reduce(|, size(data_new,2) .== [5,6,7])
-            wavfile_temp = splitext(outfilepath_temp)[1] * "_temp.wav"
+            wavfile_temp = joinpath(tempdir(), basename(splitext(outfilepath_temp)[1] * "_temp.wav"))
             writeWAV(data_new, wavfile_temp; Fs=fs)
             @ffmpeg_env run(`ffmpeg -i $wavfile_temp -acodec flac $outfilepath_temp -loglevel error -y`)
             rm(wavfile_temp)
