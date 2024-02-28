@@ -80,6 +80,7 @@ Example:
 ```
 process_folder("/Users/abel/Documents/data/calf/Clicktest/20231129"; outfolder="/Users/abel/Documents/data_res/calf/temp")
 ```
+![process_folder](img/process_folder.jpg)
 
 ### Advance
 #### Display conversion error results clearly
