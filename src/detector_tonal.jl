@@ -227,7 +227,10 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     nfft = nextfastfft(nfft_inS*fs)
     freq_filt = 2:Int(nfft/2+1)
     if !isnothing(band_pass)
-        freq_filt = Int(round(band_pass[1]/fs*nfft)):Int(round(band_pass[2]/fs*nfft)) #50:140
+        bp_top = band_pass[2]
+        isinf(band_pass[2]) && (bp_top = fs/2)
+        
+        freq_filt = Int(round(band_pass[1]/fs*nfft)):Int(round(bp_top/fs*nfft)) #50:140
         freq_filt[begin]==0 && (freq_filt=1:freq_filt[end])
     end
     # filter_weight = digitalfilter(Bandpass(band_pass[1],band_pass[2], fs=fs), Butterworth(butterworth_size)) #Bandpass(5000,14000, fs=fs)
@@ -280,7 +283,8 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
         @info "__auto thresholding: " * string(thresh_tonal)
     end
     # @debug size(small_bands)
-    tonal_indices = findall( >(thresh_tonal), fft_max .+ small_bands')
+    output_res = fft_max .+ small_bands'
+    tonal_indices = findall( >(thresh_tonal), output_res)
     tonal_indices = tonal_indices[1:end-1] #FIXME #tempsolution
 
     num_detection = length(tonal_indices)
@@ -295,8 +299,9 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
         audacity_label(pind_good_inS, joinpath(res_dir, outfname * ".txt") )
     end
     
+    peak_freqs = map(x->freqss[x.I[1]], argmax(mag_max, dims=1)[:]) #freqss[argmax(mag_max[:,tonal_indices], dims=1)]
     pind_good = round.(Int, pind_good_inS.*fs)
-    return (;fft_max, time_index , tonal_indices, pind_good_inS, freqss, num_detection, percent_quiet, freq_maxbandwidth, threshold=thresh_tonal, ppeak=fft_max[tonal_indices], quietest, aufname, fs, outfname, pind_good, len_data=size(data,1), band_pass)#, maxi_t, mag)#, mag_max, specs) #mag, mag_ft, mag_mean, mag_max, 
+    return (;fft_max, time_index , tonal_indices, pind_good_inS, freqss, num_detection, percent_quiet, freq_maxbandwidth, threshold=thresh_tonal, ppeak=fft_max[tonal_indices], quietest, aufname, fs, outfname, pind_good, len_data=size(data,1), band_pass, output_res, peak_freqs)#, maxi_t, mag)#, mag_max, specs) #mag, mag_ft, mag_mean, mag_max, 
     # return (;pind=, ppeak, pind_good, pind_good_inS, threshold_indices)
 end
 
