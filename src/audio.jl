@@ -362,6 +362,7 @@ mat2flac(filepath, Fs, outfilepath=filepath; kwargs...) = mat2flac(filepath; Fs=
 function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_factor=nothing, skipdone=false, binary_channel_list=nothing, remove_original=false, remove_original_errortolerance=1.4e-4, accum_res=nothing,
     filetype=".mat", int_type=Int16, metadata=(device_ID=FILE_device_ID, location_ID=FILE_location_ID, gain_setting=FILE_gain_setting, device_location=FILE_device_location), kwargs...)
     @debug "version 2024-01-23T12:00"
+    GC.gc()
     if isdir(filepath)
         @info "Directory! Recursively converting entire directory"
         return mat2flac.(readdir(filepath; join=true) |> skiphiddenfiles; Fs=Fs, outfilepath=outfilepath,  normalization_factor= normalization_factor, skipdone=skipdone, binary_channel_list=binary_channel_list, remove_original=remove_original, remove_original_errortolerance=remove_original_errortolerance, accum_res=accum_res, filetype=filetype, kwargs...)

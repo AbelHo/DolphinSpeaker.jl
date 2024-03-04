@@ -747,5 +747,7 @@ function plot_time_fft(snip, fs=1.0; layout=@layout [a b])
 	plot(a,b, layout=layout)
 end
 
-plot_norm(args...; norm_func=x->maximum(abs.(x)), kwargs...) = plot(args[1]./norm_func(args[1]), args[2:end]...; kwargs...)
-plot_norm!(args...; norm_func=x->maximum(abs.(x)), kwargs...) = plot!(args[1]./norm_func(args[1]), args[2:end]...; kwargs...)
+norm_max(args...; norm_func=x->maximum(abs.(x); dims=1), kwargs...) = args[1]./norm_func(args[1])
+
+plot_norm(args...; norm_func=x->maximum(abs.(x); dims=1), kwargs...) = plot(args[1]./norm_func(args[1]), args[2:end]...; kwargs...)
+plot_norm!(args...; norm_func=x->maximum(abs.(x); dims=1), kwargs...) = plot!(args[1]./norm_func(args[1]), args[2:end]...; kwargs...)

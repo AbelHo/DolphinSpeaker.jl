@@ -64,9 +64,12 @@ function set_device__hk_clicker()
 end
 
 function set_device__calf_hk()
+    global ref_channel = 3
+
     global impulsive_band_pass = [5000, 180_000] #fs/2*.98]
     global threshold_impulsive = nothing #.1# .003#calf_hk
     global impulsive_autothreshold_median_ratio = 4;#10;
+    global dist_impulsive = 200
     # global # dist_impulsive = 400#800# 15000#pinger
 
     global click_train_minlen = 5#calf 7 #5 20  #[n+1]clicks within (click_train_check_interval)seconds

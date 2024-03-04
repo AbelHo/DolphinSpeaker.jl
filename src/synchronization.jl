@@ -102,6 +102,9 @@ function split_vid_au(folname; vidtype=r".mkv|.MP4|.avi|.mp4", autype=r".wav|.ma
     filter( x -> occursin(vidtype, x), flist), filter( x -> occursin(autype, x), flist)
 end
 
+find_vidVSau_sync(vidfname, aufname; band_pass=[2900 3100]) = findVidAudioBlip(vidfname; plot_window_inS=nothing, band_pass=band_pass) - findAudioBlip(aufname; plot_window_inS=nothing, band_pass=band_pass)
+
+
 @info "end"
 
 # findBlip_bothVidAudio(folname; filename_only=true) |> showall

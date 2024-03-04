@@ -190,108 +190,108 @@ julia> findsignal(x, y, 3)
 (time = Float32[33, 64, 129], [0.000775, 0.001545, 0.003124], amplitude = ComplexF64[...])
 ```
 """
-function findsignal2(r, s, n=1; prominence=0.2, coarse=false)
-  # coarse arrival time estimation
-  r = analytic(r)
-  r = r / std(r)
-  s = analytic(s)
-  mfo = mfilter(r, s) / length(r)
-  absmfo = abs.(samples(mfo))
-  p, _ = findmaxima(absmfo)
-  peakproms!(p, absmfo; minprom=prominence*maximum(absmfo))
-  length(p) > length(s)/10 && return (time=Float64[], amplitude=ComplexF64[])
-  h = absmfo[p]
-  ndx = sortperm(h; rev=true)
-  length(ndx) > n && (ndx = ndx[1:n])
-  p = p[ndx]
-  if coarse
-    t = time(Float64.(p), s)
-    ndx = sortperm(t)
-    return (time=t[ndx], amplitude=samples(mfo[p[ndx]]))
-  end
-  # iterative fine arrival time estimation
-  margin = 5   # arrival time may vary up to margin from coarse estimates
-  i::Int = minimum(p)
-  n = maximum(p) - i + length(r) + 2 * margin
-  n = nextfastfft(n)
-  i = max(1, i - margin)
-  N = n
-  i + N - 1 > length(s) && (N = length(s) - i + 1)
-  X = fft(vcat(samples(r), zeros(n-length(r))))
-  soln = let p=p, f=fftfreq(n)
-    function reconstruct(v)
-      ii = @view v[1:length(p)]
-      aa = @views complex.(v[length(p)+1:2*length(p)], v[2*length(p)+1:3*length(p)])
-      Z = mapreduce(+, zip(ii, aa)) do (i, a)
-        a .* X .* cis.(-2π .* i .* f)
-      end
-      @view real(ifft(Z))[1:N]
-    end
-    v0 = [p .- i; real.(mfo[p]); imag.(mfo[p])]
-    optimize(v -> sum(abs2, reconstruct(v) .- s[i:i+N-1]), v0)
-  end
-  v = minimizer(soln)
-  pp = v[1:length(p)] .+ i
+# function findsignal2(r, s, n=1; prominence=0.2, coarse=false)
+#   # coarse arrival time estimation
+#   r = analytic(r)
+#   r = r / std(r)
+#   s = analytic(s)
+#   mfo = mfilter(r, s) / length(r)
+#   absmfo = abs.(samples(mfo))
+#   p, _ = findmaxima(absmfo)
+#   peakproms!(p, absmfo; minprom=prominence*maximum(absmfo))
+#   length(p) > length(s)/10 && return (time=Float64[], amplitude=ComplexF64[])
+#   h = absmfo[p]
+#   ndx = sortperm(h; rev=true)
+#   length(ndx) > n && (ndx = ndx[1:n])
+#   p = p[ndx]
+#   if coarse
+#     t = time(Float64.(p), s)
+#     ndx = sortperm(t)
+#     return (time=t[ndx], amplitude=samples(mfo[p[ndx]]))
+#   end
+#   # iterative fine arrival time estimation
+#   margin = 5   # arrival time may vary up to margin from coarse estimates
+#   i::Int = minimum(p)
+#   n = maximum(p) - i + length(r) + 2 * margin
+#   n = nextfastfft(n)
+#   i = max(1, i - margin)
+#   N = n
+#   i + N - 1 > length(s) && (N = length(s) - i + 1)
+#   X = fft(vcat(samples(r), zeros(n-length(r))))
+#   soln = let p=p, f=fftfreq(n)
+#     function reconstruct(v)
+#       ii = @view v[1:length(p)]
+#       aa = @views complex.(v[length(p)+1:2*length(p)], v[2*length(p)+1:3*length(p)])
+#       Z = mapreduce(+, zip(ii, aa)) do (i, a)
+#         a .* X .* cis.(-2π .* i .* f)
+#       end
+#       @view real(ifft(Z))[1:N]
+#     end
+#     v0 = [p .- i; real.(mfo[p]); imag.(mfo[p])]
+#     optimize(v -> sum(abs2, reconstruct(v) .- s[i:i+N-1]), v0)
+#   end
+#   v = minimizer(soln)
+#   pp = v[1:length(p)] .+ i
 
-#   try
-#   t = time(pp, s)
+# #   try
+# #   t = time(pp, s)
+# #   a = complex.(v[length(p)+1:2*length(p)], v[2*length(p)+1:3*length(p)])
+# #   ndx = sortperm(t)
+# #   (time=t[ndx], amplitude=a[ndx], mfo=mfo ? m : empty(m))
+# #   catch err
+# #     # println(err)
+# #   end
+#   t = pp
 #   a = complex.(v[length(p)+1:2*length(p)], v[2*length(p)+1:3*length(p)])
 #   ndx = sortperm(t)
-#   (time=t[ndx], amplitude=a[ndx], mfo=mfo ? m : empty(m))
-#   catch err
-#     # println(err)
-#   end
-  t = pp
-  a = complex.(v[length(p)+1:2*length(p)], v[2*length(p)+1:3*length(p)])
-  ndx = sortperm(t)
-  (sample=t[ndx], amplitude=a[ndx])
-end
+#   (sample=t[ndx], amplitude=a[ndx])
+# end
 
-function findsignal(r, s, n=1; prominence=0.0, finetune=2, mingap=1, mfo=false)
-    # coarse arrival time estimation
-    r = analytic(r)
-    s = analytic(s)
-    m = mfilter(r, s)
-    m ./= (std(r) * length(r))
-    T = eltype(m)
-    m̄ = abs.(samples(m))
-    p = argmaxima(m̄, mingap)
-    prominence > 0 && peakproms!(p, m̄; minprom=prominence*maximum(m̄))
-    if length(p) > length(s)/10
-      return (time=Float64[], amplitude=T[], mfo=mfo ? m : empty(m))
-    end
-    h = m̄[p]
-    ndx = partialsortperm(h, 1:n; rev=true)
-    p = p[ndx]
-    if finetune == 0
-      t = time(Float64.(p), s)
-      ndx = sortperm(t)
-      return (time=t[ndx], amplitude=samples(m[p[ndx]]), mfo=mfo ? m : empty(m))
-    end
-    # iterative fine arrival time estimation
-    i::Int = minimum(p)
-    N::Int = maximum(p) - i + length(r) + 2 * finetune
-    N = nextfastfft(N)
-    i = max(1, i - finetune)
-    X = fft(vcat(samples(r), zeros(N-length(r))))
-    S = fft(vcat(samples(s[i:min(i+N-1,end)]), zeros(max(i+N-1-length(s),0))))
-    soln = let P=length(p), f=fftfreq(N)
-      optimize([p .- i; real.(m[p]); imag.(m[p])], BFGS(); autodiff=:forward) do v
-        ii = @view v[1:P]
-        aa = @views complex.(v[P+1:2P], v[2P+1:3P])
-        X̄ = mapreduce(+, zip(ii, aa)) do (i, a)
-          a .* X .* cis.(-2π .* i .* f)
-        end
-        sum(abs2, X̄ .- S)
-      end
-    end
-    v = minimizer(soln)
-    pp = v[1:length(p)] .+ i
-    t = time(pp, s)
-    a = complex.(v[length(p)+1:2*length(p)], v[2*length(p)+1:3*length(p)])
-    ndx = sortperm(t)
-    (time=t[ndx], amplitude=a[ndx], mfo=mfo ? m : empty(m))
-  end
+# function findsignal(r, s, n=1; prominence=0.0, finetune=2, mingap=1, mfo=false)
+#     # coarse arrival time estimation
+#     r = analytic(r)
+#     s = analytic(s)
+#     m = mfilter(r, s)
+#     m ./= (std(r) * length(r))
+#     T = eltype(m)
+#     m̄ = abs.(samples(m))
+#     p = argmaxima(m̄, mingap)
+#     prominence > 0 && peakproms!(p, m̄; minprom=prominence*maximum(m̄))
+#     if length(p) > length(s)/10
+#       return (time=Float64[], amplitude=T[], mfo=mfo ? m : empty(m))
+#     end
+#     h = m̄[p]
+#     ndx = partialsortperm(h, 1:n; rev=true)
+#     p = p[ndx]
+#     if finetune == 0
+#       t = time(Float64.(p), s)
+#       ndx = sortperm(t)
+#       return (time=t[ndx], amplitude=samples(m[p[ndx]]), mfo=mfo ? m : empty(m))
+#     end
+#     # iterative fine arrival time estimation
+#     i::Int = minimum(p)
+#     N::Int = maximum(p) - i + length(r) + 2 * finetune
+#     N = nextfastfft(N)
+#     i = max(1, i - finetune)
+#     X = fft(vcat(samples(r), zeros(N-length(r))))
+#     S = fft(vcat(samples(s[i:min(i+N-1,end)]), zeros(max(i+N-1-length(s),0))))
+#     soln = let P=length(p), f=fftfreq(N)
+#       optimize([p .- i; real.(m[p]); imag.(m[p])], BFGS(); autodiff=:forward) do v
+#         ii = @view v[1:P]
+#         aa = @views complex.(v[P+1:2P], v[2P+1:3P])
+#         X̄ = mapreduce(+, zip(ii, aa)) do (i, a)
+#           a .* X .* cis.(-2π .* i .* f)
+#         end
+#         sum(abs2, X̄ .- S)
+#       end
+#     end
+#     v = minimizer(soln)
+#     pp = v[1:length(p)] .+ i
+#     t = time(pp, s)
+#     a = complex.(v[length(p)+1:2*length(p)], v[2*length(p)+1:3*length(p)])
+#     ndx = sortperm(t)
+#     (time=t[ndx], amplitude=a[ndx], mfo=mfo ? m : empty(m))
+#   end
 
 #~ find extrema
 extrema_in_file(aufname; res_dir=nothing) = extrema_in_file(aufname, res_dir)
@@ -348,3 +348,27 @@ function truncate_fft_end(data)
     size(newdata,1) < size(data,1) && @info("truncated data for FFT")
     newdata
 end
+
+windowing(data, i, window, col=1:size(data,2)) = data[window[begin]+i : window[end]+i, col]
+
+function add(a,b)
+    a_or_b = size(a,1) < size(b,1)
+    len = a_or_b ? size(a,1) : size(b,1)
+    a_or_b ? a .+ b[1:len,:] : a[1:len,:] .+ b
+end
+
+extrema_abs(args; dims=1, kwargs...) = extrema(args; dims=dims, kwargs...) .|> x->maximum(abs.(x))
+
+p2p_db(x) = 20 * log10( -reduce(-, extrema(x)) )
+p2p_db(arr::Array{T, 2} where T) = mapslices2(p2p_db, arr)
+
+
+# a = [
+#     begin
+#         snip = windowing(data_filt, d["res_impulsetrain"].pind_good[i], window_impulsive)
+#         norm_snip = norm_max(snip)
+#         extrema_abs([mfilter(norm_snip[:,1], norm_snip[:,3]) mfilter(norm_snip[:,1], norm_snip[:,2]) mfilter(norm_snip[:,3], norm_snip[:,2])]|>collect)
+#     end
+    
+#     for i in 1:length(d["res_impulsetrain"].pind_good_inS)
+# ]
