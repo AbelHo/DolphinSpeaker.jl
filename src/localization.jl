@@ -60,6 +60,36 @@ function get_tdoa_raw_MaxEnergyRefChannel(data, peaks; window = default_window ,
 	return tdoa
 end
 
+function get_tdoa_raw_MaxPeakRefChannel(data, peaks; window = default_window , ref_channel=ref_channel, ref_window=-30:33)
+	tdoa = Array{Int}(undef,length(peaks),size(data,2))
+	ref_signals = Array{eltype(data)}(undef,64, length(peaks))
+	for i in eachindex(peaks)
+		win = window.+peaks[i]
+		win_ref = ref_window.+peaks[i]
+		if win[1]<1
+			win = 1:win[end]
+			win_ref = 1:win_ref[end]
+		elseif win[end]>size(data,1)
+			win = win[1]:size(data,1)
+			win_ref = win_ref[1]:size(data,1)
+		end
+		
+		ref_channel = argmax(extrema(data[win,:], dims=1)[:] .|> x->maximum(abs.(x)))
+		ref_signal = data[win_ref, ref_channel]
+		ref_signals[:,i] = ref_signal
+		@debug size(ref_signal)
+		for ch in 1:size(data,2)
+			@debug (i,ch)
+			# if ch==ref_channel
+			# 	tdoa[i,ch]=0
+			# 	continue
+			# end
+			tdoa[i,ch] = finddelay(data[win, ch ], ref_signal)
+		end
+	end
+	return tdoa#, ref_signals
+end
+
 function get_tdoa_raw_flexi(data, windows = default_window ; window = default_window, ref_channel=ref_channel)
 	tdoa = Array{Int}(undef,length(windows),size(data,2))
 	for i in eachindex(windows)
@@ -85,6 +115,7 @@ function get_tdoa_envelope(data, peaks; window = default_window, ref_channel=ref
 				tdoa[i,ch]=0
 				continue
 			end
+			@debug window.+peaks[i]
 			tdoa[i,ch] = finddelay(data[window.+peaks[i], ch ] |> hilbert .|> abs, data[window.+peaks[i], ref_channel ] |> hilbert .|> abs)
 		end
 	end
@@ -275,6 +306,52 @@ function get_tdoa_minmax(data, peaks; window = default_window , ref_channel=ref_
 	return tdoa
 end
 
+function get_tdoa_findTrigger(data, peaks; window = default_window , ref_channel=ref_channel)
+	tdoa = Array{Int}(undef,length(peaks),size(data,2))
+	for i in eachindex(peaks)
+		win = window.+peaks[i]
+		if win[1]<1
+			win = 1:win[end]
+		elseif win[end]>size(data,1)
+			win = win[1]:size(data,1)
+		end
+		
+		ref_channel = energy(data[win,:]) |> argmax
+		for ch in 1:size(data,2)
+			@debug (i,ch)
+			# if ch==ref_channel
+			# 	tdoa[i,ch]=0
+			# 	continue
+			# end
+			tdoa[i,ch] = findTrigger(data[win, ch ], 1);
+		end
+	end
+	return tdoa
+end
+
+function get_tdoa_findTrigger_waveletdenoise(data, peaks; window = default_window , ref_channel=ref_channel)
+	tdoa = Array{Int}(undef,length(peaks),size(data,2))
+	for i in eachindex(peaks)
+		win = window.+peaks[i]
+		if win[1]<1
+			win = 1:win[end]
+		elseif win[end]>size(data,1)
+			win = win[1]:size(data,1)
+		end
+		
+		ref_channel = energy(data[win,:]) |> argmax
+		Threads.@threads for ch in 1:size(data,2)
+			@debug (i,ch)
+			@debug win
+			# if ch==ref_channel
+			# 	tdoa[i,ch]=0
+			# 	continue
+			# end
+			tdoa[i,ch] = findTrigger(denoise(data[win, ch ], TI=true), 1);
+		end
+	end
+	return tdoa
+end
 
 #~ 
 ang2vect(ang) = [sin(ang[1])*cos(ang[2]) sin(ang[2]) cos(ang[1])*cos(ang[2])]
@@ -285,6 +362,19 @@ function compensate_imu(angs, datetimes, df)
 	
 end
 
+function beamform_output(s, sd; fs=framerate(s), output_func=p2p_db)
+	ndir = size(sd, 2)
+	bfo = zeros(eltype(s), ndir)
+	Threads.@threads for k ∈ 1:ndir
+	  temp_bfo = zeros(eltype(s), nframes(s))
+	  for j ∈ 1:nchannels(s)
+		@views temp_bfo .+= padded(s[:,j], 0; delay=round(Int, -sd[j,k]*fs))
+	  end
+	  bfo[k] = output_func(temp_bfo)
+	end
+	bfo
+	# signal(bfo, fs)
+  end
 
 
 

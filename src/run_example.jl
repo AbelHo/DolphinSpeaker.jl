@@ -155,7 +155,7 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
     # detector_set = [detection_b,
     #                 (pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect)
     #                 ]
-    pt_config = [((1,1,0),25), ((1,0,0),30), ((0,1,0),20), ((1,0,1),15)]
+    pt_config = [((1,1,0),25), ((1,0,0),30), ((0,1,0),20), ((1,0,1),15), ((1,1,1),10)]
     
     fps = get_fps(vidfname)
     vidau_syncdiff = findVidAudioBlip(vidfname; plot_window_inS=nothing, band_pass=[2900 3100]) - findAudioBlip(aufname; plot_window_inS=nothing, band_pass=[2900 3100])
@@ -204,6 +204,10 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
             aufname = joinpath(res_dir, "temp__" * (splitext(aufname)[1]*".wav" |> basename))
             wavwrite(aufname, data ./ maximum(data), fs)
         end
+        println("RAM: ", round(Sys.free_memory() / 1024 / 1024 / 1024, digits=2), "/", round(Sys.total_memory() / 1024 / 1024 / 1024, digits=2), " GB")
+        GC.gc()
+        println("RAM: ", round(Sys.free_memory() / 1024 / 1024 / 1024, digits=2), "/", round(Sys.total_memory() / 1024 / 1024 / 1024, digits=2), " GB")
+
         # combine video and audio
         println(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 -f matroska "$newvidname""_normalized-audio.mkv"`)
         output = @ffmpeg_env run(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_normalized-audio.mp4"`)

@@ -6,9 +6,9 @@ using Pipe:@pipe
 # include("detector_tonal.jl")
 
 if false
-    aufname = "/Volumes/One Touch/calf/clicker_calib/20231005/20231005_16.27.34_log._1.mat"
-    vidfname = "/Volumes/One Touch/calf/clicker_calib/20231005/20231005_16.27.34_log.mkv"
-    res_dir = "/Volumes/One Touch/res/calf/clickertest/20231005"
+    aufname = "/Users/abel/Documents/data/calf/Clicktest/20231005/20231005_16.27.34_log.flac" #"/Volumes/One Touch/calf/clicker_calib/20231005/20231005_16.27.34_log._1.mat"
+    vidfname = "/Users/abel/Documents/data/calf/Clicktest/20231005/20231005_16.27.34_log.mkv" #"/Volumes/One Touch/calf/clicker_calib/20231005/20231005_16.27.34_log.mkv"
+    res_dir = "/Users/abel/Documents/data_res/calf/click_test/20231005" #"/Volumes/One Touch/res/calf/clickertest/20231005"
 
     aufname = "/Volumes/One Touch/calf/clicker_calib/20231005/20231005_16.23.55_log.flac"
 
@@ -103,29 +103,29 @@ end
 
 if false
 
-include("run_example.jl");include("detector_impulsive.jl")
-aufname = "/Volumes/One Touch/calf/coop/20231120/20231120_14.20.14_log._1.mat"
-vidfname = "/Volumes/One Touch/calf/coop/20231120/20231120_14.20.14_log.mkv"
-res_dir = "/Volumes/One Touch/res/calf/coop"
-band_pass = tonal_band_pass; threshold_tonal = -60; threshold_impulsive = 0.050800082760299394
+    include("run_example.jl");include("detector_impulsive.jl")
+    aufname = "/Volumes/One Touch/calf/coop/20231120/20231120_14.20.14_log._1.mat"
+    vidfname = "/Volumes/One Touch/calf/coop/20231120/20231120_14.20.14_log.mkv"
+    res_dir = "/Volumes/One Touch/res/calf/coop"
+    band_pass = tonal_band_pass; threshold_tonal = -60; threshold_impulsive = 0.050800082760299394
 
-process_one_set(vidfname, aufname, res_dir)
+    process_one_set(vidfname, aufname, res_dir)
 
 
-### showcase
-findAudioBlip("/Volumes/One Touch/calf/clicker_calib/20231006/20231006_11.37.13_log.flac"; plot_window_inS=[-1 1], band_pass=[2900 3100])
-title!("Acoustic Synchronization Channel")
-savefig("Acoustic_sync.html")
-savefig("Acoustic_sync.png")
+    ### showcase
+    findAudioBlip("/Volumes/One Touch/calf/clicker_calib/20231006/20231006_11.37.13_log.flac"; plot_window_inS=[-1 1], band_pass=[2900 3100])
+    title!("Acoustic Synchronization Channel")
+    savefig("Acoustic_sync.html")
+    savefig("Acoustic_sync.png")
 
-findVidAudioBlip("/Volumes/One Touch/calf/clicker_calib/20231006/20231006_11.37.13_log.mkv"; band_pass=[2900 3100], plot_window_inS=[-1 1])
-savefig("Video_sync.html")
-savefig("Video_sync.png")
+    findVidAudioBlip("/Volumes/One Touch/calf/clicker_calib/20231006/20231006_11.37.13_log.mkv"; band_pass=[2900 3100], plot_window_inS=[-1 1])
+    savefig("Video_sync.html")
+    savefig("Video_sync.png")
 
-mat2flac("/Volumes/One Touch/calf/clicker_calib"; skipdone=true)
-mat2flac("/Volumes/One Touch/calf/coop/20231120"; skipdone=true)
+    mat2flac("/Volumes/One Touch/calf/clicker_calib"; skipdone=true)
+    mat2flac("/Volumes/One Touch/calf/coop/20231120"; skipdone=true)
 
-tt = findBlip_bothVidAudio.(readdir("/Volumes/One Touch/calf/clicker_calib";join=true)[4:end] |> skiphiddenfiles; plot_window_inS=[-1 1], filename_only=true, band_pass=[2900 3100], flag_savefig="/Volumes/One Touch/res/calf/clickertest/sync2")
+    tt = findBlip_bothVidAudio.(readdir("/Volumes/One Touch/calf/clicker_calib";join=true)[4:end] |> skiphiddenfiles; plot_window_inS=[-1 1], filename_only=true, band_pass=[2900 3100], flag_savefig="/Volumes/One Touch/res/calf/clickertest/sync2")
 
 end
 
@@ -134,6 +134,28 @@ include("media_info.jl")
 include("detector.jl")
 include("audio.jl")
 include("plotting.jl")
+
+function localization_method(res, window, rx_vect, fs, getTDOA_func, fov_angle, aufname, vidfname, res_dir, prefix)
+    #~ impulse lowpassed hilbert
+    res_new = res.res_impulsetrain
+    # window = window_impulsive#-130:130#
+    angs3 = detection2angle(res.res_impulse.data_filt, res_new.pind_good, rx_vect;
+        fs=fs, window=window, return_residual=true,
+        getTDOA_func=getTDOA_func)
+    ang3 = angs3[1][1]
+
+    # convert to pixel
+    p_pixels3 = angle2px(ang3, fov_angle)
+    pind_vidframes3 = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
+
+    pixel_related_impulsive3 = [pind_vidframes3, p_pixels3]
+    open( joinpath(res_dir, splitext(basename(aufname))[1] *"_$(prefix)_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
+        writedlm(io, ["p_pixel" "px" "py"], ',')
+        writedlm(io, pixel_related_impulsive3', ',')
+    end
+
+    return pixel_related_impulsive3
+end
 
 # aufname = "/Users/abel/Documents/data/calf/coop/20231128/20231128_15.16.48_log.flac"
 # vidfname = splitext(aufname)[1]*".mkv"
@@ -187,7 +209,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     pixel_related_impulsive2 = [pind_vidframes2, p_pixels2]
     open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse2_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
         writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, pixel_related_impulsive2, ',')
+        writedlm(io, pixel_related_impulsive2', ',')
     end
 
     #~ impulse lowpassed hilbert
@@ -205,8 +227,10 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     pixel_related_impulsive3 = [pind_vidframes3, p_pixels3]
     open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse3_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
         writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, pixel_related_impulsive3, ',')
+        writedlm(io, pixel_related_impulsive3', ',')
     end
+    
+    pixel_related_impulsive4 = localization_method(res, window_impulsive, rx_vect, fs, get_tdoa_raw_MaxPeakRefChannel, fov_angle, aufname, vidfname, res_dir, "Impulse4")
 
 
     res = (;  Base.structdiff(res, NamedTuple{(:res_impulse,)})..., res_impulse=Base.structdiff(res.res_impulse, NamedTuple{(:data_filt,)}))
@@ -266,7 +290,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     end
     
     # return [pixel_related_tonal, pixel_related_impulsive, pixel_related_tonal_short]
-    return [pixel_related_tonal, pixel_related_impulsive, pixel_related_impulsive2, pixel_related_impulsive3]
+    return [pixel_related_tonal, pixel_related_impulsive, pixel_related_impulsive2, pixel_related_impulsive3, pixel_related_impulsive4]
 
 end
 
