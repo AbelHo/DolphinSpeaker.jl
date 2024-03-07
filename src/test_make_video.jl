@@ -2,7 +2,7 @@ using VideoIO, FFMPEG
 using ProgressMeter
 using ImageDraw
 include("config.jl")
-using GLMakie
+# using GLMakie
 
 # res_fol = "/Users/abel/Documents/data_res/aspod/real/bahamas_2022"
 # newvidname = process_video(vidfname, res_fol; func=overlay_point!, extra_arg=(pind_vidframes, p_pixels), postfix="_t"*string(thresh)*"_d"*string(dist))
