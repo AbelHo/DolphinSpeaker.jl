@@ -311,69 +311,69 @@ function combine_detections_conv(data, res_new, nfft=1280, infl_len=30;
     winfunc=gaussian, σ=0.1,
     threshold=0.01, thresh_continue=0.00001,
     res_dir=nothing)
-# σ=0.1; nfft=1280; infl_len=30;
-new_dat = zeros(size(data,1),1)
-new_dat[res_new.pind_good] .= 1
+    # σ=0.1; nfft=1280; infl_len=30;
+    new_dat = zeros(size(data,1),1)
+    new_dat[res_new.pind_good] .= 1
 
-prob = conv_onesided_centreMID(new_dat, gaussian(nfft*infl_len,σ));
-# prob = mfilter(gaussian(nfft*infl_len,σ), new_dat)
-# prob2 = conv_onesided(new_dat, gaussian(nfft*infl_len,σ))
+    prob = conv_onesided_centreMID(new_dat, gaussian(nfft*infl_len,σ));
+    # prob = mfilter(gaussian(nfft*infl_len,σ), new_dat)
+    # prob2 = conv_onesided(new_dat, gaussian(nfft*infl_len,σ))
 
-#~ look for sets
-# click_accum = Int[]
-# click_in_trains = Int[]
-train_switch = false
-train_count = 0
-train_start = Int[]
-train_end = Int[]
-# train_start_ind = Int[]
-for (i,val) in enumerate(prob)
-    if val > threshold
-        # push!(click_accum, i)
-        # push!(click_in_trains, res.pind_good[i])
-        if !train_switch
-            train_count += 1
-            push!(train_start, i)
-            # push!(train_start_ind, length(click_in_trains))
-        end
-        train_switch = true
-    elseif train_switch
-        if val < thresh_continue
-            push!(train_end, i)
-            train_switch = false
+    #~ look for sets
+    # click_accum = Int[]
+    # click_in_trains = Int[]
+    train_switch = false
+    train_count = 0
+    train_start = Int[]
+    train_end = Int[]
+    # train_start_ind = Int[]
+    for (i,val) in enumerate(prob)
+        if val > threshold
+            # push!(click_accum, i)
+            # push!(click_in_trains, res.pind_good[i])
+            if !train_switch
+                train_count += 1
+                push!(train_start, i)
+                # push!(train_start_ind, length(click_in_trains))
+            end
+            train_switch = true
+        elseif train_switch
+            if val < thresh_continue
+                push!(train_end, i)
+                train_switch = false
+            end
         end
     end
-end
-if length(train_start) >  length(train_end)
-    push!(train_end, res_new.len_data)
-end
+    if length(train_start) >  length(train_end)
+        push!(train_end, res_new.len_data)
+    end
 
-@info "Number of Tonal Segments: "* string(length(train_start))
+    @info "Number of Tonal Segments: "* string(length(train_start))
 
-pind_good_inS = train_start ./ res_new.fs
-# @debug pind_good_inS
-# @debug res_new.time_index
-ppeak = map(i -> 
-    res_new.fft_max[ (findlast( <(pind_good_inS[i]), res_new.time_index) |> x -> isnothing(x) ? 1 : x): (findfirst( >(train_end[i]/res_new.fs), res_new.time_index) |> x -> isnothing(x) ? length(res_new.fft_max) : x  )] |> median
-, eachindex(train_start))
-# @debug "ppeak: "* string(size(ppeak))
+    pind_good_inS = train_start ./ res_new.fs
+    # @debug pind_good_inS
+    # @debug res_new.time_index
+    ppeak = map(i -> 
+        res_new.fft_max[ (findlast( <(pind_good_inS[i]), res_new.time_index) |> x -> isnothing(x) ? 1 : x): (findfirst( >(train_end[i]/res_new.fs), res_new.time_index) |> x -> isnothing(x) ? length(res_new.fft_max) : x  )] |> median
+    , eachindex(train_start))
+    # @debug "ppeak: "* string(size(ppeak))
 
-if !isnothing(res_dir)
-    audacity_label([train_start train_end] ./ res_new.fs, joinpath(res_dir, res_new.outfname *"__len"* string(nfft*infl_len) *"_sigma"*string(σ)*  "_segment-only.txt" |> basename))
-end
+    if !isnothing(res_dir)
+        audacity_label([train_start train_end] ./ res_new.fs, joinpath(res_dir, res_new.outfname *"__len"* string(nfft*infl_len) *"_sigma"*string(σ)*  "_segment-only.txt" |> basename))
+    end
 
-return (;pind_good_inS, 
-pind_good = train_start,
-ppeak,
-pind = res_new.pind_good,
-train_start, train_end,
-num_detection=length(train_start), num_click_in_trains=length(res_new.pind_good),
-)
+    return (;pind_good_inS, 
+    pind_good = train_start,
+    ppeak,
+    pind = res_new.pind_good,
+    train_start, train_end,
+    num_detection=length(train_start), num_click_in_trains=length(res_new.pind_good),
+    )
 
-# plot!( (1:nfft*infl_len) ./ res_new.fs, gaussian(nfft*infl_len,σ))
-# plot!( ((1:nfft*infl_len) .+ nfft*i) ./ res_new.fs, gaussian(nfft*infl_len,σ))
-# plot!( ((1:nfft*infl_len) .+ nfft*i) ./ fs, gaussian(round(Int,nfft_inS*fs)*30,σ))
-# wavwrite(prob, fs, joinpath(res_dir,"prob_s0.1.wav"))
+    # plot!( (1:nfft*infl_len) ./ res_new.fs, gaussian(nfft*infl_len,σ))
+    # plot!( ((1:nfft*infl_len) .+ nfft*i) ./ res_new.fs, gaussian(nfft*infl_len,σ))
+    # plot!( ((1:nfft*infl_len) .+ nfft*i) ./ fs, gaussian(round(Int,nfft_inS*fs)*30,σ))
+    # wavwrite(prob, fs, joinpath(res_dir,"prob_s0.1.wav"))
 end
 
 # spec = res_tonal.specs[3].power
