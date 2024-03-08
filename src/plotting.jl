@@ -1,6 +1,5 @@
 using Plots
 using ProgressMeter
-import GLMakie
 using Pipe: @pipe
 # include("map.jl")
 using Base.Threads
