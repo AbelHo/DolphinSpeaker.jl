@@ -151,7 +151,7 @@ function localization_method(res, window, rx_vect, fs, getTDOA_func, fov_angle, 
     pixel_related_impulsive3 = [pind_vidframes3, p_pixels3]
     open( joinpath(res_dir, splitext(basename(aufname))[1] *"_$(prefix)_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
         writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, pixel_related_impulsive3', ',')
+        writedlm(io, pixel_related_impulsive3, ',')
     end
 
     return pixel_related_impulsive3
@@ -209,7 +209,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     pixel_related_impulsive2 = [pind_vidframes2, p_pixels2]
     open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse2_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
         writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, pixel_related_impulsive2', ',')
+        writedlm(io, pixel_related_impulsive2, ',')
     end
 
     #~ impulse lowpassed hilbert
@@ -227,7 +227,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     pixel_related_impulsive3 = [pind_vidframes3, p_pixels3]
     open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse3_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
         writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, pixel_related_impulsive3', ',')
+        writedlm(io, pixel_related_impulsive3, ',')
     end
     
     pixel_related_impulsive4 = localization_method(res, window_impulsive, rx_vect, fs, get_tdoa_raw_MaxPeakRefChannel, fov_angle, aufname, vidfname, res_dir, "Impulse4")
