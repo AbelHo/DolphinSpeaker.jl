@@ -9,7 +9,7 @@
 
 **PkgTemplates creates new Julia packages in an easy, repeatable, and customizable way.**
 --->
-## Installation
+## 1. Installation
 
 Install with the Julia package manager [Pkg](https://pkgdocs.julialang.org/), just like any other registered Julia package:
 1. Press "]" key
@@ -17,23 +17,24 @@ Install with the Julia package manager [Pkg](https://pkgdocs.julialang.org/), ju
 ```
 add https://github.com/AbelHo/DolphinSpeaker.jl
 ```
+3. to go back to normal mode, press "backspace"
 
-## Update software
+## 2. Update software
 1. Press "]" key
 2.
 ```
 update
 ```
 
-## Usage
-### Initialize
+## 3. Usage
+### 3.1 Initialize
 ```
 using DolphinSpeaker
 ```
 
-### Data Processing
+### 4. Data Processing
 
-#### Convert .mat to .flac audio file
+#### 4.1 Convert .mat to .flac audio file
 Format:
 ```
 mat2flac(input_folderpath; outfilepath=output_folderpath)
@@ -43,11 +44,11 @@ Example:
 mat2flac("/Users/abel/Documents/data/calf/Clicktest/20190913"; outfilepath="/Users/abel/Documents/data/calf/Clicktest/20190913/flac")
 ```
 
-#### Convert .bin to .flac audio file
+#### 4.2 Convert .bin to .flac audio file
 Assumes Sampling Rate of _500kHz_ and _Float64/double_ precision data .bin binary file. 
 Usage same as all the ```mat2flac``` examples, just change the commnad to ```bin2flac(...)``` & ```bin2flac_check(...)``` instead
 
-#### Change Audio File Metadata
+#### 4.3 Change Audio File Metadata
 Execute these commands to change the metadata parameter before running flac conversion
 ```
 DolphinSpeaker.FILE_device_ID = "ophk_acoustic_D1.2.0"
@@ -58,10 +59,10 @@ DolphinSpeaker.FILE_location_ID = "MMBRC_pool2"
 ```
 DolphinSpeaker.FILE_gain_setting = "0011"
 ```
-##### Example Audio File with Metadata
+##### 4.3.1 Example Audio File with Metadata
 ![example_audio-metadata.jpg](img/example_audio-metadata.jpg)
 
-#### Process and overlay one set of video and acoustic recording, provided to results directory/folder
+#### 4.4 Process and overlay one set of video and acoustic recording, provided to results directory/folder
 format:
 ```
 process_one_set(vidfname, aufname, res_dir)
@@ -71,7 +72,7 @@ Example:
 process_one_set("/Users/abel/Documents/data/calf/Clicktest/20231129/20231129_15.20.54_log.mkv", "/Users/abel/Documents/data/calf/Clicktest/20231129/20231129_15.20.54_log.flac", "/Users/abel/Documents/data_res/calf/temp/test_laptop")
 ```
 
-#### Process entire folder automatically
+#### 4.5 Process entire folder automatically
 format:
 ```
 process_folder(foldername; outfolder=res_dir)
@@ -82,18 +83,18 @@ process_folder("/Users/abel/Documents/data/calf/Clicktest/20231129"; outfolder="
 ```
 ![process_folder](img/process_folder.jpg)
 
-### Advance
-#### Display conversion error results clearly
+### 5. Advance
+#### 5.1 Display conversion error results clearly
 ```
 mat2flac_check(input_folderpath; outfilepath=output_folderpath)
 ```
 
-#### Delete original input files(if conversion error is negligible)
+#### 5.2 Delete original input files(if conversion error is negligible)
 ```
 mat2flac_check(input_folderpath; outfilepath=output_folderpath, remove_original=true)
 ```
 
-#### Convert to flac and output to the same filepath as input_folder
+#### 5.3 Convert to flac and output to the same filepath as input_folder
 ```
 mat2flac_check(input_folderpath; outfilepath=:inplace)
 ```
@@ -103,7 +104,7 @@ mat2flac_check(input_folderpath; outfilepath=:inplace)
 mat2flac_check(input_folderpath; outfilepath=:inplace, remove_original=true)
 ```
 
-#### Changing Parameters
+#### 5.4 Changing Parameters
 click threshold:
 ```
 DolphinSpeaker.impulsive_autothreshold_median_ratio = 4
