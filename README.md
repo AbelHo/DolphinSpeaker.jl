@@ -105,11 +105,11 @@ mat2flac_check(input_folderpath; outfilepath=:inplace, remove_original=true)
 ```
 
 #### 5.4 Changing Parameters
-click threshold:
+click threshold(eg: 4, default is 7):
 ```
 DolphinSpeaker.impulsive_autothreshold_median_ratio = 4
 ```
-frequency filter:
+frequency filter(eg: filtering to use only 5000Hz ~ 180,000Hz):
 ```
 DolphinSpeaker.impulsive_band_pass = [5000, 180_000]
 ```
