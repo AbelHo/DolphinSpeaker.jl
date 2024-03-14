@@ -10,14 +10,18 @@
 **PkgTemplates creates new Julia packages in an easy, repeatable, and customizable way.**
 --->
 ## 1. Installation
+### Install Julia runtime:  
+https://julialang.org/downloads/  
+https://julialang.org/downloads/platform
 
-Install with the Julia package manager [Pkg](https://pkgdocs.julialang.org/), just like any other registered Julia package:
+### Install this software with the Julia package manager [Pkg](https://pkgdocs.julialang.org/), just like any other registered Julia package:
+1. start Julia software
 1. Press "]" key
-2.
+1.
 ```
 add https://github.com/AbelHo/DolphinSpeaker.jl
 ```
-3. to go back to normal mode, press "backspace"
+4. to go back to normal mode, press "backspace"
 
 ## 2. Update software
 1. Press "]" key
@@ -46,7 +50,7 @@ mat2flac("/Users/abel/Documents/data/calf/Clicktest/20190913"; outfilepath="/Use
 
 #### 4.2 Convert .bin to .flac audio file
 Assumes Sampling Rate of _500kHz_ and _Float64/double_ precision data .bin binary file. 
-Usage same as all the ```mat2flac``` examples, just change the commnad to ```bin2flac(...)``` & ```bin2flac_check(...)``` instead
+Usage same as all the ```mat2flac``` examples, just change the command to ```bin2flac(...)``` & ```bin2flac_check(...)``` instead
 
 #### 4.3 Change Audio File Metadata
 Execute these commands to change the metadata parameter before running flac conversion
@@ -105,7 +109,7 @@ mat2flac_check(input_folderpath; outfilepath=:inplace, remove_original=true)
 ```
 
 #### 5.4 Changing Parameters
-click threshold(eg: 4, default is 7):
+click threshold(eg: 4, default is 9):
 ```
 DolphinSpeaker.impulsive_autothreshold_median_ratio = 4
 ```
