@@ -132,7 +132,7 @@ function check_output_exist(vidfname, aufname, res_dir; postfix="_t163.835_d800"
     @debug joinpath(res_dir, reduce((a,b) -> a*"_overlaid"*postfix*b , splitext(basename(vidfname))) *"_normalized-audio.mkv")
     isfile( joinpath(res_dir, reduce((a,b) -> a*"_overlaid"*postfix*b , splitext(basename(vidfname))) *"_normalized-audio.mkv") )
 end
-function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_func=nothing, savejld=true, funcs=[x->x])
+function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_func=nothing, savejld=true, funcs=[x->x], pt_config=pt_config)
     # skiplist = ["Vid_2022-06-09_10.05.57.mkv"]
     @info (vidfname, aufname, res_dir)
     if !isnothing(no_overwrite_func) # skipoverwrite
@@ -155,7 +155,7 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
     # detector_set = [detection_b,
     #                 (pind_vidframes, p_pixels, thresh, dist, ang, tdoa_raw, tdoa, window, threshold_indices, pind_good, pind_good_inS, pind, ppeak, ref_channel, c, rx_vect)
     #                 ]
-    pt_config = [((1,1,0),25), ((1,0,0),30), ((0,1,0),20), ((1,0,1),15), ((1,1,1),10)]
+    # pt_config = [((1,1,0),25), ((1,0,0),30), ((0,1,0),20), ((1,0,1),15), ((1,1,1),10)]
     
     fps = get_fps(vidfname)
     vidau_syncdiff = findVidAudioBlip(vidfname; plot_window_inS=nothing, band_pass=[2900 3100]) - findAudioBlip(aufname; plot_window_inS=nothing, band_pass=[2900 3100])
@@ -164,6 +164,9 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
     # pixel_related = map( (x,y)->((x[1] .+(vidau_syncdiff*fps) .|>round.|>Int,x[2])..., y...), detector_set, pt_config)
 
     pixel_estimated_set = process_detections(aufname, vidfname; res_dir=res_dir)
+    pixel_estimated_set = pixel_estimated_set[DETECTION_TYPES]
+    # @info "---------------- ------------------"
+    # @info pixel_estimated_set
     pt_config = pt_config[1:length(pixel_estimated_set)]
     pixel_related = map( (x,y)->((x[1] .+(vidau_syncdiff*fps) .|>round.|>Int,x[2])..., y...), pixel_estimated_set, pt_config)
 
@@ -253,4 +256,8 @@ function process_folder(foldername; outfolder=foldername, skipdone=false, kwargs
         end
         # combine_2v1a(joinpath(dname,"cam_topview",fname_split*"_topview.mkv"), joinpath(dname,"cam_uw1",fname_split*"_uw1.mkv"), joinpath(aufolder,fname), joinpath(outfolder,fname_split*"_norm.mp4"))
     end
+end
+
+function test()
+    println("test 2 ...")
 end
