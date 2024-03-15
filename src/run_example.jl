@@ -211,9 +211,30 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
         GC.gc()
         println("RAM: ", round(Sys.free_memory() / 1024 / 1024 / 1024, digits=2), "/", round(Sys.total_memory() / 1024 / 1024 / 1024, digits=2), " GB")
 
+        # Get max volume and normalize
+        tempfile = tempname()
+        # read(pipeline(`ffmpeg -i $aufname -filter:a volumedetect -f null /dev/null`; stderr = tempfile))
+        read(pipeline(`ffmpeg -i $aufname -af astats=metadata=1 -f null /dev/null`; stderr = tempfile))
+
+        ss = read(tempfile, String)
+        rm(tempfile)
+        m = eachmatch(r"Channel: (\d+)", ss)
+        channel_list = [parse(Int, m.captures[1]) for m in m]
+        m = eachmatch(r"Peak level dB: (.*)", ss)
+        peak_db_list = [parse(Float64, m.captures[1]) for m in m]
+        norm_gain = -maximum(peak_db_list[1:size(rx_vect,2)])
+
+        # m = match(r"max_volume: (.*) dB", ss)
+        # max_volume = m !== nothing ? parse(Float64, m.captures[1]) : nothing
+        # norm_gain = -max_volume
+
+
         # combine video and audio
-        println(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 -f matroska "$newvidname""_normalized-audio.mkv"`)
-        output = @ffmpeg_env run(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_normalized-audio.mp4"`)
+        cmd = `$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$newvidname""_normalized-audio.mp4"`
+        println(cmd)
+        output = @ffmpeg_env run(cmd)
+        # println(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 -f matroska "$newvidname""_normalized-audio.mkv"`)
+        # output = @ffmpeg_env run(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_normalized-audio.mp4"`)
         isfile("$newvidname"*"_normalized-audio.mp4") && rm(newvidname) # delete video without audio
         # run(`ffmpeg -i "$newvidname" -i "$aufname" -map 0:v -map 1:a -vcodec copy -af loudnorm=I=-16:LRA=11:TP=-1.5 -f matroska "$newvidname""_normalized-audio.mkv"`)
         if aufname_old isa String; rm(aufname); end
