@@ -151,7 +151,7 @@ function localization_method(res, window, rx_vect, fs, getTDOA_func, fov_angle, 
     pixel_related_impulsive3 = [pind_vidframes3, p_pixels3]
     open( joinpath(res_dir, splitext(basename(aufname))[1] *"_$(prefix)_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
         writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, pixel_related_impulsive3, ',')
+        writedlm(io, [pind_vidframes3 p_pixels3], ',')
     end
 
     return pixel_related_impulsive3
@@ -190,7 +190,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
         writedlm(io, [pind_vidframes p_pixels], ',')
     end
 
-    [pind_vidframes, p_pixels]
+    # [pind_vidframes, p_pixels]
 
 
 
@@ -209,7 +209,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     pixel_related_impulsive2 = [pind_vidframes2, p_pixels2]
     open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse2_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
         writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, pixel_related_impulsive2, ',')
+        writedlm(io, [pind_vidframes2 p_pixels2], ',')
     end
 
     #~ impulse lowpassed hilbert
@@ -227,7 +227,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     pixel_related_impulsive3 = [pind_vidframes3, p_pixels3]
     open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse3_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
         writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, pixel_related_impulsive3, ',')
+        writedlm(io, [pind_vidframes3 p_pixels3], ',')
     end
     
     pixel_related_impulsive4 = localization_method(res, window_impulsive, rx_vect, fs, get_tdoa_raw_MaxPeakRefChannel, fov_angle, aufname, vidfname, res_dir, "Impulse4")
@@ -250,6 +250,24 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     # convert to pixel
     p_pixels_tonal = angle2px(ang_tonal, fov_angle)
     pind_vidframes_tonal = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
+
+    # pind_vidframes_tonal = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
+
+    #~ repeat drawing between each start and end
+    # # (res_new.train_start[i] ./ fs : 1/get_fps(vidfname) : res_new.train_end[i] ./ fs) |> collect for i in eachindex(res_new.train_start)
+    # # a=[(res_new.train_start[i] ./ fs : 1/get_fps(vidfname) : res_new.train_end[i] ./ fs) |> collect for i in eachindex(res_new.train_start)]
+    # t=Array{Any}(undef, length(res_new.train_start)); val=Array{Any}(undef, length(res_new.train_start));
+    # for i in eachindex(res_new.train_start)
+    #     t[i] = (res_new.train_start[i] ./ fs : 1/get_fps(vidfname) : res_new.train_end[i] ./ fs) |> collect
+    #     val[i] = repeat(p_pixels_tonal[i,:]', length(t[i]))
+    # end
+    
+    # pind_vidframes_tonal = round.(Int, vcat(t...) * get_fps(vidfname)) .+ 1
+    # p_pixels_tonal = vcat(val...)
+
+    
+    pixel_related_tonal = [pind_vidframes_tonal, p_pixels_tonal]
+    # pixel_related_tonal = [pind_vidframes_tonal, p_pixels_tonal]
 
     res_new = res.res_tonal
     # writedlm( joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".csv"), ["p_pixel" "px" "py"], ',')
@@ -280,7 +298,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
 
 
     pixel_related_impulsive = [pind_vidframes, p_pixels]
-    pixel_related_tonal = [pind_vidframes_tonal, p_pixels_tonal]
+    # pixel_related_tonal = [pind_vidframes_tonal, p_pixels_tonal]
 
     @info res_dir
     @info res.fname
@@ -290,7 +308,8 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     end
     
     # return [pixel_related_tonal, pixel_related_impulsive, pixel_related_tonal_short]
-    return [pixel_related_tonal, pixel_related_impulsive, pixel_related_impulsive2, pixel_related_impulsive3, pixel_related_impulsive4]
+    # return [pixel_related_tonal, pixel_related_tonal_short, pixel_related_impulsive2, pixel_related_impulsive3, pixel_related_impulsive4]
+    return [pixel_related_impulsive2, pixel_related_tonal, pixel_related_impulsive, pixel_related_impulsive3, pixel_related_impulsive4]
 
 end
 
@@ -327,8 +346,8 @@ function detectNangles(aufname, vidfname; res_dir=nothing)
     # plot_ang(res_new, ang_tonal; label=["azimuth" "inclination"], type="Power")
 
     # convert to pixel
-    p_pixels_tonal = angle2px(ang_tonal, fov_angle)
-    pind_vidframes_tonal = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
+    # p_pixels_tonal = angle2px(ang_tonal, fov_angle)
+    # pind_vidframes_tonal = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
 
     res_new = res.res_tonal
     # writedlm( joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".csv"), ["p_pixel" "px" "py"], ',')
@@ -338,11 +357,11 @@ function detectNangles(aufname, vidfname; res_dir=nothing)
     end
 
     pixel_related_impulsive = [pind_vidframes, p_pixels]
-    pixel_related_tonal = [pind_vidframes_tonal, p_pixels_tonal]
+    # pixel_related_tonal = [pind_vidframes_tonal, p_pixels_tonal]
 
     return [ang, res.res_impulsetrain.pind_good_inS, splitext(basename(aufname))[1] *"_Impulse_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist),
             ang_tonal, res.res_tonal.pind_good_inS, splitext(basename(aufname))[1] *"_Tonal_t"*string(res_new.threshold)*"tonal_bp"*string(res_new.band_pass[1])*"_"*string(res_new.band_pass[2])]
-    [pixel_related_tonal, pixel_related_impulsive]
+    # [pixel_related_tonal, pixel_related_impulsive]
 
 end
 
