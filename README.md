@@ -129,6 +129,16 @@ change settings for clicker detection:
 DolphinSpeaker.set_device__hk_clicker()
 ```
 
+change hydrophone location:  
+eg: hydrophones at [-1;0;0], [0;-1;0], [1;0;0], where [x;y;z] is the x,y,z coordinates of each hydrophone
+```
+DolphinSpeaker.rx_vect = [[-1;0;0] [0;-1;0] [1;0;0]]
+```
 
+change camera field of view:  
+eg: camera has a field of view of 80° in the x-axis and 40° in the y-axis
+```
+ DolphinSpeaker.fov_angle = [80; 40]
+```
 
 
