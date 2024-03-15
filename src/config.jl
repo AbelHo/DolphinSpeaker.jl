@@ -45,6 +45,12 @@ DEFAULT_fname2timestamp_func = nothing
 #~ bin file parameters
 DEFAULT_bin_channels = 4
 
+#~ video overlay parameters
+pt_config = [((1,0,0),63), ((1,1,0),58), ((0,1,0),53), ((1,0,1),48), ((1,1,1),33)]
+DETECTION_TYPES = 1:2
+# pt_config = [((1,1,0),25), ((1,0,0),30), ((0,1,0),20), ((1,0,1),15), ((1,1,1),10)]
+
+
 calf_timestamp_func(fname) = DateTime(basename(fname)[1:17], DateFormat("yyyymmdd_HH.MM.SS"))
 
 function set_device__hk_clicker()
@@ -68,7 +74,7 @@ function set_device__calf_hk()
 
     global impulsive_band_pass = [5000, 180_000] #fs/2*.98]
     global threshold_impulsive = nothing #.1# .003#calf_hk
-    global impulsive_autothreshold_median_ratio = 4;#10;
+    global impulsive_autothreshold_median_ratio = 9;#4 use for for full detection but less accurate localization;
     global dist_impulsive = 200
     # global # dist_impulsive = 400#800# 15000#pinger
 
@@ -94,6 +100,9 @@ function set_device__calf_hk()
     global FILE_device_ID = "ophk_acoustic_D1.2.0"
     global FILE_location_ID = "MMBRC_pool2"
     global FILE_gain_setting = "0011"
+
+    #~ overlay parameters
+    global DETECTION_TYPES = 1:1
 end
 
 function set_device__aspod2()
