@@ -362,6 +362,43 @@ extrema_abs(args; dims=1, kwargs...) = extrema(args; dims=dims, kwargs...) .|> x
 p2p_db(x) = 20 * log10( -reduce(-, extrema(x)) )
 p2p_db(arr::Array{T, 2} where T) = mapslices2(p2p_db, arr)
 
+norm_max(args...; norm_func=x->maximum(abs.(x); dims=1), kwargs...) = args[1]./norm_func(args[1])
+
+
+"""
+    finddelay2(x, y)
+
+Estimate the delay of x with respect to y by locating the peak of their
+cross-correlation.
+
+The output delay will be positive when x is delayed with respect y, negative if
+advanced, 0 otherwise.
+
+# Example
+```jldoctest
+julia> finddelay2([0, 0, 1, 2, 3], [1, 2, 3])
+2
+
+julia> finddelay2([1, 2, 3], [0, 0, 1, 2, 3])
+-2
+```
+"""
+function finddelay2(x_o::AbstractVector{<: Real}, y_o::AbstractVector{<: Real}; norm_func=x->x)
+    x = norm_func(x_o)
+    y = norm_func(y_o)
+
+    s = xcorr(y, x, padmode=:none)
+    max_corr = maximum(abs, s)
+    max_idxs = findall(x -> abs(x) == max_corr, s)
+
+    center_idx = length(x)
+    # Delay is position of peak cross-correlation relative to center.
+    # If the maximum cross-correlation is not unique, use the position
+    # closest to the center.
+    d_ind = argmin(abs.(center_idx .- max_idxs))
+    d = center_idx - max_idxs[d_ind]
+    return d, max_corr, s
+end
 
 # a = [
 #     begin
