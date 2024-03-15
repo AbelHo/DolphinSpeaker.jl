@@ -29,6 +29,7 @@ add https://github.com/AbelHo/DolphinSpeaker.jl
 ```
 update
 ```
+<div style="page-break-after: always;"></div>
 
 ## 3. Usage
 ### 3.1 Initialize
@@ -63,8 +64,12 @@ DolphinSpeaker.FILE_location_ID = "MMBRC_pool2"
 ```
 DolphinSpeaker.FILE_gain_setting = "0011"
 ```
+<div style="page-break-after: always;"></div>
+
 ##### 4.3.1 Example Audio File with Metadata
 ![example_audio-metadata.jpg](img/example_audio-metadata.jpg)
+
+<div style="page-break-after: always;"></div>
 
 #### 4.4 Process and overlay one set of video and acoustic recording, provided to results directory/folder
 format:
@@ -86,6 +91,7 @@ Example:
 process_folder("/Users/abel/Documents/data/calf/Clicktest/20231129"; outfolder="/Users/abel/Documents/data_res/calf/temp")
 ```
 ![process_folder](img/process_folder.jpg)
+<div style="page-break-after: always;"></div>
 
 ### 5. Advance
 #### 5.1 Display conversion error results clearly
