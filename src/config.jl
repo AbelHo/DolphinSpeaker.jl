@@ -50,6 +50,9 @@ pt_config = [((1,0,0),63), ((1,1,0),58), ((0,1,0),53), ((1,0,1),48), ((1,1,1),33
 DETECTION_TYPES = 1:2
 # pt_config = [((1,1,0),25), ((1,0,0),30), ((0,1,0),20), ((1,0,1),15), ((1,1,1),10)]
 
+#~ audio merge parameters
+MERGE_VID_AU_DYNAMIC_NORM = false
+
 
 calf_timestamp_func(fname) = DateTime(basename(fname)[1:17], DateFormat("yyyymmdd_HH.MM.SS"))
 
