@@ -220,7 +220,7 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
             # Get max volume and normalize
             tempfile = tempname()
             # read(pipeline(`ffmpeg -i $aufname -filter:a volumedetect -f null /dev/null`; stderr = tempfile))
-            read(pipeline(`ffmpeg -i $aufname -af astats=metadata=1 -f null /dev/null`; stderr = tempfile))
+            @ffmpeg_env read(pipeline(`ffmpeg -i $aufname -af astats=metadata=1 -f null /dev/null`; stderr = tempfile))
 
             ss = read(tempfile, String)
             rm(tempfile)
