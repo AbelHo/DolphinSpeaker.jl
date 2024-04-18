@@ -254,16 +254,19 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     # pind_vidframes_tonal = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
 
     #~ repeat drawing between each start and end
-    # # (res_new.train_start[i] ./ fs : 1/get_fps(vidfname) : res_new.train_end[i] ./ fs) |> collect for i in eachindex(res_new.train_start)
-    # # a=[(res_new.train_start[i] ./ fs : 1/get_fps(vidfname) : res_new.train_end[i] ./ fs) |> collect for i in eachindex(res_new.train_start)]
-    # t=Array{Any}(undef, length(res_new.train_start)); val=Array{Any}(undef, length(res_new.train_start));
-    # for i in eachindex(res_new.train_start)
-    #     t[i] = (res_new.train_start[i] ./ fs : 1/get_fps(vidfname) : res_new.train_end[i] ./ fs) |> collect
-    #     val[i] = repeat(p_pixels_tonal[i,:]', length(t[i]))
-    # end
-    
-    # pind_vidframes_tonal = round.(Int, vcat(t...) * get_fps(vidfname)) .+ 1
-    # p_pixels_tonal = vcat(val...)
+    if  PARAM_TONALSPREAD 
+    # (res_new.train_start[i] ./ fs : 1/get_fps(vidfname) : res_new.train_end[i] ./ fs) |> collect for i in eachindex(res_new.train_start)
+    # a=[(res_new.train_start[i] ./ fs : 1/get_fps(vidfname) : res_new.train_end[i] ./ fs) |> collect for i in eachindex(res_new.train_start)]
+        t=Array{Any}(undef, length(res_new.train_start)); val=Array{Any}(undef, length(res_new.train_start));
+        for i in eachindex(res_new.train_start)
+            t[i] = (res_new.train_start[i] ./ fs : 1/get_fps(vidfname) : res_new.train_end[i] ./ fs) |> collect
+            val[i] = repeat(p_pixels_tonal[i,:]', length(t[i]))
+        end
+        
+        
+        pind_vidframes_tonal = round.(Int, vcat(t...) * get_fps(vidfname)) .+ 1
+        p_pixels_tonal = vcat(val...)
+    end
 
     
     pixel_related_tonal = [pind_vidframes_tonal, p_pixels_tonal]
@@ -309,7 +312,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     
     # return [pixel_related_tonal, pixel_related_impulsive, pixel_related_tonal_short]
     # return [pixel_related_tonal, pixel_related_tonal_short, pixel_related_impulsive2, pixel_related_impulsive3, pixel_related_impulsive4]
-    return [pixel_related_impulsive2, pixel_related_tonal, pixel_related_impulsive, pixel_related_impulsive3, pixel_related_impulsive4]
+    return [pixel_related_impulsive2, pixel_related_tonal, pixel_related_impulsive, pixel_related_tonal_short, pixel_related_impulsive3, pixel_related_impulsive4]
 
 end
 
