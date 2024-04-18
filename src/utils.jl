@@ -67,6 +67,27 @@ function process_files(folname; func=(a,b)->x, arg=nothing, no_overwrite_func=no
     end
 end
 
+function replace_suffix(src::AbstractString, suffix, replacement=""; preview=true, kwargs...)
+    if isdir(src) 
+        replace_suffix.(readdir(src; join=true), Ref(suffix), Ref(replacement); preview=preview, kwargs...)
+        return
+    end
+
+    splitted = splitext(src)
+    if endswith(splitted[1], suffix)
+        @info splitted, suffix
+        indices_of_suffix = findlast(suffix, splitted[1])
+        isempty(indices_of_suffix) && return
+        
+        dst = splitted[1][first:[1]-1] * replacement * splitted[2]
+        if preview
+            println(basename(src) *"\t"* basename(dst))
+            return
+        end
+        mv(src, dst; kwargs...)
+    end
+end
+
 # function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2)) # plot_window_inS=[-.1 .1]
 #     # @debug ref_channel
 #     # @debug abs.(data[:,ref_channel])
