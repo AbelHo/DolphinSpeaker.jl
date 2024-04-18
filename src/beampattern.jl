@@ -241,7 +241,7 @@ vid_combine_beam_fname  = splitext(vid_combine_fname)[1]  * "_beam.mp4"
 @ffmpeg_env run(`ffmpeg -i $vid_combine_fname -i $outvidname -filter_complex "[0:v]scale=-1:400[v0];[1:v][v0]hstack" $vid_combine_beam_fname`)
 
 vid_fullcombined_fname = vidoutname * "beam-vid-combined_timeplot.mp4"
-@ffmpeg_env run(`$ffmpeg -i $vid_combine_beam_fname -i $signal_plot_fname -filter_complex "[1:v]scale=900:120[v1];[0:v][v1]vstack" $vid_fullcombined_fname -hide_banner`)
+@ffmpeg_env run(`$ffmpeg -i $vid_combine_beam_fname -i $signal_plot_fname -filter_complex "[1:v]scale=900:120[v1];[0:v][v1]vstack" -metadata comment="$aufname,$v1,$v2" $vid_fullcombined_fname -hide_banner`)
 
 end
 
