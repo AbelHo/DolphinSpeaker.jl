@@ -53,6 +53,12 @@ DETECTION_TYPES = 1:2
 #~ audio merge parameters
 MERGE_VID_AU_DYNAMIC_NORM = false
 
+DEFAULT_FLAGABS_findPings = false
+
+vidtypes = [".mkv",".MP4",".avi",".mp4"]
+autypes = [".wav",".mat",".flac",".mp3"]
+
+PARAM_TONALSPREAD = false
 
 calf_timestamp_func(fname) = DateTime(basename(fname)[1:17], DateFormat("yyyymmdd_HH.MM.SS"))
 

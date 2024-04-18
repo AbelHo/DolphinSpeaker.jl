@@ -39,14 +39,16 @@ function findPings(fname::String; save_fn=res_dir*fname[end-22:end]*"_label.jld2
 end
 
 
-function findPings(data::AbstractArray; ref_channel=1::Int, dist=nothing)
+function findPings(data::AbstractArray; ref_channel=1::Int, dist=nothing, flagabs=DEFAULT_FLAGABS_findPings)
     if isnothing(dist)
         peaks = findmaxima(data[:,ref_channel])
     else 
         @debug size(data)
         @debug ref_channel
         @debug dist
-        peaks = findmaxima(data[:,ref_channel], dist)
+        d = data[:,ref_channel]
+        flagabs && (d = abs.(d))
+        peaks = findmaxima(d, dist)
     end
     return peaks
 end
@@ -212,6 +214,9 @@ function tkeo(data; type=Float64)
 end
 
 using LinearAlgebra, StatsBase, Plots
+"""
+get the histogram of the inter pulse interval of the detected impulses
+"""
 function detect_impulsetrain2(aufname; 
     res_dir=nothing, ref_channel=1, dist_impulsive=80,
     bin_interval=100, time_interval = 0.1,
