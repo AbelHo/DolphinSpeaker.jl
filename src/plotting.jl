@@ -751,3 +751,21 @@ end
 
 plot_norm(args...; norm_func=x->maximum(abs.(x); dims=1), kwargs...) = plot(args[1]./norm_func(args[1]), args[2:end]...; kwargs...)
 plot_norm!(args...; norm_func=x->maximum(abs.(x); dims=1), kwargs...) = plot!(args[1]./norm_func(args[1]), args[2:end]...; kwargs...)
+
+function psd_plot(args...; kwargs...)
+    pow, freq = psd2(args...; kwargs...)
+    plot(freq, pow, xlabel="Frequency (Hz)", ylabel="Power Spectral Density (dB/Hz)")#, xscale=:log10)
+end
+
+function psd_plot_file(aufname; res_fol=missing, ch_list=nothing)
+	data, fs = readAudio(aufname)
+	if isnothing(ch_list) 
+		ch_list = 1:size(data,2)
+	end
+	p = psd_plot(@view(data[:,ch_list]); fs=fs, nfft=1024*4)
+	title!(basename(aufname))
+	if !ismissing(res_fol) 
+		savefig(joinpath(res_fol, (splitext(aufname)[1]|>basename) * ".html") )
+	end
+	return p
+end
