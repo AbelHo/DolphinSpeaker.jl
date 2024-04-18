@@ -409,3 +409,16 @@ end
     
 #     for i in 1:length(d["res_impulsetrain"].pind_good_inS)
 # ]
+
+# using DSP
+using SignalBase
+function psd2(data; fs=1.0, nfft=512, noverlap=div(nfft,2),
+    window=hamming(nfft), xscale=:auto, yrange=50)
+    p=[];pow=Array{Float64}(undef, Int(nfft/2+1), size(data,2));
+    for i = 1:size(data,2)
+        p = welch_pgram(data[:,i], nfft, noverlap; fs=inHz(fs), window=window)
+        pow[:,i] = 10*log10.(p.power)
+    end
+
+    return pow, p.freq
+end
