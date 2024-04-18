@@ -10,14 +10,21 @@ include("synchronization.jl")
 # v1="/Users/abel/Documents/data/concretecho/2023-12-04/cam_uw1/2023-12-04_12.33.03_uw1.mkv"
 # v2="/Users/abel/Documents/data/concretecho/2023-12-04/cam_topview/2023-12-04_12.33.03_topview.mkv"
 # au="/Users/abel/Documents/data/concretecho/2023-12-04/acoustic/2023-12-04_12.33.03.ogg"
-function combine_2v1a(v1,v2,au,output_file)
+function combine_2v1a(v1,v2,au,output_file; sync_type=:new)
     @info(v1,v2,au,output_file)
     isdir(output_file) && (output_file = joinpath(output_file, splitext(basename(au))[1]*"_norm.mp4" ))
     # output_file_norm = splitext(output_file)[1]*"_norm.mp4"
 
-    v1_trigger = findVidAudioBlip(v1; argmax_len=0, plot_window_inS=nothing)
-    v2_trigger = findVidAudioBlip(v2; argmax_len=0, plot_window_inS=nothing)
-    au_trigger = findAudioBlip(au; argmax_len=0, plot_window_inS=nothing)
+    if sync_type == :old
+        v1_trigger = findVidAudioBlip(v1; argmax_len=0, plot_window_inS=nothing)
+        v2_trigger = findVidAudioBlip(v2; argmax_len=0, plot_window_inS=nothing)
+        au_trigger = findAudioBlip(au; argmax_len=0, plot_window_inS=nothing)
+    else
+        interval = [-.2 .5]
+        v1_trigger = findVidAudioBlip(v1; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5)
+        v2_trigger = findVidAudioBlip(v2; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5)
+        au_trigger = findAudioBlip(au; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5)
+    end
     # mini = min(v1_trigger, v2_trigger, au_trigger)
     # @info mini
     v1_trigger_n = v1_trigger - au_trigger
@@ -38,16 +45,13 @@ function combine_2v1a(v1,v2,au,output_file)
     return v1_trigger, v2_trigger, au_trigger
 end
 
-function combine_2v1a_auto(aufolder, outfolder; filetype=".ogg", postfix="")
+function combine_2v1a_auto(aufolder, outfolder; filetype=".ogg")
     mkpath(outfolder)
     dname = dirname(aufolder)
     for fname in readdir(aufolder)|>skiphiddenfiles
         fname_split = splitext(fname)
         thisfiletype = fname_split[2]
         fname_split = fname_split[1]
-
-        isempty(postfix) || (fname_split = fname_split[begin:end-length(postfix)])
-
         if thisfiletype != filetype
             continue
         end
@@ -60,6 +64,22 @@ function combine_2v1a_auto(aufolder, outfolder; filetype=".ogg", postfix="")
         end
     end
 end
+
+function plot_signal2vid(data,fs, outvidname; fps=25, kwargs...)
+    sig = signal(data,fs)
+    t_width = 1/fps
+    min_max = extrema(data)
+    anim = @animate for t in 0:1/fps:(size(data,1) / fs)
+        plot(sig; kwargs...)
+        plot!([t, t+t_width, t+t_width, t], [min_max[1], min_max[1], min_max[2], min_max[2]], fill=false, c=:red, alpha=0.8)
+    end
+
+    outgifname = splitext(outvidname)[1]*".gif"
+    gif(anim,  outgifname; fps = fps)
+    # outvidname = splitext(outgifname)[1]*".mp4"
+    @ffmpeg_env run(`$ffmpeg -i $outgifname -movflags faststart -pix_fmt yuv420p $outvidname -hide_banner -y`)
+end
+
 
 # ffmpeg -i input1.mp4 -i input2.mp4 -i audio.ogg -filter_complex "[0:v][1:v]vstack=inputs=2[top];[2:a]showwaves=s=ow=1920:oh=ih*ow/iw:mode=line:rate=25,format=yuv420p[bottom]" -map "[top]" -map "[bottom]" -y output.mp4
 # ffmpeg -i input1.mp4 -i input2.mp4 -i audio.ogg -filter_complex "[0:v][1:v]vstack=inputs=2[top];[2:a]showwaves=s=1920x480:mode=line:rate=25,format=yuv420p[bottom]" -map "[top]" -map "[bottom]" -y output.mp4
