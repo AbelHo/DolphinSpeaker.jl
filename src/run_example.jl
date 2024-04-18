@@ -26,22 +26,23 @@ using JLD2, FileIO
 
 # folname = "/Volumes/dd/Bahamas_2022/2022.06.25/0001"
 # vidtype=r".mkv|.MP4|.avi|.mp4"; autype=r".wav|.mat|.flac.mp3"
-function extract_vid_au(folname; vidtype=["*.mkv","*.MP4","*.avi","*.mp4"], autype=["*.wav","*.mat","*.flac","*.mp3"])
+function extract_vid_au(folname; vidtype= "*" .* vidtypes, autype= "*" .* autypes)
 
     vids = []
     for vt in vidtype
-        vids = glob(vt, folname);
-        if !isempty(vids)
-            break;
-        end
+        @info vt
+        vids = vcat(vids, glob(vt, folname));
+        # if !isempty(vids)
+        #     break;
+        # end
     end
 
     audios = []
     for vt in autype
-        audios = glob(vt, folname);
-        if !isempty(audios)
-            break;
-        end
+        audios = vcat(audios,glob(vt, folname));
+        # if !isempty(audios)
+        #     break;
+        # end
     end
 
     return vids, audios
@@ -271,7 +272,16 @@ function process_folder(foldername; outfolder=foldername, skipdone=false, kwargs
         end
 
         try
-            process_one_set(joinpath(foldername, fname_split*".mkv"), fname, outfolder; kwargs...)
+            vidfname = fname_split*vidtypes[1]
+            if !isfile(vidfname)
+                for vt in vidtypes[2:end]
+                    vidfname = fname_split*vt
+                    if isfile(vidfname)
+                        break
+                    end
+                end
+            end
+            process_one_set(joinpath(foldername, vidfname), fname, outfolder; kwargs...)
         catch err
             @error(err)
             @error "Failed to process: "*fname exception=(err, catch_backtrace())
