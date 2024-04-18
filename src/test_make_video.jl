@@ -44,7 +44,10 @@ function display_corners!(img, corners_list; dot_size=25, colors=[1,0,0])
     for j in 1:len_cl
         corner = corners_list[j]
         for i in 1:size(corner,2)
-            draw!(img, Ellipse(CirclePointRadius(Int(round(corner[1,i])), Int(round(corner[2,i])), dot_size)), typeof(img[1])(colors...))
+            # @info([corner[1,i], corner[2,i]])
+            # @info(dot_size)
+            # @info(typeof(img[1])(colors...))
+            draw!(img, Ellipse(CirclePointRadius(Int(round(corner[1,i])), Int(round(corner[2,i])), dot_size)), typeof(img[1])(colors...); opacity=0.4)
             #@debug [corner[1,i], corner[2,i]]
         end
     end
@@ -200,6 +203,8 @@ function overlay_points!(img, counter, extra_arg)
             @error "DISPLAY DETECTION FAILED!"
             @error detections_in_frame_ind
             @error [p_pixels[detections_in_frame_ind,:]]'
+            # @error (err)
+            @error exception=(err, catch_backtrace())
         end
     end
     return img
