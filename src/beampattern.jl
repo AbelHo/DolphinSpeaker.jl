@@ -185,63 +185,63 @@ function stack_audio_videos(aufname, v1, v2, res_dir;
     pos_y = repeat( range(rx_dist*1.5, -rx_dist*1.5, length=4), inner=4),
     kwargs...)
 
-isdir(res_dir) || mkpath(res_dir)
+    isdir(res_dir) || mkpath(res_dir)
 
-data, fs = readAudio(aufname)
-res = detect_impulseNtonal((aufname,data,fs,nothing), res_dir; return_datafilt=true)
-# res_impulse = res.res_impulse
-# data_filt = filter_simple(data, [1000 Inf]; fs=fs)
+    data, fs = readAudio(aufname)
+    res = detect_impulseNtonal((aufname,data,fs,nothing), res_dir; return_datafilt=true)
+    # res_impulse = res.res_impulse
+    # data_filt = filter_simple(data, [1000 Inf]; fs=fs)
 
-fps = get_fps(v1) #25
-a = funcOnWindows(signal(res.res_impulse.data_filt,fs), map(x-> x.+ (-300:300), res.res_impulsetrain.pind_good); func=x->( mapslices(extrema,x;dims=1) ) )
-a2 = map( x-> 20*log10(x[2]-x[1]), a)
+    fps = get_fps(v1) #25
+    a = funcOnWindows(signal(res.res_impulse.data_filt,fs), map(x-> x.+ (-300:300), res.res_impulsetrain.pind_good); func=x->( mapslices(extrema,x;dims=1) ) )
+    a2 = map( x-> 20*log10(x[2]-x[1]), a)
 
 
-println("Creating video frame for each click..." )
-progress = Progress(size(a, 1), 1);
-anim = @animate for t in 0:1/fps:(size(data,1) / fs)
-    clicks_in_timeframe = findall( x-> t <= x <= t+1/fps, res.res_impulsetrain.pind_good_inS)
-    if isempty(clicks_in_timeframe) 
-        interp_2D(x,y,zeros(4,4));
-        title!(" ") 
-        next!(progress)
-    else
-        i = clicks_in_timeframe[ maximum( a2[clicks_in_timeframe, :]; dims=2) |> argmax ]
+    println("Creating video frame for each click..." )
+    progress = Progress(size(a, 1), 1);
+    anim = @animate for t in 0:1/fps:(size(data,1) / fs)
+        clicks_in_timeframe = findall( x-> t <= x <= t+1/fps, res.res_impulsetrain.pind_good_inS)
+        if isempty(clicks_in_timeframe) 
+            interp_2D(x,y,zeros(4,4));
+            title!(" ") 
+            next!(progress)
+        else
+            i = clicks_in_timeframe[ maximum( a2[clicks_in_timeframe, :]; dims=2) |> argmax ]
 
-        z = a2[i,:] .|> Float64
-        sorted1 = sortperm(pos_x)
-        z2 = z[sorted1]
-        pos_y2 = pos_y[sorted1]
-        pos_x2 = pos_x[sorted1]
+            z = a2[i,:] .|> Float64
+            sorted1 = sortperm(pos_x)
+            z2 = z[sorted1]
+            pos_y2 = pos_y[sorted1]
+            pos_x2 = pos_x[sorted1]
 
-        sorted2 = sortperm(pos_y2)
-        pos_x3 = pos_x2[sorted2]
-        pos_y3 = pos_y2[sorted2]
-        z3 = z2[sorted2]
+            sorted2 = sortperm(pos_y2)
+            pos_x3 = pos_x2[sorted2]
+            pos_y3 = pos_y2[sorted2]
+            z3 = z2[sorted2]
 
-        interp_2D(x,y,reshape(z3,4,4));
-        title!("$i") #|> display
-        next!(progress)
+            interp_2D(x,y,reshape(z3,4,4));
+            title!("$i") #|> display
+            next!(progress)
+        end
     end
-end
 
-outgifname = joinpath(res_dir, splitext(basename(aufname))[1] *"_beam-time.gif")
-gif(anim,  outgifname; fps = fps)
-outvidname = splitext(outgifname)[1]*".mp4"
-@ffmpeg_env run(`$ffmpeg -i $outgifname -movflags faststart -pix_fmt yuv420p $outvidname -hide_banner -y`)
+    outgifname = joinpath(res_dir, splitext(basename(aufname))[1] *"_beam-time.gif")
+    gif(anim,  outgifname; fps = fps)
+    outvidname = splitext(outgifname)[1]*".mp4"
+    @ffmpeg_env run(`$ffmpeg -i $outgifname -movflags faststart -pix_fmt yuv420p $outvidname -hide_banner -y`)
 
-signal_plot_fname = joinpath(res_dir, splitext(basename(aufname))[1] *"_time-ch1.mp4")
-plot_signal2vid(data[:,1],fs,signal_plot_fname; fps=fps, yaxis=false, size=(900,150))
+    signal_plot_fname = joinpath(res_dir, splitext(basename(aufname))[1] *"_time-ch1.mp4")
+    plot_signal2vid(data[:,1],fs,signal_plot_fname; fps=fps, yaxis=false, size=(900,150))
 
-vidoutname = joinpath(res_dir, v1[1:findlast('_', v1)] |> basename)
-vid_combine_fname =  vidoutname * "vid-combined.mp4"
-combine_2v1a(v1,v2,aufname, vid_combine_fname)
+    vidoutname = joinpath(res_dir, v1[1:findlast('_', v1)] |> basename)
+    vid_combine_fname =  vidoutname * "vid-combined.mp4"
+    combine_2v1a(v1,v2,aufname, vid_combine_fname)
 
-vid_combine_beam_fname  = splitext(vid_combine_fname)[1]  * "_beam.mp4"
-@ffmpeg_env run(`ffmpeg -i $vid_combine_fname -i $outvidname -filter_complex "[0:v]scale=-1:400[v0];[1:v][v0]hstack" $vid_combine_beam_fname`)
+    vid_combine_beam_fname  = splitext(vid_combine_fname)[1]  * "_beam.mp4"
+    @ffmpeg_env run(`ffmpeg -i $vid_combine_fname -i $outvidname -filter_complex "[0:v]scale=-1:400[v0];[1:v][v0]hstack" $vid_combine_beam_fname`)
 
-vid_fullcombined_fname = vidoutname * "beam-vid-combined_timeplot.mp4"
-@ffmpeg_env run(`$ffmpeg -i $vid_combine_beam_fname -i $signal_plot_fname -filter_complex "[1:v]scale=900:120[v1];[0:v][v1]vstack" -metadata comment="$aufname,$v1,$v2" $vid_fullcombined_fname -hide_banner`)
+    vid_fullcombined_fname = vidoutname * "beam-vid-combined_timeplot.mp4"
+    @ffmpeg_env run(`$ffmpeg -i $vid_combine_beam_fname -i $signal_plot_fname -filter_complex "[1:v]scale=900:120[v1];[0:v][v1]vstack" -metadata comment="$aufname,$v1,$v2" $vid_fullcombined_fname -hide_banner`)
 
 end
 
