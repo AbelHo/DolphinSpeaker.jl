@@ -60,6 +60,30 @@ function get_tdoa_raw_MaxEnergyRefChannel(data, peaks; window = default_window ,
 	return tdoa
 end
 
+function get_tdoa_raw_MaxEnergyRefChannel_resample(data, peaks; window = default_window , ref_channel=ref_channel, resample_ratio=10)
+	tdoa = Array{Int}(undef,length(peaks),size(data,2))
+	for i in eachindex(peaks)
+		win = window.+peaks[i]
+		if win[1]<1
+			win = 1:win[end]
+		elseif win[end]>size(data,1)
+			win = win[1]:size(data,1)
+		end
+		
+		ref_channel = energy(data[win,:]) |> argmax
+		data_new = resample(data[win,:], resample_ratio; dims=1)
+		for ch in 1:size(data,2)
+			@debug (i,ch)
+			if ch==ref_channel
+				tdoa[i,ch]=0
+				continue
+			end
+			tdoa[i,ch] = finddelay(data_new[:, ch ], data_new[:, ref_channel ])
+		end
+	end
+	return tdoa ./ resample_ratio
+end
+
 function get_tdoa_raw_MaxPeakRefChannel(data, peaks; window = default_window , ref_channel=ref_channel, ref_window=-30:33)
 	tdoa = Array{Int}(undef,length(peaks),size(data,2))
 	ref_signals = Array{eltype(data)}(undef,64, length(peaks))
@@ -361,6 +385,27 @@ function compensate_imu(angs, datetimes, df)
 	ang_compensated = map( x -> x = x > (-2*pi +pi/4) ? x : x+2pi, ang .- deg2rad.(ahrs[indx,:yaw]));
 	
 end
+
+function steering2(rxpos::AbstractMatrix, c, θ::AbstractMatrix)
+	nsensors = size(rxpos, 2)
+	ndir = size(θ, 1)
+	pos0 = sum(rxpos; dims=2) / nsensors
+	rxpos = rxpos .- pos0
+	size(rxpos, 1) == 1 && (rxpos = vcat(rxpos, zeros(2, nsensors)))
+	size(rxpos, 1) == 2 && (rxpos = vcat(rxpos, zeros(1, nsensors)))
+	γ = θ[:,1]
+	ϕ = θ[:,2]
+	sd = zeros(nsensors, ndir)
+	for k ∈ 1:ndir
+	  for j ∈ 1:nsensors
+		sd[j,k] = -rxpos[:,j]' * [cos(ϕ[k])*sin(γ[k]), sin(ϕ[k]), -cos(ϕ[k])*cos(γ[k])] / c
+	  end
+	end
+	sd
+  end
+  
+  steering2(rxpos::AbstractVector, c, θ) = steering(collect(rxpos'), c, θ)
+  
 
 function beamform_output(s, sd; fs=framerate(s), output_func=p2p_db)
 	ndir = size(sd, 2)
