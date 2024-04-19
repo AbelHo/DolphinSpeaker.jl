@@ -17,6 +17,6 @@ module DolphinSpeaker
     export extrema_in_file
 
     include("beampattern.jl")
-    export stack_audio_videos
+    export stack_audio_videos, run_func_fileauto
 
 end
