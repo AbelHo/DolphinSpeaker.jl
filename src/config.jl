@@ -130,6 +130,8 @@ function set_device__rwsnus()
     global FILE_device_ID = "rwsnus_array_1.0.0"
     global FILE_location_ID = "rws"
     global FILE_gain_setting = "0000"
+
+    global rx_vect = randn(3,16)
 end
 
 function set_device__LS1()
@@ -151,13 +153,13 @@ function set_device__LS1()
 end
 
 function set_device__calf_hk2_smallarray()
-    MERGE_VID_AU_DYNAMIC_NORM = true
-    impulsive_autothreshold_median_ratio = 4
-    DETECTION_TYPES = 1:2
-    PARAM_TONALSPREAD = true
+    global MERGE_VID_AU_DYNAMIC_NORM = true
+    global impulsive_autothreshold_median_ratio = 4
+    global DETECTION_TYPES = 1:2
+    global PARAM_TONALSPREAD = true
 
-    rx = 0.07/sqrt(3) .* exp.(im.* deg2rad.([150 -90 30]) )
-    rx_vect = [real(rx); imag(rx); zeros(1,3)]
+    global rx = 0.07/sqrt(3) .* exp.(im.* deg2rad.([150 -90 30]) )
+    global rx_vect = [real(rx); imag(rx); zeros(1,3)]
 end
 
 #~ default
