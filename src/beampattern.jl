@@ -185,6 +185,8 @@ function stack_audio_videos(aufname, v1, v2, res_dir;
     pos_y = repeat( range(rx_dist*1.5, -rx_dist*1.5, length=4), inner=4),
     kwargs...)
 
+    @info (aufname, v1, v2, res_dir)
+
     isdir(res_dir) || mkpath(res_dir)
 
     data, fs = readAudio(aufname)
