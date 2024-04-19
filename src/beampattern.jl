@@ -91,7 +91,8 @@ function plot_beams(aufname_data_fs, res_dir, window=-300:300; rx_vect2=rx_vect)
     outgifname = joinpath(res_dir, splitext(basename(aufname))[1] *"_beam.gif")
     gif(anim,  outgifname; fps = 10)
     outvidname = splitext(outgifname)[1]*".mp4"
-    @ffmpeg_env run(`$ffmpeg -i $outgifname -movflags faststart -pix_fmt yuv420p $outvidname -hide_banner -y`)
+    @ffmpeg_env run(`$ffmpeg -i $outgifname -pix_fmt yuv420p $outvidname -hide_banner -y`)
+    # @ffmpeg_env run(`$ffmpeg -i $outgifname -movflags faststart -pix_fmt yuv420p $outvidname -hide_banner -y`)
 
 end
 
