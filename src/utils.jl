@@ -88,6 +88,39 @@ function replace_suffix(src::AbstractString, suffix, replacement=""; preview=tru
     end
 end
 
+function run_func_fileauto(dname, outfolder,
+    sensor_names = ["acoustic", "topview", "uw1"], sensor_filetypes = [".ogg", ".mkv", ".mkv"];
+    func=x->x, prefix_filter="", kwargs...)
+
+    mkpath(outfolder)
+    # dname = dirname(firstfolder)
+    for fname in readdir(joinpath(dname, sensor_names[1]))|>skiphiddenfiles |> x->filter(startswith(prefix_filter), x) #FIXME will fail in year 2100 onwards
+        fname_split = splitext(fname)[1]
+        fname_split = fname_split[1:findlast('_', fname_split)-1]
+
+        # thisfiletype = fname_split[2]
+        # fname_split = fname_split[1]
+        # if thisfiletype != filetype
+        #     continue
+        # end
+        @info fname
+
+        try
+            # @info joinpath.(Ref(dname),sensor_names,fname_split .* "_" .* sensor_names .* sensor_filetypes)
+            func(joinpath.(Ref(dname),sensor_names,fname_split .* "_" .* sensor_names .* sensor_filetypes)..., outfolder; kwargs...)
+            # func(joinpath(dname,"cam_topview",fname_split*"_topview.mkv"), joinpath(dname,"cam_uw1",fname_split*"_uw1.mkv"), joinpath(aufolder,fname), joinpath(outfolder,fname_split*"_norm.mp4"))
+        catch err
+            @error "ERROR run_func_fileauto"
+            # func(joinpath(aufolder,fname_split*"_topview.mkv"), joinpath(aufolder,fname_split*"_uw1.mkv"), joinpath(aufolder,fname), joinpath(outfolder,fname_split*"_norm.mp4"))
+        end
+    end
+end
+
+"""
+    print out the argument of a this function
+"""
+print_args(args...) = println(args)
+
 # function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2)) # plot_window_inS=[-.1 .1]
 #     # @debug ref_channel
 #     # @debug abs.(data[:,ref_channel])
