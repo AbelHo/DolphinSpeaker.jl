@@ -111,6 +111,7 @@ function run_func_fileauto(dname, outfolder,
             # func(joinpath(dname,"cam_topview",fname_split*"_topview.mkv"), joinpath(dname,"cam_uw1",fname_split*"_uw1.mkv"), joinpath(aufolder,fname), joinpath(outfolder,fname_split*"_norm.mp4"))
         catch err
             @error "ERROR run_func_fileauto"
+            @error exception=(err, catch_backtrace())
             # func(joinpath(aufolder,fname_split*"_topview.mkv"), joinpath(aufolder,fname_split*"_uw1.mkv"), joinpath(aufolder,fname), joinpath(outfolder,fname_split*"_norm.mp4"))
         end
     end
