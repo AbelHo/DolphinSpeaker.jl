@@ -150,6 +150,16 @@ function set_device__LS1()
     # global FILE_gain_setting = "0000"
 end
 
+function set_device__calf_hk2_smallarray()
+    MERGE_VID_AU_DYNAMIC_NORM = true
+    impulsive_autothreshold_median_ratio = 4
+    DETECTION_TYPES = 1:2
+    PARAM_TONALSPREAD = true
+
+    rx = 0.07/sqrt(3) .* exp.(im.* deg2rad.([150 -90 30]) )
+    rx_vect = [real(rx); imag(rx); zeros(1,3)]
+end
+
 #~ default
     impulsive_band_pass = [1000, Inf] #fs/2*.98]
     threshold_impulsive = nothing #.1# .003#calf_hk
