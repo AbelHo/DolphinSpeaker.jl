@@ -231,7 +231,7 @@ function stack_audio_videos(aufname, v1, v2, res_dir;
     outgifname = joinpath(res_dir, splitext(basename(aufname))[1] *"_beam-time.gif")
     gif(anim,  outgifname; fps = fps)
     outvidname = splitext(outgifname)[1]*".mp4"
-    @ffmpeg_env run(`$ffmpeg -i $outgifname -movflags faststart -pix_fmt yuv420p $outvidname -hide_banner -y`)
+    @ffmpeg_env run(`$ffmpeg -i $outgifname -pix_fmt yuv420p $outvidname -hide_banner -y`)
 
     signal_plot_fname = joinpath(res_dir, splitext(basename(aufname))[1] *"_time-ch1.mp4")
     plot_signal2vid(data[:,1],fs,signal_plot_fname; fps=fps, yaxis=false, size=(900,150))
