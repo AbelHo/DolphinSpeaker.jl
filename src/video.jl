@@ -77,7 +77,7 @@ function plot_signal2vid(data,fs, outvidname; fps=25, kwargs...)
     outgifname = splitext(outvidname)[1]*".gif"
     gif(anim,  outgifname; fps = fps)
     # outvidname = splitext(outgifname)[1]*".mp4"
-    @ffmpeg_env run(`$ffmpeg -i $outgifname -movflags faststart -pix_fmt yuv420p $outvidname -hide_banner -y`)
+    @ffmpeg_env run(`$ffmpeg -i $outgifname -pix_fmt yuv420p $outvidname -hide_banner -y`)
 end
 
 
