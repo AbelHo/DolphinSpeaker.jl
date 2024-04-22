@@ -2,7 +2,7 @@ module DolphinSpeaker
     version = "2024-03-15T20:00"
     @info "version v$version =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-"
     include("utils.jl")
-    export showall
+    export showall, skiphiddenfiles
     
     include("audio.jl")
     export mat2flac, mat2wav, mat2flac_check, bin2flac, bin2flac_check
