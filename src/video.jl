@@ -21,9 +21,9 @@ function combine_2v1a(v1,v2,au,output_file; sync_type=:new)
         au_trigger = findAudioBlip(au; argmax_len=0, plot_window_inS=nothing)
     else
         interval = [-.2 .5]
-        v1_trigger = findVidAudioBlip(v1; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5)
-        v2_trigger = findVidAudioBlip(v2; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5)
-        au_trigger = findAudioBlip(au; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5)
+        v1_trigger = findVidAudioBlip(v1; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5, flag_savefig=dirname(output_file))
+        v2_trigger = findVidAudioBlip(v2; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5, flag_savefig=dirname(output_file))
+        au_trigger = findAudioBlip(au; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5, flag_savefig=dirname(output_file))
     end
     # mini = min(v1_trigger, v2_trigger, au_trigger)
     # @info mini
