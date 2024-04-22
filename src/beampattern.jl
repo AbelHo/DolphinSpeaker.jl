@@ -184,9 +184,17 @@ function stack_audio_videos(aufname, v1, v2, res_dir;
 
     pos_x = repeat( range(-rx_dist*1.5, rx_dist*1.5, length=4), 4),
     pos_y = repeat( range(rx_dist*1.5, -rx_dist*1.5, length=4), inner=4),
+    skipdone = false,
     kwargs...)
 
     @info (aufname, v1, v2, res_dir)
+
+    vidoutname = joinpath(res_dir, v1[1:findlast('_', v1)] |> basename)
+    vid_combine_fname =  vidoutname * "vid-combined.mp4"
+    vid_combine_beam_fname  = splitext(vid_combine_fname)[1]  * "_beam.mp4"
+    vid_fullcombined_fname = vidoutname * "beam-vid-combined_timeplot.mp4"
+
+    skipdone && isfile(vid_fullcombined_fname) && (@info "skip......"; return nothing)
 
     isdir(res_dir) || mkpath(res_dir)
 
@@ -236,14 +244,14 @@ function stack_audio_videos(aufname, v1, v2, res_dir;
     signal_plot_fname = joinpath(res_dir, splitext(basename(aufname))[1] *"_time-ch1.mp4")
     plot_signal2vid(data[:,1],fs,signal_plot_fname; fps=fps, yaxis=false, size=(900,150))
 
-    vidoutname = joinpath(res_dir, v1[1:findlast('_', v1)] |> basename)
-    vid_combine_fname =  vidoutname * "vid-combined.mp4"
+    # vidoutname = joinpath(res_dir, v1[1:findlast('_', v1)] |> basename)
+    # vid_combine_fname =  vidoutname * "vid-combined.mp4"
     combine_2v1a(v1,v2,aufname, vid_combine_fname)
 
-    vid_combine_beam_fname  = splitext(vid_combine_fname)[1]  * "_beam.mp4"
+    # vid_combine_beam_fname  = splitext(vid_combine_fname)[1]  * "_beam.mp4"
     @ffmpeg_env run(`ffmpeg -i $vid_combine_fname -i $outvidname -filter_complex "[0:v]scale=-1:400[v0];[1:v][v0]hstack" $vid_combine_beam_fname`)
 
-    vid_fullcombined_fname = vidoutname * "beam-vid-combined_timeplot.mp4"
+    # vid_fullcombined_fname = vidoutname * "beam-vid-combined_timeplot.mp4"
     @ffmpeg_env run(`$ffmpeg -i $vid_combine_beam_fname -i $signal_plot_fname -filter_complex "[1:v]scale=900:120[v1];[0:v][v1]vstack" -metadata comment="$aufname,$v1,$v2" $vid_fullcombined_fname -hide_banner`)
 
 end
