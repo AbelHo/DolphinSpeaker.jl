@@ -22,8 +22,7 @@ function savejld(savefname; kwargs...)
     #rm(joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".jld2"))
     else
         jldsave(joinpath("", savefname|>basename); kwargs...)
-        mv(joinpath("", savefname|>basename),
-            savefname)
+        mv(joinpath("", savefname|>basename), savefname; force=true)
     end
     @info "Saved to: " * savefname
 end
