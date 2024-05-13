@@ -40,7 +40,7 @@ function findVidAudioBlip(fname; threshold_percentMAX=0.60, plot_window_inS=[-.1
         @debug (basename(fname), extrema(data))
 
         trigger = findTrigger(data, fs; threshold_percentMAX=threshold_percentMAX, plot_window_inS=plot_window_inS, kwargs...)
-        flag_savefig!=false && savefig(joinpath(flag_savefig,basename(fname)*".png"))
+        flag_savefig!=false && savefig(joinpath(flag_savefig,basename(fname)*"_sync.png"))
         return (trigger-1)/fs
         # isnothing(plot_window_inS) && return (trigger-1)/fs
         # @debug trigger
@@ -67,7 +67,7 @@ function findAudioBlip(fname; threshold_percentMAX=0.81, plot_window_inS=[-.1 .1
         # end
         # @debug "in"
         trigger = findTrigger(data, fs; threshold_percentMAX=threshold_percentMAX, plot_window_inS=plot_window_inS, kwargs...)
-        flag_savefig!=false && savefig(joinpath(flag_savefig,basename(fname)*".png"))
+        flag_savefig!=false && savefig(joinpath(flag_savefig,basename(fname)*"_sync.png"))
         return (trigger-1)/fs
         # isnothing(plot_window_inS) && return (trigger-1)/fs
         # plot!(; title=basename(fname))
