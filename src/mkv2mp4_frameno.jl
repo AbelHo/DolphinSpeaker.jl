@@ -1,7 +1,8 @@
 using FilePaths, Glob
 # @info (ARGS[1], ARGS[2])
 # "julia /home/sousa/GitHub/DolphinSpeaker.jl/src/mkv2mp4_frameno.jl"
-# out = "/run/user/1000/gvfs/smb-share:server=10.246.128.21,share=data/Concretecho/data/temp/try8 /run/user/1000/gvfs/smb-share:server=10.246.128.21,share=results/Concretecho/vid3"
+in_dir = "/run/user/1000/gvfs/smb-share:server=10.246.128.21,share=data/Concretecho/data/temp/try8"
+out_dir = "/run/user/1000/gvfs/smb-share:server=10.246.128.21,share=results/Concretecho/vid3"
 
 function convert_videos_old(src_dir::String, dst_dir::String)
     mkv_files = glob("*.mkv", src_dir)
