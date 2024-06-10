@@ -1,5 +1,5 @@
 using FilePaths, Glob
-@info (ARGS[1], ARGS[2])
+# @info (ARGS[1], ARGS[2])
 # "julia /home/sousa/GitHub/DolphinSpeaker.jl/src/mkv2mp4_frameno.jl"
 # out = "/run/user/1000/gvfs/smb-share:server=10.246.128.21,share=data/Concretecho/data/temp/try8 /run/user/1000/gvfs/smb-share:server=10.246.128.21,share=results/Concretecho/vid3"
 
@@ -26,4 +26,4 @@ function convert_videos(src_dir::String, dst_dir::String)
     end
 end
 
-convert_videos(ARGS[1], ARGS[2])
+# convert_videos(ARGS[1], ARGS[2])
