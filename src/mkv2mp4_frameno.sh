@@ -9,5 +9,6 @@ do
     rel_path=${file#"$src_dir"}
     dst_file="$dst_dir/${rel_path%.mkv}.mp4"
     mkdir -p "$(dirname "$dst_file")"
-    ffmpeg -i "$file" -filter_complex "drawtext=text='%{n}': x=10: y=35: fontsize=48: fontcolor=red" "$dst_file"
+    echo ffmpeg -i "$file" -filter_complex "drawtext=text='%{n}': x=10: y=35: fontsize=48: fontcolor=red" "$dst_file"
+    ffmpeg -i "$file" -filter_complex "drawtext=text='%{n}': x=10: y=35: fontsize=48: fontcolor=red" "$dst_file" -loglevel error
 done
