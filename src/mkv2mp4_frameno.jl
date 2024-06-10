@@ -21,6 +21,7 @@ function convert_videos(src_dir::String, dst_dir::String)
         rel_path = file[length(src_dir)+1:end]
         dst_file = joinpath(dst_dir, replace(rel_path, ".mkv" => ".mp4"))
         mkpath(dirname(dst_file))
+        @info (file, dst_file)
         run(`ffmpeg -i $file -filter_complex "drawtext=text='%{n}': x=10: y=35: fontsize=48: fontcolor=red" $dst_file -loglevel error`)
     end
 end
