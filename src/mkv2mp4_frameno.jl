@@ -4,6 +4,14 @@ using FilePaths, Glob
 in_dir = "/run/user/1000/gvfs/smb-share:server=10.246.128.21,share=data/Concretecho/data/temp/try8"
 out_dir = "/run/user/1000/gvfs/smb-share:server=10.246.128.21,share=results/Concretecho/vid3"
 
+function convert_vid(src::String, dst::String)
+    if endswith(src, ".mkv")
+        dst = joinpath(dst, replace(basename(src), ".mkv" => ".mp4"))
+        @info (src, dst)
+        run(`ffmpeg -i $src -filter_complex "drawtext=text='%{n}': x=10: y=35: fontsize=48: fontcolor=red" $dst -loglevel error`)
+    end
+end
+
 function convert_videos_old(src_dir::String, dst_dir::String)
     mkv_files = glob("*.mkv", src_dir)
 
