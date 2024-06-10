@@ -1,4 +1,5 @@
 using FilePaths, Glob
+@info (ARGS[1], ARGS[2])
 
 function convert_videos(src_dir::String, dst_dir::String)
     mkv_files = glob("*.mkv", src_dir)
