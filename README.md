@@ -21,6 +21,12 @@ https://julialang.org/downloads/platform
 ```
 add https://github.com/AbelHo/DolphinSpeaker.jl
 ```
+
+3. to include transparency for signal strength display:
+```
+add https://github.com/norpadon/ImageDraw.jl#norpadon/opacity
+```  
+
 4. to go back to normal mode, press "backspace"
 
 ## 2. Update software
