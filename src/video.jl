@@ -10,7 +10,7 @@ include("synchronization.jl")
 # v1="/Users/abel/Documents/data/concretecho/2023-12-04/cam_uw1/2023-12-04_12.33.03_uw1.mkv"
 # v2="/Users/abel/Documents/data/concretecho/2023-12-04/cam_topview/2023-12-04_12.33.03_topview.mkv"
 # au="/Users/abel/Documents/data/concretecho/2023-12-04/acoustic/2023-12-04_12.33.03.ogg"
-function combine_2v1a(v1,v2,au,output_file; sync_type=:new)
+function combine_2v1a(v1,v2,au,output_file; sync_type=:new, interval = [-.2 .5])
     @info(v1,v2,au,output_file)
     isdir(output_file) && (output_file = joinpath(output_file, splitext(basename(au))[1]*"_norm.mp4" ))
     # output_file_norm = splitext(output_file)[1]*"_norm.mp4"
@@ -20,7 +20,6 @@ function combine_2v1a(v1,v2,au,output_file; sync_type=:new)
         v2_trigger = findVidAudioBlip(v2; argmax_len=0, plot_window_inS=nothing)
         au_trigger = findAudioBlip(au; argmax_len=0, plot_window_inS=nothing)
     else
-        interval = [-.2 .5]
         v1_trigger = findVidAudioBlip(v1; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5, flag_savefig=dirname(output_file))
         v2_trigger = findVidAudioBlip(v2; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5, flag_savefig=dirname(output_file))
         au_trigger = findAudioBlip(au; argmax_len=0, plot_window_inS=interval, threshold_percentMAX=0.5, flag_savefig=dirname(output_file))
