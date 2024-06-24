@@ -13,7 +13,14 @@ function skiphiddenfiles(list)
     filter(!startswith('.') ∘  basename, list)
 end
 
-function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2), band_pass=nothing, argmax_len=0.5, flag_trigger_maxi_ratio=false) # plot_window_inS=[-.1 .1]
+function fft_diff_ratio(data,data_ref;fs=1.0, nfft=512)
+    amp, freqsss = psd2(data; fs=fs, nfft=nfft)
+    amp_ref, freqsss_ref = psd2(data_ref; fs=fs, nfft=nfft)
+
+    sum(abs,(amp .- amp_ref)) / length(amp)
+end
+
+function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2), band_pass=nothing, argmax_len=0.5, flag_trigger_maxi_ratio=false, flag_fft_check=false, trigger_window=[0, 0.1]) # plot_window_inS=[-.1 .1]
     # @debug ref_channel
     # @debug abs.(data[:,ref_channel])
     !isnothing(band_pass) && (data = filter_simple(data, band_pass; fs=fs))
@@ -33,6 +40,8 @@ function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothin
     # xlims!(trigger+fs*plot_window_inS[1], trigger+fs*plot_window_inS[2]) |> display
     # @debug "after xlims"
     flag_trigger_maxi_ratio && (return trigger, data[trigger,ref_channel]/maxi)
+    # @info round(Int,trigger+trigger_window[1]*fs) : round(Int,trigger+trigger_window[2]*fs)
+    flag_fft_check && (return trigger, fft_diff_ratio(data[round(Int,trigger+trigger_window[1]*fs) : round(Int,trigger+trigger_window[2]*fs)], data))
     return trigger
 end
 
@@ -72,6 +81,10 @@ function findAudioBlip(fname; threshold_percentMAX=0.81, plot_window_inS=[-.1 .1
         # @debug "in"
         trigger = findTrigger(data, fs; threshold_percentMAX=threshold_percentMAX, plot_window_inS=plot_window_inS, kwargs...)
         flag_savefig!=false && savefig(joinpath(flag_savefig,basename(fname)*"_sync.png"))
+
+        length(trigger)>1 && (extra=trigger[2]; trigger=trigger[1])
+        @isdefined(extra) && return (trigger-1)/fs, extra
+
         return (trigger-1)/fs
         # isnothing(plot_window_inS) && return (trigger-1)/fs
         # plot!(; title=basename(fname))
