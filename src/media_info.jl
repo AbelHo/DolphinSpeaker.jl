@@ -231,7 +231,7 @@ function get_duration_smart(fname; vidtype=r".mkv|.MP4|.avi|.mp4", autype=r".wav
 end
 
 function mediatype(filename; vidtypes=vidtypes, autypes=autypes)
-	filetype = splitext(fn)[2]
+	filetype = splitext(filename)[2]
 	if ((filetype .== vidtypes) |> sum ) == 1
 		return "video"
 	elseif ((filetype .== autypes) |> sum ) == 1
