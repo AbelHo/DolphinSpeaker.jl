@@ -121,6 +121,27 @@ end
 
 find_vidVSau_sync(vidfname, aufname; band_pass=[2900 3100]) = findVidAudioBlip(vidfname; plot_window_inS=nothing, band_pass=band_pass) - findAudioBlip(aufname; plot_window_inS=nothing, band_pass=band_pass)
 
+function findBlip_any(filename; kwargs...)
+    if mediatype(filename) == "video"
+        return findVidAudioBlip(filename; kwargs...)
+    elseif mediatype(filename) == "audio"
+        return findAudioBlip(filename; kwargs...)
+    end
+    return missing
+end
+
+# process_files(in_dir; func=(a,b)->multisync(a;outfile=joinpath(res_dir,"sync.csv"), flag_savefig=res_dir), arg=res_dir)
+
+function multisync(filename; outfile=nothing, argmax_len=0, plot_window_inS=[-.2 .5], threshold_percentMAX=0.5, flag_savefig=false, kwargs...)
+    time_sync = findBlip_any(filename; argmax_len=argmax_len, plot_window_inS=plot_window_inS, threshold_percentMAX=threshold_percentMAX, flag_savefig=flag_savefig, kwargs...) 
+    if !ismissing(time_sync) && !isnothing(outfile)
+        open(outfile, "a") do f
+            write(f, "$(basename(filename)),$time_sync\n")
+        end
+    end
+    return time_sync
+end
+
 
 @info "end"
 

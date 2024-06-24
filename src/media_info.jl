@@ -230,4 +230,15 @@ function get_duration_smart(fname; vidtype=r".mkv|.MP4|.avi|.mp4", autype=r".wav
 	occursin(autype, fname)  && return get_duration(fname)
 end
 
+function mediatype(filename; vidtypes=vidtypes, autypes=autypes)
+	filetype = splitext(fn)[2]
+	if ((filetype .== vidtypes) |> sum ) == 1
+		return "video"
+	elseif ((filetype .== autypes) |> sum ) == 1
+		return "audio"
+	else
+		return "other"
+	end
+end
+
 @info "LOADED!\tmedia_info"

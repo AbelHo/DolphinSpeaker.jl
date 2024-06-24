@@ -56,7 +56,7 @@ MERGE_VID_AU_DYNAMIC_NORM = false
 DEFAULT_FLAGABS_findPings = false
 
 vidtypes = [".mkv",".MP4",".avi",".mp4"]
-autypes = [".wav",".mat",".flac",".mp3"]
+autypes = [".wav",".ogg",".mat",".flac",".mp3"]
 
 PARAM_TONALSPREAD = false
 
