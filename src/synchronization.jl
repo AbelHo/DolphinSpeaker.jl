@@ -136,7 +136,7 @@ function multisync(filename; outfile=nothing, argmax_len=0, plot_window_inS=[-.2
     time_sync = findBlip_any(filename; argmax_len=argmax_len, plot_window_inS=plot_window_inS, threshold_percentMAX=threshold_percentMAX, flag_savefig=flag_savefig, kwargs...) 
     if !ismissing(time_sync) && !isnothing(outfile)
         open(outfile, "a") do f
-            write(f, "$(basename(filename)),$time_sync\n")
+            write(f, "$(basename(filename)),$(join(time_sync,","))\n")
         end
     end
     return time_sync
