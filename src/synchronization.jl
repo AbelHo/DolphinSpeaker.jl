@@ -157,7 +157,7 @@ Reads synchronization data for a specified dolphin from a CSV file, filters this
 ```julia
 dolphin = "Ella";
 filtered_data = check_syncthreshold(dolphin);
-CSV.write(joinpath(res_dir,"$dolphin.csv"), filtered_data);
+CSV.write(joinpath(res_dir,"\$dolphin.csv"), filtered_data);
 ```
 """
 function check_syncthreshold(dolphin;
