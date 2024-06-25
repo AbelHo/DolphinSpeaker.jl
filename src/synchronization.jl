@@ -162,7 +162,7 @@ CSV.write(joinpath(res_dir,"$dolphin.csv"), filtered_data);
 """
 function check_syncthreshold(dolphin;
     res_fol="/Users/abel/Documents/data_res/concretecho/sync", threshold=3, flag_show=true)
-    fn = joinpath(res_fol,"$(dolphin)_im/sync.csv")
+    fn = joinpath(res_fol,"$dolphin/sync.csv")
     df = CSV.read(fn, DataFrame)
     dd = filter( d -> d.fft_snr < threshold, df)
     flag_show && showall(dd)
