@@ -6,6 +6,8 @@ include("detector.jl")
 include("audio.jl")
 include("video.jl")
 
+# set_device__rwsnus()
+
 # rx_vect = randn(3,16)
 
 # function beampattern(θ, φ, f, c, a, d)
@@ -21,6 +23,17 @@ include("video.jl")
 # y = range(-rx_dist*1.5, rx_dist*1.5, length=4)
 # z = @. cos(x.*3) + sin(y')
 
+function interp2D(x,y,z; interp_len=1000)
+    # itp = LinearInterpolation((x, y), z) # CubicSplineInterpolation
+    itp = CubicSplineInterpolation((x, y), z) 
+    # Fine grid
+    x2 = range(extrema(x)..., length=interp_len)
+    y2 = range(extrema(y)..., length=interp_len)
+    # Interpolate
+    z2 = [itp(x,y) for y in y2, x in x2]
+
+    return z2
+end
 # using Interpolations, Plots
 # Data
 # x = range(-2, 3, length=20)
@@ -176,7 +189,38 @@ end
 # v2 = "/Users/abel/Documents/data/concretecho/2024-03-06/2024-03-06_11.30.10_T010_uw1.mkv"
 
 # res_dir = joinpath("/Users/abel/Documents/data_res/concretecho", basename(aufname) |> x -> x[1:findlast("_",x)[1]-1])
+# run_func_fileauto.(readdir("/Volumes/One Touch/data/concretecho/try8/Ella/2024/03";join=true)|>skiphiddenfiles, Ref("/Volumes/One Touch/res/concretecho/outvid/Ella/03"); func=stack_audio_videos, skipdone=true); 
 
+"""
+    stack_audio_videos(aufname, v1, v2, res_dir; rx_dist = 0.125, x = range(-rx_dist*1.5, rx_dist*1.5, length=4), y = range(-rx_dist*1.5, rx_dist*1.5, length=4), pos_x = repeat( range(-rx_dist*1.5, rx_dist*1.5, length=4), 4), pos_y = repeat( range(rx_dist*1.5, -rx_dist*1.5, length=4), inner=4), skipdone = false, kwargs...)
+
+Stacks audio and video files, applies a beamforming algorithm, and generates a combined video output.
+
+# Arguments
+- `aufname`: Path to the audio file.
+- `v1`: Path to the first video file.
+- `v2`: Path to the second video file.
+- `res_dir`: Path to the directory where the result will be saved.
+
+# Keyword Arguments
+- `rx_dist`: Distance between receivers. Default is 0.125.
+- `x`: Range of x-coordinates for the receivers. Default is a range from -1.5*rx_dist to 1.5*rx_dist with 4 points.
+- `y`: Range of y-coordinates for the receivers. Default is a range from -1.5*rx_dist to 1.5*rx_dist with 4 points.
+- `pos_x`: Positions of the receivers in the x-axis. Default is a repeated range from -1.5*rx_dist to 1.5*rx_dist with 4 points, repeated 4 times.
+- `pos_y`: Positions of the receivers in the y-axis. Default is a repeated range from 1.5*rx_dist to -1.5*rx_dist with 4 points, repeated 4 times internally.
+- `skipdone`: If true, the function will skip processing if the output file already exists. Default is false.
+
+# Returns
+- Nothing. The function saves the output video in the `res_dir` directory.
+
+# Example
+```julia
+stack_audio_videos("audio.wav", "video1.mp4", "video2.mp4", "results")
+run_func_fileauto.(readdir("/Volumes/One Touch/data/concretecho/try8/Ella/2024/03";join=true)|>skiphiddenfiles, Ref("/Volumes/One Touch/res/concretecho/outvid/Ella/03"); func=stack_audio_videos, skipdone=true);
+run_func_fileauto("/Users/abel/Documents/data/concretecho/data/Shakeela/2024/05/2024-05-07_15.29.13", "/Users/abel/Documents/data_res/concretecho/temp/2024-05-07_15.29.13"; func=stack_audio_videos)
+run_func_fileauto.(readdir(infol;join=true)|>skiphiddenfiles, Ref(outfol); func=stack_audio_videos, skipdone=true); 
+```
+"""
 function stack_audio_videos(aufname, v1, v2, res_dir; 
     rx_dist = 0.125,
     x = range(-rx_dist*1.5, rx_dist*1.5, length=4),
@@ -252,8 +296,9 @@ function stack_audio_videos(aufname, v1, v2, res_dir;
     @ffmpeg_env run(`ffmpeg -i $vid_combine_fname -i $outvidname -filter_complex "[0:v]scale=-1:400[v0];[1:v][v0]hstack" $vid_combine_beam_fname`)
 
     # vid_fullcombined_fname = vidoutname * "beam-vid-combined_timeplot.mp4"
+    # @ffmpeg_env run(`$ffmpeg -i $vid_combine_beam_fname -i $signal_plot_fname -filter_complex "[1:v]scale=900:120[v1];[0:v][v1]vstack[v2];[v2]drawtext=text='%{n}': x=10: y=35: fontsize=24: fontcolor=black" -metadata comment="$aufname,$v1,$v2" $vid_fullcombined_fname -hide_banner`)
     @ffmpeg_env run(`$ffmpeg -i $vid_combine_beam_fname -i $signal_plot_fname -filter_complex "[1:v]scale=900:120[v1];[0:v][v1]vstack" -metadata comment="$aufname,$v1,$v2" $vid_fullcombined_fname -hide_banner`)
-
+    # rm(vid_combine_beam_fname)@ffmpeg_env run(`$ffmpeg -i $vid_combine_beam_fname -i $signal_plot_fname -filter_complex "[1:v]scale=900:120[v1];[0:v][v1]vstack;[0:v]drawtext=text='%{n}': x=10: y=10: fontsize=24: fontcolor=white[v2];[v2][v1]vstack" -metadata comment="$aufname,$v1,$v2" $vid_fullcombined_fname -hide_banner`)
 end
 
 # ffmpeg -i "/Users/abel/Documents/data_res/concretecho/2024-01-17_12.33/2024-01-17_12.36.19_T004_P2_C1_vid-combined.mp4" -i "/Users/abel/Documents/data_res/concretecho/2024-01-17_12.33/2024-01-17_12.36.19_T004_P2_C1_acoustic_beam-time.mp4" -filter_complex "[0:v]scale=-1:400[v0];[1:v][v0]hstack" "/Users/abel/Documents/data_res/concretecho/2024-01-17_12.33/2024-01-17_12.36.19_T004_P2_C1_beam-vid-combined.mp4"
@@ -275,3 +320,68 @@ end
 # res = detect_impulseNtonal((aufname,data,fs,nothing), res_dir; return_datafilt=true)
 # res_impulse = res.res_impulse
 # data_filt = filter_simple(data, [1000 Inf]; fs=fs)
+ff(x; band_pass=[0, Inf]) = mapslices(extrema, filter_simple(x, band_pass; fs=fs, mapslices2=mapslices, dims=1);dims=1)
+
+
+# rx_dist = 0.125
+# x = range(-rx_dist*1.5, rx_dist*1.5, length=4)
+# y = range(-rx_dist*1.5, rx_dist*1.5, length=4)
+
+# aufname = "/Users/abel/Documents/data/concretecho/Ella/acoustic/2024/01/2024-01-17_12.33.17/2024-01-17_12.36.19_T004_P2_C1_acoustic.ogg"
+# # aufname = "/Users/abel/Documents/data/concretecho/2024-03-06/2024-03-06_11.30.10_T010_acoustic.ogg"
+# res_dir = "/Users/abel/Documents/data_res/concretecho/temp"
+# data, fs = readAudio(aufname)
+# res = detect_impulseNtonal((aufname,data,fs,nothing), res_dir; return_datafilt=true)
+
+
+
+# a_1 = funcOnWindows(signal(res.res_impulse.data_filt,fs), map(x-> x.+ (-300:300), res.res_impulsetrain.pind_good); func=x-> ff(x; band_pass=[1000, 70_000]) )
+# a_2 = funcOnWindows(signal(res.res_impulse.data_filt,fs), map(x-> x.+ (-300:300), res.res_impulsetrain.pind_good); func=x-> ff(x; band_pass=[70_000, 120_000]) )
+# a_3 = funcOnWindows(signal(res.res_impulse.data_filt,fs), map(x-> x.+ (-300:300), res.res_impulsetrain.pind_good); func=x-> ff(x; band_pass=[120_000,170_000]) )
+
+# a2_1 = map( x-> 20*log10(x[2]-x[1]), a_1)
+# a2_2 = map( x-> 20*log10(x[2]-x[1]), a_2)
+# a2_3 = map( x-> 20*log10(x[2]-x[1]), a_3)
+
+# anim = @animate for ind = 1:size(a_1,1)
+#     z1 = interp2D(x,y,reshape(a2_1[ind,:],4,4))
+#     z2 = interp2D(x,y,reshape(a2_2[ind,:],4,4))
+#     z3 = interp2D(x,y,reshape(a2_3[ind,:],4,4))
+
+#     img = RGB.(z1./maximum(z1),z2./maximum(z2),z3./maximum(z3))
+#     plot(img)
+# end
+# gif(anim, joinpath(res_dir, "$(basename(aufname))_color_beam.gif"))
+# @ffmpeg_env run(`$ffmpeg -i $(joinpath(res_dir, basename(aufname)*"_color_beam.gif")) -pix_fmt yuv420p $(joinpath(res_dir, "$(basename(aufname))_color_beam.mp4"))`)
+
+
+# a = funcOnWindows(signal(res.res_impulse.data_filt,fs), map(x-> x.+ (-300:300), res.res_impulsetrain.pind_good); func=x->( mapslices(extrema,x;dims=1) ) )
+# a2 = map( x-> 20*log10(x[2]-x[1]), a)
+# a2_old = a2
+# for 
+# anim = @animate for ind = 1:size(a_1,1)
+#     interp_2D(x,y,reshape(a2[ind,:],4,4))
+# end
+# gif(anim, joinpath(res_dir, "$(basename(aufname))_beam.gif"))
+# @ffmpeg_env run(`$ffmpeg -i $(joinpath(res_dir, "$(basename(aufname))_beam.gif")) -pix_fmt yuv420p $(joinpath(res_dir, "$(basename(aufname))_beam.mp4"))`)
+
+# GC.gc()
+
+
+
+#############################################################################
+# run_func_fileauto.(readdir("/Volumes/One Touch/data/concretecho/try8/Ella/2024/03";join=true)|>skiphiddenfiles, Ref("/Volumes/One Touch/res/concretecho/outvid/Ella/03"); func=stack_audio_video, skipdone=true); 
+# run_func_fileauto.(readdir("/Volumes/One Touch/data/concretecho/try8/Ella/2024/04";join=true)|>skiphiddenfiles, Ref("/Volumes/One Touch/res/concretecho/outvid/Ella/04"); func=stack_audio_video, skipdone=true);
+# run_func_fileauto.(readdir("/Volumes/One Touch/data/concretecho/try8/Ella/2024/02";join=true)|>skiphiddenfiles, Ref("/Volumes/One Touch/res/concretecho/outvid/Ella/02"); func=stack_audio_video, skipdone=true); run_func_fileauto.(readdir("/Volumes/One Touch/data/concretecho/try8/Ella/2024/01";join=true)|>skiphiddenfiles, Ref("/Volumes/One Touch/res/concretecho/outvid/Ella/01"); func=stack_audio_video, skipdone=true)
+
+
+
+
+# infol = "/Users/abel/Documents/data/concretecho/data/Shakeela/2024/05"
+# outfol = "/Users/abel/Documents/data_res/concretecho/beam/Shakeela/05_frame"
+# run_func_fileauto.(readdir(infol;join=true)|>skiphiddenfiles, Ref(outfol); func=stack_audio_videos, skipdone=true); 
+
+# infol = "/Volumes/data/Concretecho/data/temp/try8/Shiye/2024/06"#/2024-06-20_13.21.12"
+# outfol = "/Users/abel/Documents/data_res/concretecho/temp/stack2"
+# run_func_fileauto.(readdir(infol;join=true)|>skiphiddenfiles, Ref(outfol); func=stack_audio_videos, skipdone=true); 
+
