@@ -142,6 +142,32 @@ function multisync(filename; outfile=nothing, argmax_len=0, plot_window_inS=[-.2
     return time_sync
 end
 
+"""
+    check_syncthreshold(dolphin::String) -> DataFrame
+
+Reads synchronization data for a specified dolphin from a CSV file, filters this data based on a signal-to-noise ratio (SNR) threshold, and returns the filtered data.
+
+# Arguments
+- `dolphin::String`: Identifier for the dolphin. Used to construct the file path to the CSV file containing the dolphin's synchronization data.
+
+# Returns
+- `DataFrame`: A DataFrame containing the filtered synchronization data where the FFT SNR is less than 3.
+
+# Example
+```julia
+dolphin = "Ella";
+filtered_data = check_syncthreshold(dolphin);
+CSV.write(joinpath(res_dir,"$dolphin.csv"), filtered_data);
+```
+"""
+function check_syncthreshold(dolphin;
+    res_fol="/Users/abel/Documents/data_res/concretecho/sync", threshold=3, flag_show=true)
+    fn = joinpath(res_fol,"$(dolphin)_im/sync.csv")
+    df = CSV.read(fn, DataFrame)
+    dd = filter( d -> d.fft_snr < threshold, df)
+    flag_show && showall(dd)
+    return dd
+end
 
 @info "end"
 
