@@ -1,5 +1,6 @@
 using SignalAnalysis, SignalAnalysis.Units
 using WAV
+using CSV, DataFrames
 # using FFMPEG
 include("utils.jl")
 include("media_info.jl")
@@ -130,11 +131,37 @@ function findBlip_any(filename; kwargs...)
     return missing
 end
 
-# process_files(in_dir; func=(a,b)->multisync(a;outfile=joinpath(res_dir,"sync.csv"), flag_savefig=res_dir), arg=res_dir)
+# filter( d -> d.fft_snr < 3, df) |> showall
+# process_files(in_dir; func=(a,b)->multisync(a;outfile=joinpath(res_dir,"sync.csv"), flag_savefig=res_dir, flag_fft_check=true), arg=res_dir)
+"""
+    multisync(filename; outfile=nothing, argmax_len=0, plot_window_inS=[-.2 .5], threshold_percentMAX=0.5, flag_savefig=false, kwargs...) -> Vector{Float64} | Missing
 
+Detects synchronization signals (blips) in a given audio file and optionally writes the timestamps of these signals to an output file.
+
+# Arguments
+- `filename`: Path to the audio file to be analyzed.
+- `outfile` (optional): Path to the output CSV file where timestamps will be appended. If `nothing`, no file will be written.
+- `argmax_len` (optional): Maximum length of the argument to be considered. Default is 0.
+- `plot_window_inS` (optional): Time window for plotting, specified as a vector `[start, end]` in seconds. Default is `[-0.2, 0.5]`.
+- `threshold_percentMAX` (optional): Threshold as a percentage of the maximum value to consider a signal a synchronization signal. Default is 0.5.
+- `flag_savefig` (optional): Boolean flag indicating whether to save the plot of the detected signals. Default is `false`.
+- `kwargs...` (optional): Additional keyword arguments passed to the `findBlip_any` function.
+
+# Returns
+- `Vector{Float64} | Missing`: A vector of timestamps (in seconds) where synchronization signals were detected, or `Missing` if no signals were detected.
+# Example
+```julia
+timestamps = multisync("example.wav", outfile="sync_times.csv", flag_savefig=true)
+
+process_files(in_dir; func=(a,b)->multisync(a;outfile=joinpath(res_dir,"sync.csv"), flag_savefig=res_dir, flag_fft_check=true), arg=res_dir)
+df = CSV.read(joinpath(res_dir,"sync.csv"), DataFrame)
+filter( d -> d.fft_snr < 3, df) |> showall; println("Minimum: \$(minimum(df.fft_snr))")
+```
+"""
 function multisync(filename; outfile=nothing, argmax_len=0, plot_window_inS=[-.2 .5], threshold_percentMAX=0.5, flag_savefig=false, kwargs...)
     time_sync = findBlip_any(filename; argmax_len=argmax_len, plot_window_inS=plot_window_inS, threshold_percentMAX=threshold_percentMAX, flag_savefig=flag_savefig, kwargs...) 
     if !ismissing(time_sync) && !isnothing(outfile)
+        !isfile(outfile) && write(outfile, "filename,time_sync,fft_snr\n") # write header
         open(outfile, "a") do f
             write(f, "$(basename(filename)),$(join(time_sync,","))\n")
         end
