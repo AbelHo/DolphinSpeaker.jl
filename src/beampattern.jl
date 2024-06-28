@@ -293,7 +293,7 @@ function stack_audio_videos(aufname, v1, v2, res_dir;
     combine_2v1a(v1,v2,aufname, vid_combine_fname)
 
     # vid_combine_beam_fname  = splitext(vid_combine_fname)[1]  * "_beam.mp4"
-    @ffmpeg_env run(`ffmpeg -i $vid_combine_fname -i $outvidname -filter_complex "[0:v]scale=-1:400[v0];[1:v][v0]hstack" $vid_combine_beam_fname`)
+    @ffmpeg_env run(`ffmpeg -i $vid_combine_fname -i $outvidname -filter_complex "[0:v]scale=-1:400[v0];[1:v][v0]hstack" $vid_combine_beam_fname -hide_banner -y`)
 
     # vid_fullcombined_fname = vidoutname * "beam-vid-combined_timeplot.mp4"
     # @ffmpeg_env run(`$ffmpeg -i $vid_combine_beam_fname -i $signal_plot_fname -filter_complex "[1:v]scale=900:120[v1];[0:v][v1]vstack[v2];[v2]drawtext=text='%{n}': x=10: y=35: fontsize=24: fontcolor=black" -metadata comment="$aufname,$v1,$v2" $vid_fullcombined_fname -hide_banner`)
@@ -381,7 +381,7 @@ ff(x; band_pass=[0, Inf]) = mapslices(extrema, filter_simple(x, band_pass; fs=fs
 # outfol = "/Users/abel/Documents/data_res/concretecho/beam/Shakeela/05_frame"
 # run_func_fileauto.(readdir(infol;join=true)|>skiphiddenfiles, Ref(outfol); func=stack_audio_videos, skipdone=true); 
 
-# infol = "/Volumes/data/Concretecho/data/temp/try8/Shiye/2024/06"#/2024-06-20_13.21.12"
-# outfol = "/Users/abel/Documents/data_res/concretecho/temp/stack2"
+# infol = "/Volumes/data/Concretecho/data/temp/try8/Shiye/2024/05"#/06"#/2024-06-20_13.21.12"
+# outfol = "/Users/abel/Documents/data_res/concretecho/temp/stack3"
 # run_func_fileauto.(readdir(infol;join=true)|>skiphiddenfiles, Ref(outfol); func=stack_audio_videos, skipdone=true); 
 
