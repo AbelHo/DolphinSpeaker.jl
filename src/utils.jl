@@ -31,6 +31,26 @@ function FileIO.load(filenames::Array{String,1}; kwargs...)
     merge( load.(filenames; kwargs...)...)
 end
 
+"""
+    process_files(folname; func=(a,b)->x, arg=nothing, no_overwrite_func=nothing)
+
+Process files within a directory tree starting from `folname`.
+
+# Arguments
+- `folname::String`: The root directory from which to start processing files.
+- `func`: A function to be applied to each file. It should accept two arguments: the source path and the destination path. It defaults to a function that does nothing.
+- `arg::Union{Nothing, String}`: An optional argument. If it is a string, it is treated as a directory path, and `mkpath` is called to ensure this directory exists. This path is used as the base for the destination path in `func`.
+- `no_overwrite_func`: An optional function that determines whether to overwrite existing files. It should accept the same arguments as `func`.
+
+# Behavior
+- Iterates over every file in the directory tree rooted at `folname`.
+- For each file, it constructs a source path (from `folname`) and a destination path (from `arg`).
+- It then attempts to apply `func` to these paths. If `func` fails, it tries to call `func` without the `no_overwrite_func` argument. If this also fails, it logs the error.
+
+# Example
+```julia
+process_files("path/to/source", func=(src, dst) -> copy(src, dst), arg="path/to/destination")
+"""
 function process_files(folname; func=(a,b)->x, arg=nothing, no_overwrite_func=nothing)
     arg isa String && mkpath(arg)
     for (root, dirs, files) in walkdir(folname)
@@ -87,6 +107,31 @@ function replace_suffix(src::AbstractString, suffix, replacement=""; preview=tru
     end
 end
 
+"""
+    run_func_fileauto(dname, outfolder; sensor_names=["acoustic", "topview", "uw1"], sensor_filetypes=[".ogg", ".mkv", ".mkv"], func=x->x, prefix_filter="", kwargs...)
+
+Process files in a directory `dname` based on specified `sensor_names` and `sensor_filetypes`, applying a function `func` to each file group and outputting the results to `outfolder`.
+
+# Arguments
+- `dname::String`: The directory name where the source files are located.
+- `outfolder::String`: The output directory where the processed files will be saved.
+- `sensor_names::Array{String}`: An array of sensor names, used to identify groups of files. Defaults to `["acoustic", "topview", "uw1"]`.
+- `sensor_filetypes::Array{String}`: An array of file extensions corresponding to each sensor name. Defaults to `[".ogg", ".mkv", ".mkv"]`.
+- `func`: A function to be applied to each group of files. It defaults to an identity function (`x->x`). The function should accept file paths as arguments and any number of keyword arguments (`kwargs`).
+- `prefix_filter::String`: A string filter to apply to filenames, selecting only those that start with the specified prefix. Defaults to an empty string, which selects all files.
+- `kwargs...`: Additional keyword arguments to be passed to `func`.
+
+# Behavior
+- Creates the `outfolder` if it does not exist.
+- Iterates over files in the first sensor's directory (`sensor_names[1]`), filtering by `prefix_filter`.
+- Constructs a group of file paths for each sensor based on the common prefix and specified file types.
+- Applies `func` to each group of file paths, passing `outfolder` and any `kwargs` as arguments.
+- Logs an error if `func` fails to process a group of files.
+
+# Example
+```julia
+run_func_fileauto("data", "processed", func=(files..., outfolder; kwargs...) -> println("Processing: ", files, " into ", outfolder), prefix_filter="2021_")
+"""
 function run_func_fileauto(dname, outfolder,
     sensor_names = ["acoustic", "topview", "uw1"], sensor_filetypes = [".ogg", ".mkv", ".mkv"];
     func=x->x, prefix_filter="", kwargs...)
@@ -120,6 +165,21 @@ end
     print out the argument of a this function
 """
 print_args(args...) = println(args)
+
+"""
+# Example
+process_files("/Volumes/data/Concretecho/data/temp/try8"; func=(a,b)->template_func(a,b; template=["Ambient_", ".png"], func=cp), arg="/Volumes/data/Concretecho/data/temp/Ambient_pic") 
+"""
+function template_func(fp, res_file=""; template=[""], func=x->x)
+    fn = basename(fp)
+    if startswith(fn, template[begin]) && length(template)>1 && endswith(fn, template[end])
+        @info (fp, res_file)
+        return func(fp, res_file)
+    end
+end
+
+
+@info "end utils.jl"
 
 # function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2)) # plot_window_inS=[-.1 .1]
 #     # @debug ref_channel
@@ -216,7 +276,6 @@ print_args(args...) = println(args)
 #     # ZonedDateTime( (parse.(Int,split(ts[1:23], ['-','T',':','.'])))..., TimeZone("-0400"))
 # end
 
-@info "end utils.jl"
 
 # findBlip_bothVidAudio(folname; filename_only=true) |> showall
 
