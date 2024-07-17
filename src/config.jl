@@ -22,6 +22,8 @@ impulsive_autothreshold_median_ratio = 4;
 window_tonal = 0.01
 nfft_inS = 0.01
 tonal_band_pass = [5000, 24000] # [5000, 25000] # 
+tonal_segment_thresh_continue = 0.00001
+tonal_segment_threshold=0.01
 
 butterworth_size = 4
 percent_quiet = 0.01
