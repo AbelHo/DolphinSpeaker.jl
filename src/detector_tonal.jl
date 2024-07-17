@@ -359,7 +359,7 @@ function combine_detections_conv(data, res_new, nfft=1280, infl_len=30;
     # @debug "ppeak: "* string(size(ppeak))
 
     if !isnothing(res_dir)
-        audacity_label([train_start train_end] ./ res_new.fs, joinpath(res_dir, res_new.outfname *"__len"* string(nfft*infl_len) *"_sigma"*string(σ)*  "_segment-only.txt" |> basename))
+        audacity_label([train_start train_end] ./ res_new.fs, joinpath(res_dir, res_new.outfname *"__len"* string(nfft*infl_len) *"_sigma"*string(σ)* "_segment-thresh$threshold"*"_segment-continue$thresh_continue" * "_segment-only.txt" |> basename))
     end
 
     return (;pind_good_inS, 
