@@ -94,9 +94,12 @@ function readAudio(aufname; fname2timestamp_func=DEFAULT_fname2timestamp_func,
                 end
             end
         end
-    elseif filetype in [".flac", ".ogg"]
-        @info "Reading flac/ogg file via ffmpeg..."
+    elseif filetype in [".flac", ".ogg", ".mp3"]
+        @info "Reading flac/ogg/mp3 file via ffmpeg..."
         data, fs = get_videos_audiodata_all(aufname)
+    elseif filetype in vidtypes
+        @info "Reading audio from video file via ffmpeg..."
+        data, fs = get_videos_audiodata(aufname)
     elseif ".bin" == filetype
         data = loadDataBin2(aufname; channels=channels, datatype=datatype, fs=fs)
     else
@@ -116,7 +119,8 @@ end
 
 simple_fname2dt(aufname) = DateTime(basename(aufname)[1:17], dateformat"yyyymmdd_H.M.S")
 fname2dt_dashdot(aufname) = DateTime(basename(aufname)[1:19], dateformat"yyyy-mm-dd_H.M.S")
-fname2dt_ls1(aufname) = DateTime(basename(aufname)[1:15], dateformat"yyyymmdd_HHMMSS")
+fname2dt_date_time(aufname) = DateTime(basename(aufname)[1:15], dateformat"yyyymmdd_HHMMSS")
+fname2dt_ls1 = fname2dt_date_time
 
 function writeWAV(data, fpath; Fs=1)
     nbits = parse(Int64, string(eltype(data))[end-1:end])
