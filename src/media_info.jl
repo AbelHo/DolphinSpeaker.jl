@@ -1,5 +1,5 @@
 using FFMPEG
-using Glob
+# using Glob
 
 function get_fps(file::AbstractString, streamno::Integer = 0)
     streamno >= 0 || throw(ArgumentError("streamno must be non-negative"))
