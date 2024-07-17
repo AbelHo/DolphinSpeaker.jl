@@ -225,7 +225,7 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     @info ("Duration: " * string(size(data,1)/fs) *"seconds")
 
     nfft = nextfastfft(nfft_inS*fs)
-    freq_filt = 2:Int(nfft/2+1)
+    freq_filt = 2:Int(nfft÷2+1)
     if !isnothing(band_pass)
         bp_top = band_pass[2]
         isinf(band_pass[2]) && (bp_top = fs/2)
