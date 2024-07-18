@@ -219,6 +219,8 @@ stack_audio_videos("audio.wav", "video1.mp4", "video2.mp4", "results")
 run_func_fileauto.(readdir("/Volumes/One Touch/data/concretecho/try8/Ella/2024/03";join=true)|>skiphiddenfiles, Ref("/Volumes/One Touch/res/concretecho/outvid/Ella/03"); func=stack_audio_videos, skipdone=true);
 run_func_fileauto("/Users/abel/Documents/data/concretecho/data/Shakeela/2024/05/2024-05-07_15.29.13", "/Users/abel/Documents/data_res/concretecho/temp/2024-05-07_15.29.13"; func=stack_audio_videos)
 run_func_fileauto.(readdir(infol;join=true)|>skiphiddenfiles, Ref(outfol); func=stack_audio_videos, skipdone=true); 
+
+map( x-> run_func_fileauto.(readdir(x,join=true)|>skiphiddenfiles, Ref(outfol); func=stack_audio_videos, skipdone=true), readdir(infol; join=true) |> reverse)
 ```
 """
 function stack_audio_videos(aufname, v1, v2, res_dir; 
