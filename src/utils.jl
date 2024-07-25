@@ -9,7 +9,7 @@ import FileIO, FileIO.load
 showall(x) = show(stdout, "text/plain", x)
 
 function skiphiddenfiles(list)
-    filter(!startswith('.') ∘  basename, list)
+    filter(!startswith(r"^[.@]") ∘  basename, list)
 end
 
 function savejld(savefname; kwargs...)
