@@ -178,6 +178,25 @@ function template_func(fp, res_file=""; template=[""], func=x->x)
     end
 end
 
+# macro threaded(expr)
+#     if expr.head == :comprehension
+#         @info expr[1]
+#         loop_vars = expr.args[2]
+#         body = expr.args[1]
+#         return :(
+#             let
+#                 items = collect($(esc(loop_vars)))
+#                 Threads.@threads for i in eachindex(items)
+#                     items[i] = $(esc(body))
+#                 end
+#                 items
+#             end
+#         )
+#     else
+#         throw(ArgumentError("The @parallel_comprehension macro expects a comprehension expression."))
+#     end
+# end
+
 
 @info "end utils.jl"
 
