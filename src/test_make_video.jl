@@ -39,7 +39,7 @@ include("config.jl")
 #     # return round(reduce(/, parse.(Float64, split(fps,'/')) ), digits=3)
 # end
 
-function display_corners!(img, corners_list; dot_size=25, colors=[1,0,0])
+function display_corners!(img, corners_list; dot_size=25, colors=[1,0,0], opacity=0.4)
     len_cl = length(corners_list)
     for j in 1:len_cl
         corner = corners_list[j]
@@ -47,7 +47,7 @@ function display_corners!(img, corners_list; dot_size=25, colors=[1,0,0])
             # @info([corner[1,i], corner[2,i]])
             # @info(dot_size)
             # @info(typeof(img[1])(colors...))
-            draw!(img, Ellipse(CirclePointRadius(Int(round(corner[1,i])), Int(round(corner[2,i])), dot_size)), typeof(img[1])(colors...); opacity=0.4)
+            draw!(img, Ellipse(CirclePointRadius(Int(round(corner[1,i])), Int(round(corner[2,i])), dot_size)), typeof(img[1])(colors...); opacity=opacity)
             #@debug [corner[1,i], corner[2,i]]
         end
     end
