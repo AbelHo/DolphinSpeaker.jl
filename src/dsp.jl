@@ -1,7 +1,7 @@
 using DSP
 import SignalAnalysis.findsignal
 
-function filter_simple(data, band_pass, band_stop=nothing; fs=1, butterworth_size=butterworth_size)
+function filter_simple(data, band_pass, band_stop=nothing; fs=1, butterworth_size=butterworth_size, mapslices2=mapslices2, kwargs...)
     data_filt = data;
     if !iszero(band_pass[1]) || !isinf(band_pass[2])
         filter_type = nothing
@@ -30,7 +30,7 @@ function filter_simple(data, band_pass, band_stop=nothing; fs=1, butterworth_siz
         end
         # data_filt = mapslices( x -> filtfilt( filter_weight, x), data, dims=1)
         if size(data,2) > 1
-            data_filt = mapslices2( x -> filtfilt( filter_weight, x), data)
+            data_filt = mapslices2( x -> filtfilt( filter_weight, x), data; kwargs...)
         else
             data_filt = filtfilt( filter_weight, data)
         end
@@ -54,7 +54,7 @@ function extrema_index(arr)
 end
 
 
-function mapslices2(func, arr::Array{T, 2} where T)
+function mapslices2(func, arr::Array{T, 2} where T; kwargs...)
     # extrema_indices = Array{Tuple{T, Int, T, Int}, 1}(undef, size(arr, 2))
     extrema_indices = Array{Any}(undef,size(arr, 2))
     # lock = ReentrantLock()
@@ -75,7 +75,7 @@ function mapslices2(func, arr::Array{T, 2} where T)
         #     end
         # end
 
-        extrema_indices[j] = func(@view(arr[:,j])) #(min_val, min_idx, max_val, max_idx)
+        extrema_indices[j] = func(@view(arr[:,j]); kwargs...) #(min_val, min_idx, max_val, max_idx)
     end
 
     return hcat(extrema_indices...)
