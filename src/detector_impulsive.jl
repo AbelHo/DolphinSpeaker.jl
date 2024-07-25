@@ -93,10 +93,12 @@ function detect_impulse(aufname_data_fs::Tuple, res_dir=nothing; band_pass=impul
    
     @info ("Duration: " * string(size(data,1)/fs) *"seconds")
     @debug "filtering......."
-    data_filt = filter_simple(data[:,1:size(rx_vect,2)], band_pass; fs=fs)
+    if !isnothing(ref_channel)
+        data_filt = filter_simple(data[:,ref_channel], band_pass; fs=fs) #filter_simple(data[:,1:size(rx_vect,2)], band_pass; fs=fs)
+    end #FIXME deal with auto ref_channel
     @debug "hilberting...."
-    # data_hil = data_filt|>hilbert.|>abs
-    data_hil = data_filt[:,ref_channel]|>hilbert.|>abs
+    data_hil = data_filt|>hilbert.|>abs
+    # data_hil = data_filt[:,ref_channel]|>hilbert.|>abs
     @debug "finding peaks...."
     # pind, ppeak_all = findPings(data_hil; ref_channel=ref_channel, dist=dist)
     pind, ppeak_all = findPings(data_hil; ref_channel=1, dist=dist)
@@ -214,10 +216,16 @@ function tkeo(data; type=Float64)
 end
 
 using LinearAlgebra, StatsBase, Plots
+
+function detect_impulsetrain2(aufname::String; kwargs...)
+    data, fs, nbits, opt, timestamp = readAudio(aufname);
+    aufname, data, fs = detect_impulsetrain2((aufname,data,fs); kwargs...)
+end
+
 """
 get the histogram of the inter pulse interval of the detected impulses
 """
-function detect_impulsetrain2(aufname; 
+function detect_impulsetrain2(aufname_data_fs; 
     res_dir=nothing, ref_channel=1, dist_impulsive=80,
     bin_interval=100, time_interval = 0.1,
     fullplot=false, plot_everytimeintervalhistogram=false, display=x->x)
@@ -225,8 +233,8 @@ function detect_impulsetrain2(aufname;
     # res_dir = "/Users/abel/Documents/data_res/megafauana/clicks_res"
     # ref_channel = 1
     # dist_impulsive=200
-
-    data, fs, nbits, opt, timestamp = readAudio(aufname);
+    aufname, data, fs = aufname_data_fs
+    # data, fs, nbits, opt, timestamp = readAudio(aufname);
     res_impulse = detect_impulse((aufname,data,fs), res_dir; ref_channel=ref_channel, band_pass=[500 Inf], dist=dist_impulsive, threshold=nothing)#.01)
     times = res_impulse.pind_good
     timediff = zeros(Int,length(times),length(times)) 
@@ -280,9 +288,9 @@ function detect_impulsetrain2(aufname;
             p_ipi_direct = plot(h2; title="direct-ipi "*string(t))# |>display; 
             # savefig(joinpath(res_dir, basename(aufname)*"_click-segmentipi_direct_" *string(t)* "s.png"))
             plot(p_ipi, p_ipi_direct; layout=@layout[a b], xlabel="ipi(sample)", ylable="weights(counts)");
-            savefig(joinpath(res_dir, basename(aufname)*"_click-segmentipi_h" *string(t)* "s.png"))
+            isnothing(res_dir) || savefig(joinpath(res_dir, basename(aufname)*"_click-segmentipi_h" *string(t)* "s.png"))
             plot(p_ipi, p_ipi_direct; layout=@layout[a;b], xlabel="ipi(sample)", ylable="weights(counts)");
-            savefig(joinpath(res_dir, basename(aufname)*"_click-segmentipi_v" *string(t)* "s.png"))
+            isnothing(res_dir) || savefig(joinpath(res_dir, basename(aufname)*"_click-segmentipi_v" *string(t)* "s.png"))
         end
 
     end
