@@ -20,7 +20,7 @@ function get_fps(file::AbstractString, streamno::Integer = 0)
 		# return round(reduce(/, parse.(Float64, split(fps,'/')) ), digits=3)
 	catch err
 		@debug(err)
-		return NaN
+		return missing
 	end
 end
 
@@ -49,7 +49,7 @@ function get_framerate(file::AbstractString, streamno::Integer = 0, video_or_aud
 		# return round(reduce(/, parse.(Float64, split(fps,'/')) ), digits=3)
 	catch err
 		@debug(err)
-		return NaN
+		return missing
 	end
 end
 
@@ -85,7 +85,7 @@ function get_whatever(file::AbstractString, streamno::Integer = 0, video_or_audi
 		# return round(reduce(/, parse.(Float64, split(fps,'/')) ), digits=3)
 	catch err
 		@debug(err)
-		return NaN
+		return missing
 	end
 end
 
@@ -110,7 +110,7 @@ function get_number_frames(file::AbstractString, streamno::Integer = 0)
     if occursin("No such file or directory", frame_str)
         error("Could not find file $file")
     elseif occursin("N/A", frame_str)
-        return NaN
+        return missing
     end
 	
 	try
@@ -118,7 +118,7 @@ function get_number_frames(file::AbstractString, streamno::Integer = 0)
 	    return parse(Int, split(frame_str,'=')[end])
 	catch err
 		@debug (err)
-		return NaN
+		return missing
 	end
 end
 
@@ -148,7 +148,7 @@ function get_duration(file::AbstractString, streamno::Integer = 0)
 	    return parse(Float64, split(frame_str,'=')[end])
 	catch err
 		@debug (err)
-		return NaN
+		return missing
 	end
 end
 
