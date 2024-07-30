@@ -52,7 +52,7 @@ function detect_impulseNtonal(aufname_data_fs_timestamp::Tuple, res_dir;
     percent_quiet = percent_quiet, tonal_band_pass=tonal_band_pass,
     impulsive_band_pass=impulsive_band_pass,
     processed_skip_flag = false, opt=nothing,
-    rx_vect=rx_vect, kwargs...
+    rx_vect=rx_vect, ref_channel=ref_channel, kwargs...
     )
     aufname, data, fs, timestamp = aufname_data_fs_timestamp
     @info "-------"*aufname

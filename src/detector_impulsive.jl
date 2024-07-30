@@ -95,7 +95,7 @@ function detect_impulse(aufname_data_fs::Tuple, res_dir=nothing; band_pass=impul
     @debug "filtering......."
     if !isnothing(ref_channel)
         data_filt = filter_simple(data[:,ref_channel], band_pass; fs=fs) #filter_simple(data[:,1:size(rx_vect,2)], band_pass; fs=fs)
-    end #FIXME deal with auto ref_channel
+    end #FIXME deal     with auto ref_channel
     @debug "hilberting...."
     data_hil = data_filt|>hilbert.|>abs
     # data_hil = data_filt[:,ref_channel]|>hilbert.|>abs
