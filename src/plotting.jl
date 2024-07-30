@@ -732,13 +732,15 @@ end
 # 	)
 
 
-function plot_fft(snip, fs=1.0; type=:amplitude) 
+function plot_fft(snip, fs=1.0; type=:amplitude, plot=plot) 
 	fft_val = rfft(snip) .|> abs
 	freqss =  0:(fs/size(snip,1)):fs÷2
 
 	type == :log && (fft_val = 20 .* log10.(fft_val))
 	plot(freqss, fft_val)
 end
+
+plot_fft!(args...; kwargs...) = plot_fft(args...; plot=plot!,kwargs...)
 
 function plot_time_fft(snip, fs=1.0; layout=@layout [a b])
 	# a = plot(signal(snip,fs))
@@ -755,6 +757,11 @@ plot_norm!(args...; norm_func=x->maximum(abs.(x); dims=1), kwargs...) = plot!(ar
 function psd_plot(args...; kwargs...)
     pow, freq = psd2(args...; kwargs...)
     plot(freq, pow, xlabel="Frequency (Hz)", ylabel="Power Spectral Density (dB/Hz)")#, xscale=:log10)
+end
+
+function psd_plot!(args...; kwargs...)
+    pow, freq = psd2(args...; kwargs...)
+    plot!(freq, pow, xlabel="Frequency (Hz)", ylabel="Power Spectral Density (dB/Hz)")#, xscale=:log10)
 end
 
 function psd_plot_file(aufname; res_fol=missing, ch_list=nothing)
