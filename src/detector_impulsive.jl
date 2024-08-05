@@ -93,11 +93,16 @@ function detect_impulse(aufname_data_fs::Tuple, res_dir=nothing; band_pass=impul
    
     @info ("Duration: " * string(size(data,1)/fs) *"seconds")
     @debug "filtering......."
-    if !isnothing(ref_channel)
+    if return_datafilt
+        data_filt = filter_simple(data, band_pass; fs=fs)
+        @debug "hilberting...."
+        data_hil = data_filt[:,ref_channel]|>hilbert.|>abs
+    elseif !isnothing(ref_channel)
         data_filt = filter_simple(data[:,ref_channel], band_pass; fs=fs) #filter_simple(data[:,1:size(rx_vect,2)], band_pass; fs=fs)
+        @debug "hilberting_single...."
+        data_hil = data_filt|>hilbert.|>abs
     end #FIXME deal     with auto ref_channel
-    @debug "hilberting...."
-    data_hil = data_filt|>hilbert.|>abs
+    
     # data_hil = data_filt[:,ref_channel]|>hilbert.|>abs
     @debug "finding peaks...."
     # pind, ppeak_all = findPings(data_hil; ref_channel=ref_channel, dist=dist)
