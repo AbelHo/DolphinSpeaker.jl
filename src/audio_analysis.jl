@@ -73,4 +73,6 @@ display_corners!(img, pxs')
 # i=1;println(time_range[i]);p_list[i]
 # i=i+1;println(time_range[i]);p_list[i]
 
+psd_plot(data; fs=fs, nfft=1024*4)
+
 @info "Done audio_analysis"
