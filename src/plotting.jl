@@ -777,7 +777,7 @@ function psd_plot_file(aufname; res_fol=missing, ch_list=nothing)
 	return p
 end
 
-function ambientnoise_correction(data_fs; res_fol=nothing, ch_list=:auto, ch_db=0, threshold_fft_error=:auto, threshold_fft_error_multiple=.35, rx_vect=nothing)
+function ambientnoise_correction(data_fs; res_fol=nothing, ch_list=:auto, ch_db=:auto, threshold_fft_error=:auto, threshold_fft_error_multiple=.35, rx_vect=nothing)
 	# data, fs = readAudio(aufname)
 	data, fs = data_fs
 	!isnothing(rx_vect) && (data = @view data[:,1:size(rx_vect,2)])
@@ -809,7 +809,7 @@ function ambientnoise_correction(data_fs; res_fol=nothing, ch_list=:auto, ch_db=
 		pp[:, ch_list] = pow[:, ch_list] .+ correction
 		@info "corrections: $correction"
 	end
-	return ch_list, correction, freqss, pow, pp
+	return ch_list, correction, freqss, pow, pp, data
 end
 ambientnoise_correction(aufname::String; kwargs...) = ambientnoise_correction(readAudio(aufname); kwargs...)
 
@@ -818,8 +818,8 @@ ambientnoise_correction(aufname::String; kwargs...) = ambientnoise_correction(re
 usage:
 plot_ambient(aufname; ch_db=9, res_fol="/Users/abel/Documents/data_res/concretecho/Ambient/amb_balance", rx_vect=rx_vect)
 """
-function plot_ambient(data_fs; res_fol=nothing, ch_list=:auto, ch_db=0, threshold_fft_error=:auto, rx_vect=nothing)
-	ch_list, correction, freqss, pow, pp = ambientnoise_correction(data_fs; ch_list=ch_list, ch_db=ch_db, threshold_fft_error=threshold_fft_error, rx_vect=rx_vect)
+function plot_ambient(data_fs; res_fol=nothing, kwargs...)
+	ch_list, correction, freqss, pow, pp = ambientnoise_correction(data_fs; kwargs...)
 
 	p1=plot(freqss,pow); p2=plot(freqss,pp);
 	p = plot(p1,p2; layout=@layout([a;b]))
