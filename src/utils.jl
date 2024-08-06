@@ -129,6 +129,10 @@ Process files in a directory `dname` based on specified `sensor_names` and `sens
 - Logs an error if `func` fails to process a group of files.
 
 # Example
+template function:
+    ```
+    stack_audio_videos(aufname, v1, v2, res_dir; kwargs...)
+    ```
 ```julia
 run_func_fileauto("data", "processed", func=(files..., outfolder; kwargs...) -> println("Processing: ", files, " into ", outfolder), prefix_filter="2021_")
 """
