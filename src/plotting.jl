@@ -776,3 +776,85 @@ function psd_plot_file(aufname; res_fol=missing, ch_list=nothing)
 	end
 	return p
 end
+
+function ambientnoise_correction(data_fs; res_fol=nothing, ch_list=:auto, ch_db=0, threshold_fft_error=:auto, threshold_fft_error_multiple=.4, rx_vect=nothing)
+	# data, fs = readAudio(aufname)
+	data, fs = data_fs
+	!isnothing(rx_vect) && (data = @view data[:,1:size(rx_vect,2)])
+	# @info size(data)
+	pow, freqss = psd2(data; fs=fs)
+	correction=nothing
+
+	pp=copy(pow)
+	if ch_list == :auto
+		pow_median = mapslices(median,pow;dims=2)
+		pow_diff = pow_median .- pow
+		threshold_fft_error==:auto && (threshold_fft_error = size(pow,1) * threshold_fft_error_multiple; @info "threshold_fft_error: $threshold_fft_error")
+		ch_list = findall(>(threshold_fft_error), count(pow_diff .> 3; dims=1)[:])
+		@info "corrected channels: $ch_list"
+	else
+		ch_list = nothing
+	end
+
+	if !isnothing(ch_list)
+		if ch_db != :auto
+			pp[:, ch_list] = pow[:, ch_list] .+ ch_db
+			correction = ch_db
+		else
+			correction = median(m .- pow[:,ch_list]; dims=1)
+			# @info size(pow[:, ch_list]), size(correction)
+		end
+		pp[:, ch_list] = pow[:, ch_list] .+ correction
+		@info "corrections: $correction"
+	end
+	return ch_list, correction, freqss, pow, pp
+end
+ambientnoise_correction(aufname::String; kwargs...) = ambientnoise_correction(readAudio(aufname); kwargs...)
+
+
+"""
+usage:
+plot_ambient(aufname; ch_db=9, res_fol="/Users/abel/Documents/data_res/concretecho/Ambient/amb_balance", rx_vect=rx_vect)
+"""
+function plot_ambient(data_fs; res_fol=nothing, ch_list=:auto, ch_db=0, threshold_fft_error=:auto, rx_vect=nothing)
+	# data, fs = readAudio(aufname)
+	# data, fs = data_fs
+	# !isnothing(rx_vect) && (data = @view data[:,1:size(rx_vect,2)])
+	# # @info size(data)
+	# pow, freqss = psd2(data; fs=fs)
+
+	# pp=copy(pow)
+	# if ch_list == :auto
+	# 	pow_median = mapslices(median,pow;dims=2)
+	# 	pow_diff = pow_median .- pow
+	# 	threshold_fft_error==:auto && (threshold_fft_error = size(pow,1) * .2)
+	# 	ch_list = findall(>(threshold_fft_error), count(pow_diff .> 3; dims=1)[:])
+	# 	@info "corrected channels: $ch_list"
+	# else
+	# 	ch_list = nothing
+	# end
+
+	# if !isnothing(ch_list)
+	# 	if ch_db != :auto
+	# 		pp[:, ch_list] = pow[:, ch_list] .+ ch_db
+	# 	else
+	# 		correction = median(m .- pow[:,ch_list]; dims=1)
+	# 		# @info size(pow[:, ch_list]), size(correction)
+	# 		pp[:, ch_list] = pow[:, ch_list] .+ correction
+	# 		@info "corrections: $correction"
+	# 	end
+
+	# end
+	ch_list, correction, freqss, pow, pp = ambientnoise_correction(data_fs; ch_list=ch_list, ch_db=ch_db, threshold_fft_error=threshold_fft_error, rx_vect=rx_vect)
+
+	p1=plot(freqss,pow); p2=plot(freqss,pp);
+	p = plot(p1,p2; layout=@layout([a;b]))
+	title!(basename(aufname))
+	if !isnothing(res_fol) 
+		savefig(p, joinpath(res_fol, (splitext(aufname)[1]|>basename) * ".html") )
+		savefig(p, joinpath(res_fol, (splitext(aufname)[1]|>basename) * ".png") )
+	end
+	return p
+end
+
+plot_ambient(aufname::String; kwargs...) = plot_ambient(readAudio(aufname); kwargs...)
