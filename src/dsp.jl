@@ -422,3 +422,31 @@ function psd2(data; fs=1.0, nfft=512, noverlap=div(nfft,2),
 
     return pow, p.freq
 end
+
+function correct_ambient(data_fs; ch_list=nothing, correction=nothing, kwargs...)
+    @info ch_list, correction
+    if data_fs isa Tuple
+        data,fs = data_fs
+    end
+    if isnothing(ch_list) && isnothing(correction)
+        ch_list, correction, freqss, pow, pp, ch_noisylist, data = ambientnoise_correction(data_fs; kwargs...)
+    end
+    if !isempty(ch_list)
+        data_corrected = Float64.(data)
+        data_corrected[:,ch_list] = data_corrected[:,ch_list] .* 10 .^ (correction./20)
+        return data_corrected
+    end
+    return data
+end
+
+function find_correction(in_dir; func_filter= y-> joinpath(y, "acoustic", filter(x->startswith(x,"Ambient") && endswith(x,".ogg"), readdir(joinpath(y,"acoustic")) )[1]) , kwargs...)
+    aufname = func_filter(in_dir)
+    @info aufname
+    output = ambientnoise_correction(aufname; kwargs...)
+    return output
+end
+
+    
+
+filter_band(x, band_pass=[0, Inf]; fs=fs) = mapslices(extrema, filter_simple(x, band_pass; fs=fs, mapslices2=mapslices, dims=1);dims=1)
+# filter_bandfft()

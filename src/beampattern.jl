@@ -221,6 +221,10 @@ run_func_fileauto("/Users/abel/Documents/data/concretecho/data/Shakeela/2024/05/
 run_func_fileauto.(readdir(infol;join=true)|>skiphiddenfiles, Ref(outfol); func=stack_audio_videos, skipdone=true); 
 
 map( x-> run_func_fileauto.(readdir(x,join=true)|>skiphiddenfiles, Ref(outfol); func=stack_audio_videos, skipdone=true), readdir(infol; join=true) |> reverse)
+
+ch_list, correction, freqss, pow, pp, ch_noisylist = find_correction(in_dir; res_dir=res_dir, rx_vect=rx_vect, ch_db=9)
+run_func_fileauto(in_dir, res_dir; func=stack_audio_videos, ch_list=ch_list, correction=correction)
+
 ```
 """
 function stack_audio_videos(aufname, v1, v2, res_dir; 
@@ -245,6 +249,7 @@ function stack_audio_videos(aufname, v1, v2, res_dir;
     isdir(res_dir) || mkpath(res_dir)
 
     data, fs = readAudio(aufname)
+    @isdefined(correction) && (data = correct_ambient((data,fs); kwargs...))
     res = detect_impulseNtonal((aufname,data,fs,nothing), res_dir; return_datafilt=true)
     # res_impulse = res.res_impulse
     # data_filt = filter_simple(data, [1000 Inf]; fs=fs)

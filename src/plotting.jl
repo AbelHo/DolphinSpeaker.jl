@@ -777,7 +777,7 @@ function psd_plot_file(aufname; res_fol=missing, ch_list=nothing)
 	return p
 end
 
-function ambientnoise_correction(data_fs; res_fol=nothing, ch_list=:auto, ch_db=:auto, threshold_fft_error=:auto, threshold_fft_error_multiple=.35, rx_vect=nothing)
+function ambientnoise_correction(data_fs; res_dir=nothing, ch_list=:auto, ch_db=:auto, threshold_fft_error=:auto, threshold_fft_error_multiple=.35, rx_vect=nothing)
 	# data, fs = readAudio(aufname)
 	data, fs = data_fs
 	!isnothing(rx_vect) && (data = @view data[:,1:size(rx_vect,2)])
@@ -786,6 +786,7 @@ function ambientnoise_correction(data_fs; res_fol=nothing, ch_list=:auto, ch_db=
 	correction=nothing
 
 	pp=copy(pow)
+	pow_median = nothing
 	if ch_list == :auto
 		pow_median = mapslices(median,pow;dims=2)
 		pow_diff = pow_median .- pow
@@ -794,6 +795,11 @@ function ambientnoise_correction(data_fs; res_fol=nothing, ch_list=:auto, ch_db=
 		ch_list = findall(>(threshold_fft_error), count_result)
 		@info "corrected channels: $ch_list"
 		@debug count_result
+
+		# plot(pow_diff)|>display
+		count_noisyresult = count(pow_diff .< -3; dims=1)[:]
+		ch_noisylist = findall(>(threshold_fft_error), count_noisyresult)
+		@info "noisy list: $ch_noisylist"
 	else
 		ch_list = nothing
 	end
@@ -803,30 +809,30 @@ function ambientnoise_correction(data_fs; res_fol=nothing, ch_list=:auto, ch_db=
 			pp[:, ch_list] = pow[:, ch_list] .+ ch_db
 			correction = ch_db
 		else
-			correction = median(m .- pow[:,ch_list]; dims=1)
+			correction = median(pow_median .- pow[:,ch_list]; dims=1)
 			# @info size(pow[:, ch_list]), size(correction)
 		end
 		pp[:, ch_list] = pow[:, ch_list] .+ correction
 		@info "corrections: $correction"
 	end
-	return ch_list, correction, freqss, pow, pp, data
+	return ch_list, correction, freqss, pow, pp, ch_noisylist, data
 end
 ambientnoise_correction(aufname::String; kwargs...) = ambientnoise_correction(readAudio(aufname); kwargs...)
 
 
 """
 usage:
-plot_ambient(aufname; ch_db=9, res_fol="/Users/abel/Documents/data_res/concretecho/Ambient/amb_balance", rx_vect=rx_vect)
+plot_ambient(aufname; ch_db=9, res_dir="/Users/abel/Documents/data_res/concretecho/Ambient/amb_balance", rx_vect=rx_vect)
 """
-function plot_ambient(data_fs; res_fol=nothing, kwargs...)
+function plot_ambient(data_fs; res_dir=nothing, kwargs...)
 	ch_list, correction, freqss, pow, pp = ambientnoise_correction(data_fs; kwargs...)
 
 	p1=plot(freqss,pow); p2=plot(freqss,pp);
 	p = plot(p1,p2; layout=@layout([a;b]))
 	title!(basename(aufname))
-	if !isnothing(res_fol) 
-		savefig(p, joinpath(res_fol, (splitext(aufname)[1]|>basename) * ".html") )
-		savefig(p, joinpath(res_fol, (splitext(aufname)[1]|>basename) * ".png") )
+	if !isnothing(res_dir) 
+		savefig(p, joinpath(res_dir, (splitext(aufname)[1]|>basename) * ".html") )
+		savefig(p, joinpath(res_dir, (splitext(aufname)[1]|>basename) * ".png") )
 	end
 	return p
 end
