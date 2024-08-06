@@ -8,12 +8,6 @@ include("audio.jl")
 include("dsp.jl")
 # using Plots
 
-showall(x) = show(stdout, "text/plain", x)
-
-function skiphiddenfiles(list)
-    filter(!startswith('.') ∘  basename, list)
-end
-
 function fft_diff_ratio(data,data_ref;fs=1.0, nfft=512)
     amp, freqsss = psd2(data; fs=fs, nfft=nfft)
     amp_ref, freqsss_ref = psd2(data_ref; fs=fs, nfft=nfft)
