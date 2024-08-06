@@ -439,6 +439,48 @@ function correct_ambient(data_fs; ch_list=nothing, correction=nothing, kwargs...
     return data
 end
 
+function ambientnoise_correction(data_fs; res_dir=nothing, ch_list=:auto, ch_db=:auto, threshold_fft_error=:auto, threshold_fft_error_multiple=.35, rx_vect=nothing)
+	# data, fs = readAudio(aufname)
+	data, fs = data_fs
+	!isnothing(rx_vect) && (data = @view data[:,1:size(rx_vect,2)])
+	# @info size(data)
+	pow, freqss = psd2(data; fs=fs)
+	correction=nothing
+
+	pp=copy(pow)
+	pow_median = nothing
+	if ch_list == :auto
+		pow_median = mapslices(median,pow;dims=2)
+		pow_diff = pow_median .- pow
+		threshold_fft_error==:auto && (threshold_fft_error = size(pow,1) * threshold_fft_error_multiple; @info "threshold_fft_error: $threshold_fft_error")
+		count_result = count(pow_diff .> 3; dims=1)[:]
+		ch_list = findall(>(threshold_fft_error), count_result)
+		@info "corrected channels: $ch_list"
+		@debug count_result
+
+		# plot(pow_diff)|>display
+		count_noisyresult = count(pow_diff .< -3; dims=1)[:]
+		ch_noisylist = findall(>(threshold_fft_error), count_noisyresult)
+		@info "noisy list: $ch_noisylist"
+	else
+		ch_list = nothing
+	end
+
+	if !isnothing(ch_list)
+		if ch_db != :auto
+			pp[:, ch_list] = pow[:, ch_list] .+ ch_db
+			correction = ch_db
+		else
+			correction = median(pow_median .- pow[:,ch_list]; dims=1)
+			# @info size(pow[:, ch_list]), size(correction)
+		end
+		pp[:, ch_list] = pow[:, ch_list] .+ correction
+		@info "corrections: $correction"
+	end
+	return ch_list, correction, freqss, pow, pp, ch_noisylist, data
+end
+ambientnoise_correction(aufname::String; kwargs...) = ambientnoise_correction(readAudio(aufname); kwargs...)
+
 function find_correction(in_dir; func_filter= y-> joinpath(y, "acoustic", filter(x->startswith(x,"Ambient") && endswith(x,".ogg"), readdir(joinpath(y,"acoustic")) )[1]) , kwargs...)
     aufname = func_filter(in_dir)
     @info aufname
