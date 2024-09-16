@@ -71,3 +71,25 @@ register_interaction!(ax1, :my_interaction) do event::MouseEvent, axis
 end
 
 
+
+#~ #################################################################################################
+
+res = [detect_impulse((aufname, data, fs, timestamp); ref_channel=i) for i in 1:size(rx_vect,2)]
+map(x-> x.pind_good_inS|>length, res) |> plot
+
+t_norm = @elapsed [detect_impulse((aufname, data, fs, timestamp); ref_channel=i) for i in 1:size(rx_vect,2)]
+
+res = Vector{Any}(undef, size(rx_vect, 2))
+t_threaded = @elapsed Threads.@threads for i in 1:size(rx_vect,2)
+    res[i] = detect_impulse((aufname, data, fs, timestamp); ref_channel=i)
+end
+
+t_pm = @elapsed pmap( i->detect_impulse((aufname, data, fs, timestamp); ref_channel=i), 1:size(rx_vect,2) );
+
+t_th = @elapsed Threads.@threads for ch in 1:size(rx_vect,2)
+    detect_impulsetrain2((aufname,data[:,ch],fs); plot_everytimeintervalhistogram=true, fullplot=true, res_dir="/Users/abel/Documents/data_res/concretecho/clicktrain/$ch");
+end
+
+it = [detect_impulsetrain2((aufname,data[:,ch],fs); plot_everytimeintervalhistogram=true, fullplot=true, res_dir="/Users/abel/Documents/data_res/concretecho/clicktrain/$ch") for ch in 1:size(rx_vect,2)];
+
+

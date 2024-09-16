@@ -481,6 +481,12 @@ function ambientnoise_correction(data_fs; res_dir=nothing, ch_list=:auto, ch_db=
 end
 ambientnoise_correction(aufname::String; kwargs...) = ambientnoise_correction(readAudio(aufname); kwargs...)
 
+"""
+Example:
+```
+ ch_list, correction, freqss, pow, pp, ch_noisylist = find_correction(in_dir; res_dir=res_dir, rx_vect=rx_vect, ch_db=9)
+```
+"""
 function find_correction(in_dir; func_filter= y-> joinpath(y, "acoustic", filter(x->startswith(x,"Ambient") && endswith(x,".ogg"), readdir(joinpath(y,"acoustic")) )[1]) , kwargs...)
     aufname = func_filter(in_dir)
     @info aufname

@@ -27,3 +27,39 @@ function audacity_label(event_time, fname::String)
     audacity_label(event_time, f)
     close(f)
 end
+
+
+# using Dates
+# using Printf
+
+# function audacity_label2snippets(input_wav::String, labels_file::String, output_dir::String)
+#     # Create the output directory if it doesn't exist
+#     if !isdir(output_dir)
+#         mkpath(output_dir)
+#     end
+
+#     # Open the labels file and process each line
+#     open(labels_file, "r") do file
+#         for line in eachline(file)
+#             # Split the line by tab character
+#             parts = split(line, '\t')
+#             if length(parts) == 3
+#                 start, last, label = parts
+#                 output_file = joinpath(output_dir, "$label.wav")
+                
+#                 # Construct the ffmpeg command
+#                 cmd = `ffmpeg -i $input_wav -ss $start -to $end -c copy $output_file`
+                
+#                 # Run the ffmpeg command
+#                 run(cmd)
+#             end
+#         end
+#     end
+# end
+
+# # Example usage
+# input_wav = "input.wav"
+# labels_file = "labels.txt"
+# output_dir = "output_dir"
+
+# audacity_label2snippets(input_wav, labels_file, output_dir)

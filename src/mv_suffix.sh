@@ -1,4 +1,6 @@
 #!/bin/bash
+# dst="/Volumes/One Touch/res/concretecho/outvid"
+# src="/Volumes/One Touch/res/concretecho/outvid_timeplot"
 
 src="/Volumes/One Touch/res/concretecho/outvid"
 dst="/Volumes/One Touch/res/concretecho/outvid_timeplot"
