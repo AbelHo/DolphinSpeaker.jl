@@ -7,7 +7,7 @@ folname = "/Users/abel/Documents/data/concretecho/rws_tx_2"
 frequencies = 80_000:1_000:150_000
 fols = readdir(folname)[1:end-1] |> skiphiddenfiles
 materials = [split(x, "__")[1] for x in fols]
-res_dir = "/Users/abel/Documents/data_res/concretecho/rx_tx_testres4/hamming"
+res_dir = "/Users/abel/Documents/data_res/concretecho/rx_tx_testres5/hamming"
 res = [transmission_reflection_ratio(; frequencies = frequencies, res_dir=res_dir, flag_ploteachfreq=true, flag_plotreflection=true, flag_plottransmission=true, sig_type = "hamming_", material_name=x) for x in fols]
 # res = [transmission_reflection_ratio(; frequencies = frequencies, res_dir=res_dir, material_name=x) for x in fols]
 
@@ -37,7 +37,7 @@ r = transmission_reflection_ratio(; frequencies = frequencies, material_name="CO
 function transmission_reflection_ratio(;
     res_dir = "/Users/abel/Documents/data_res/concretecho/rx_tx",
     window_offset = 0,
-    window_reflection = (316:550) .+ window_offset,
+    window_reflection = (373:550) .+ window_offset,
     window_transmission = (310:580) .+ window_offset,
     window_first = (1:2000) .+ window_offset,
     window_ambient = (1000:1500) .+ window_offset,
