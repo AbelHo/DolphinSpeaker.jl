@@ -4,6 +4,7 @@ using Pipe: @pipe
 # include("map.jl")
 using Base.Threads
 import GLMakie
+using PlotlyBase
 
 function vline2(xvals, previus_plot, max_y=3000)
 	previus_plot
@@ -632,8 +633,13 @@ end
 function plot_detection_summary(fname; res_dir=nothing, filetype=".png", plotly_flag=false)
 	
 	detections = CSV.read(fname, DataFrame)
-	detections.datetime = ZonedDateTime.(detections.datetime .|> String)
+	try
+		detections.datetime = ZonedDateTime.(detections.datetime .|> string)
+	catch error
+		@error "no zoned date time"
+	end
 
+	mkpath(res_dir)
 	#~ plotly
 	if plotly_flag
 		p = PlotlyJS.Plot(detections.datetime .|> DateTime, [detections.num_noise detections.num_tonal],
@@ -675,14 +681,20 @@ end
 # plot_detection_summary("/Volumes/One Touch/res/Hawaii_2022-09/punnet_yellow/4/2022-09-17/counts.csv"; res_dir="/Volumes/One Touch/res/Hawaii_2022-09/punnet_yellow/4/summary")
 # plot_detection_summary("/Volumes/One Touch/res/Hawaii_2022-09/punnet_yellow/4/2022-09-27/counts.csv"; res_dir="/Volumes/One Touch/res/Hawaii_2022-09/punnet_yellow/4/summary", filetype=".html", plotly_flag=true)
 
-function detectionsfiles2plot(fname; res_dir=nothing)
+function detectionsfiles2plot(fname; res_dir=nothing, plottype=PlotlyJS.bar)
     df = CSV.read(fname, DataFrame)
-    df.datetime = ZonedDateTime.(String.(df.datetime)) .|> DateTime
+    try
+		df.datetime = ZonedDateTime.(String.(df.datetime)) .|> DateTime
+	catch error
+		@error "no zoned date time"
+	end
     # plot(df.datetime, [df.num_tonal df.num_noise]; label=["tonal" "noise"])
 
     p = PlotlyJS.plot([
-        PlotlyJS.scatter(df, x=:datetime, y=:num_tonal; name="tonal"),
-        PlotlyJS.scatter(df, x=:datetime, y=:num_noise; name="noise")
+        plottype(df, x=:datetime, y=:num_tonal; name="tonal"),
+        plottype(df, x=:datetime, y=:num_noise; name="noise"),
+        plottype(df, x=:datetime, y=:num_impulsetrain; name="click_train"),
+        plottype(df, x=:datetime, y=:num_impulseINtrain; name="click")
         ],
         PlotlyJS.Layout(
             title="Detections ("* string(df.datetime[1] |> Date) *")",
@@ -701,7 +713,117 @@ function detectionsfiles2plot(fname; res_dir=nothing)
     #     PlotlyBase.to_image(io, p.plot)
     # end
     PlotlyJS.savefig(p.plot, joinpath(res_dir,basename(dirname(fname))*".png"))
+	return p
+end
 
+function detectionsfiles2plot2(fname; res_dir=nothing, plottype=PlotlyJS.bar, 
+                             add_daynight=true, latitude=21.3, longitude=-157.8) # Hawaii coordinates by default
+	if typeof(fname) == DataFrame
+		df = fname
+		fname = Dates.format(df[1,:datetime], "yyyy-mm-dd_HHMMSS") * "/"
+		@info "autoname: $fname"
+    else
+        df = CSV.read(fname, DataFrame)
+	end
+
+    try
+        df.datetime = ZonedDateTime.(String.(df.datetime)) .|> DateTime
+    catch error
+        @error "no zoned date time"
+    end
+    
+    # Create the base plot
+    layout = PlotlyJS.Layout(
+        title="Detections ("* string(df.datetime[1] |> Date) *")",
+        xaxis_title="DateTime",
+        yaxis_title="Number of Detections",
+        # Add transparency to better see the shading
+		plot_bgcolor="rgba(229, 236, 246, 1)" # background darker default color
+    )
+    
+    p = PlotlyJS.plot(layout)
+    
+    # Add day/night shading if requested
+    if add_daynight
+        # Get unique dates in the data
+        dates = unique(Date.(df.datetime))
+        
+        # Add night rectangles (can use SunCalc.jl or Astro.jl for accurate sunrise/sunset)
+        shapes = PlotlyJS.Shape[]
+        
+        for date in dates
+            # Approximate sunrise (6am) and sunset (6pm)
+            # For more accuracy, use sunrise/sunset calculation based on lat/long
+            sun_time = get_sun_times(date, latitude, longitude)
+			sunrise = sun_time.sunrise
+            sunset = sun_time.sunset
+			# sunrise = DateTime(date) + Hour(6)
+            # sunset = DateTime(date) + Hour(18)
+            
+            # Day rectangle from surise to sunset
+            push!(shapes, PlotlyJS.rect(
+                x0 = sunrise,
+                x1 = sunset,
+                y0 = 0,
+                y1 = 1,
+                yref = "paper",
+                fillcolor = "rgba(255, 255, 255, 0.4)",
+                line_width = 0,
+                layer = "below"
+            ))
+            
+            # # Night rectangle from sunset to midnight
+            # push!(shapes, PlotlyJS.rect(
+            #     x0 = sunset,
+            #     x1 = DateTime(date + Day(1)),
+            #     y0 = 0,
+            #     y1 = 1,
+            #     yref = "paper",
+            #     fillcolor = "rgba(55, 55, 150, 0.2)",
+            #     line_width = 0,
+            #     layer = "below"
+            # ))
+        end
+        
+        # Add shapes to layout
+        # p.layout["shapes"] = shapes
+		layout[:shapes] = shapes
+		p = PlotlyJS.plot(layout)
+    end
+    
+    # Add data traces
+    PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_tonal; name="tonal"))
+    PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_noise; name="noise"))
+    PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_impulsetrain; name="click_train"))
+    PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_impulseINtrain; name="click"))
+
+    # Save output
+    mkpath(res_dir)
+    PlotlyJS.savefig(p, joinpath(res_dir,basename(dirname(fname))*".png"))
+	PlotlyJS.savefig(p, joinpath(res_dir,basename(dirname(fname))*".html"))
+    # open(joinpath(res_dir,basename(dirname(fname))*".html"), "w") do io
+    #     PlotlyBase.to_html(io, p)
+    # end
+    return p
+end
+
+#~ get sun timings
+using SunCalc, TimeZones, TimeZoneFinder
+function get_sun_times(date, latitude, longitude; localtime=true)
+    # times = SunCalc.getTimes(date, latitude, longitude)
+    times = SunCalc.getTimes(date, latitude, longitude)
+    if localtime
+        return NamedTuple{keys(times)}(
+            TimeZones.ZonedDateTime.(values(times),
+                timezone_at(latitude, longitude)|>Ref; from_utc=true)
+                .|> DateTime
+            )
+
+        # TimeZones.ZonedDateTime.([times[:sunrise], times[:sunset]],
+        #         timezone_at(latitude, longitude)|>Ref; from_utc=true) .|> DateTime
+    end
+    
+    return times #times[:sunrise], times[:sunset]
 end
 
 # 	a=PlotlyJS.plot(x=df.datetime .|> DateTime, y=df.num_noise, name="noise")
@@ -733,20 +855,22 @@ end
 
 
 function plot_fft(snip, fs=1.0; type=:amplitude, plot=plot) 
-	fft_val = rfft(snip) .|> abs
-	freqss =  0:(fs/size(snip,1)):fs÷2
+	fft_val = rfft(snip, 1) .|> abs
+	freqss =  fftfreq2(size(snip,1),fs)  #0:(fs/size(snip,1)):fs÷2
 
 	type == :log && (fft_val = 20 .* log10.(fft_val))
+	@debug (size(snip), size(freqss), size(fft_val), typeof(freqss), typeof(fft_val))
 	plot(freqss, fft_val)
 end
 
 plot_fft!(args...; kwargs...) = plot_fft(args...; plot=plot!,kwargs...)
 
-function plot_time_fft(snip, fs=1.0; layout=@layout [a b])
+lay = @layout [a b];
+function plot_time_fft(snip, fs=1.0; layout=lay, kwargs_plotfft=(), kwargs...)
 	# a = plot(signal(snip,fs))
 	a = plot(snip)
-	b = plot_fft(snip,fs)
-	plot(a,b, layout=layout)
+	b = plot_fft(snip,fs; kwargs_plotfft...)
+	plot(a,b; layout=layout, kwargs...)
 end
 
 # norm_max(args...; norm_func=x->maximum(abs.(x); dims=1), kwargs...) = args[1]./norm_func(args[1])
@@ -797,3 +921,58 @@ function plot_ambient(data_fs; res_dir=nothing, kwargs...)
 end
 
 plot_ambient(aufname::String; kwargs...) = plot_ambient(readAudio(aufname); kwargs...)
+
+
+# 3D waterfall plot
+"""
+	waterfall_3d(clips, selections)
+
+Generate a 3D waterfall plot visualizing audio clips.
+
+# Arguments
+- `clips::Matrix`: Matrix where rows represent samples and columns represent clips.
+- `selections::Vector`: Vector of indices or identifiers for the clips to display.
+
+# Returns
+A 3D surface plot with sample indices on the x-axis, selection identifiers on the y-axis,
+and amplitude values on the z-axis.
+
+# Description
+Creates a 3D visualization of multiple audio clips arranged in a waterfall-like structure,
+allowing for visual comparison of signal patterns across different selections.
+
+# Example
+"""
+function waterfall_3d(clips, xlabels=1:size(clips,1))#, x = repeat(1:size(clips, 1), 1, size(clips, 2)))
+    n_samples = size(clips, 1)
+	n_clips = size(clips,2)
+	# Create meshgrid-like arrays
+    x = repeat(xlabels, 1, n_clips)
+    y = repeat(reshape(1:n_clips, 1, :), n_samples, 1)
+    z = clips[:, 1:n_clips]
+    
+    Plots.surface(x, y, z, 
+           title="3D Waterfall Plot",
+           xlabel="Sample Index", 
+           ylabel="repetition",
+           zlabel="Amplitude")
+end
+
+# function waterfall_3d(clips, selections=1:size(clips, 2))
+#     n_samples = size(clips, 1)
+#     n_clips = length(selections)
+    
+#     # Create meshgrid-like arrays
+#     x = repeat(1:n_samples, 1, n_clips)
+#     y = repeat(reshape(selections, 1, :), n_samples, 1)
+#     z = clips[:, 1:length(selections)]
+    
+#     Plots.surface(x, y, z, 
+#            title="3D Waterfall Plot",
+#            xlabel="Sample Index", 
+#            ylabel="Selection",
+#            zlabel="Amplitude")
+# end
+
+# Apply to your data:
+# waterfall_3d(clips, selections)

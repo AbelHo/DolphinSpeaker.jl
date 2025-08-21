@@ -3,12 +3,12 @@ plotlyjs()
 include("audio.jl")
 # data, fs = readAudio("/Users/abel/Documents/data/concretecho/tx_rx/rws_tx__pc/concrete3_test_5_outdur0.001_tukey0.75/cw_dur0.0003_tukey0.15.wav")
 
-folname = "/Users/abel/Documents/data/concretecho/rws_tx_2"
+folname = "/media/spin/anas/data/concretecho/material_transmission_test/rws_tx_2" #"/Users/abel/Documents/data/concretecho/rws_tx_2"
 frequencies = 80_000:1_000:150_000
 fols = readdir(folname)[1:end-1] |> skiphiddenfiles
 materials = [split(x, "__")[1] for x in fols]
-res_dir = "/Users/abel/Documents/data_res/concretecho/rx_tx_testres5/hamming"
-res = [transmission_reflection_ratio(; frequencies = frequencies, res_dir=res_dir, flag_ploteachfreq=true, flag_plotreflection=true, flag_plottransmission=true, sig_type = "hamming_", material_name=x) for x in fols]
+res_dir = "/media/spin/anas/data_res/dolphin/concretecho/material_test/rx_tx_testres7" #"/Users/abel/Documents/data_res/concretecho/rx_tx_testres5/hamming"
+res = [transmission_reflection_ratio(; folname=folname, frequencies = frequencies, res_dir=res_dir, flag_ploteachfreq=true, flag_plotreflection=true, flag_plottransmission=true, sig_type = "hamming_", material_name=x) for x in fols]
 # res = [transmission_reflection_ratio(; frequencies = frequencies, res_dir=res_dir, material_name=x) for x in fols]
 
 #~ impulse only

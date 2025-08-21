@@ -1,6 +1,7 @@
 using Peaks, SignalAnalysis, SignalAnalysis.Units, JLD2, DSP
 using Statistics
 include("audacity.jl")
+include("raven.jl")
 include("config.jl") #impulsive_autothreshold_median_ratio
 include("audio.jl")
 include("dsp.jl")
@@ -86,7 +87,7 @@ end
 
 
 function detect_impulse(aufname_data_fs::Tuple, res_dir=nothing; band_pass=impulsive_band_pass,
-    ref_channel=ref_channel, dist=dist_impulsive, window=window_impulsive, threshold=threshold_impulsive,
+    ref_channel=ref_channel, dist=dist_impulsive, window=window_impulsive, threshold=threshold_impulsive, impulsive_autothreshold_median_ratio=impulsive_autothreshold_median_ratio,
     return_datafilt=false)
 
     aufname, data, fs = aufname_data_fs
@@ -109,9 +110,10 @@ function detect_impulse(aufname_data_fs::Tuple, res_dir=nothing; band_pass=impul
     pind, ppeak_all = findPings(data_hil; ref_channel=1, dist=dist)
 
     if isnothing(threshold)
+        @debug impulsive_autothreshold_median_ratio
         # threshold = median(data_hil)*impulsive_autothreshold_median_ratio
         threshold = quantile(data_hil, .75) * impulsive_autothreshold_median_ratio
-        @info "__auto thresholding: " * string(threshold)
+        @info "__auto thresholding(impulse): " * string(threshold)
     end
     threshold_indices = findall(>(threshold), ppeak_all)
     pind_good = pind[threshold_indices]
@@ -135,8 +137,162 @@ function detect_impulse(aufname_data_fs::Tuple, res_dir=nothing; band_pass=impul
         return (;pind, ppeak, ppeak_all, pind_good, pind_good_inS, threshold_indices, threshold, dist, aufname, num_detection, len_data=size(data,1), outfname, fs)
     end
 end
+"""
+    detect_impulseNarrowBand(aufname_data_fs::Tuple, res_dir=nothing; 
+                             clip_len=40, min_freq=80_000, nb_bandpass=[1000, Inf], kwargs...)
+
+Detects narrowband impulses in audio data and filters the results based on a minimum frequency threshold.
+
+# Arguments
+- `aufname_data_fs::Tuple`: A tuple containing the audio file name, audio data, and sampling frequency.
+- `res_dir::String`: The directory where the results will be saved (default is `nothing`).
+- `clip_len::Int`: The length of the clips to be extracted (default is 40).
+- `min_freq::Int`: The minimum frequency threshold for narrowband detection (default is 80,000 Hz).
+- `nb_bandpass::Array`: The bandpass filter range for narrowband detection (default is [1000, Inf]).
+- `kwargs...`: Additional keyword arguments.
+
+# Description
+This function performs the following steps:
+1. Detects impulses in the audio data.
+2. Applies a simple bandpass filter to the audio data.
+3. Extracts clips around the detected impulses.
+4. Computes the FFT of each clip and identifies the peak frequencies.
+5. Filters the impulses based on the minimum frequency threshold.
+6. Generates labels for the detected impulses in Audacity and Raven formats.
+7. Returns a dictionary containing the filtered impulse indices, peak values, and other relevant information.
+
+# Example
+```julia
+res = detect_impulseNarrowBand((aufname, data, fs), res_dir; clip_len=50, min_freq=90_000)
+res = detect_impulseNarrowBand("path/to/audio/file.flac", "path/to/results")
+```
+"""
+function detect_impulseNarrowBand(aufname_data_fs::Tuple, res_dir=nothing; 
+    clip_len = 40, min_freq = impulseNarrowBand_min_freq, nb_bandpass=nb_bandpass,
+    peak_min = 30, bandwidth_max = 50_000,
+    flag_returnFFT=flag_returnFFT, kwargs...)
+
+    aufname, data, fs = aufname_data_fs
+    res = detect_impulse(aufname_data_fs, res_dir; kwargs...)
+    data_filt = filter_simple(data, nb_bandpass; fs=fs)
+
+    clips = extract_clips(data, res.pind_good, clip_len)
+
+    ffts = map(x-> abs2.(x) |> x->x[3:end], rfft.(clips))
+    freqss = fs÷clip_len*2:fs÷clip_len:fs÷2
+    peak_index = argmax.(ffts)
+    peak_freqs = peak_index .|> x-> freqss[x]
+    nbhf = findall( >(min_freq), peak_freqs)
+
+    # filter out peaks below the minimum threshold
+    nbhf = nbhf[findall( >(peak_min), res.ppeak[nbhf] )]
+
+    # get 2nd peak frequency
+    peak2_freq = [(ff2=x; ff2[peak_index[i]]=0; ff2 |> argmax |> y-> freqss[y]) for (i, x) in enumerate(ffts)]
+    nbhf = nbhf[findall( >(min_freq), peak2_freq[nbhf] )]
+    # ffts2 = map(x-> x[peak_index[i]], ffts)
+
+    # # filter out peaks with bandwidth larger than the maximum allowed
+    # if bandwidth_max > 0
+    #     # Calculate bandwidth for each FFT
+    #     bandwidths = map(ffts[nbhf]) do fft_data
+    #         # Find the peak frequency first
+    #         # peak_idx = argmax(fft_data)
+            
+    #         # Calculate the 3dB bandwidth
+    #         # peak_value = fft_data[peak_idx]
+    #         # threshold_3db = peak_value / 2  # -3dB is half power
+            
+    #         # Find points where the power drops below 3dB from the peak
+    #         above_threshold = fft_data .> peak_min
+            
+    #         # Count consecutive points above threshold around the peak
+    #         width = count(above_threshold)
+            
+    #         # Convert to Hz
+    #         width * (fs/clip_len)
+    #     end
+        
+    #     # Keep only peaks with bandwidth less than the maximum allowed
+    #     narrow_indices = findall(.<=(bandwidth_max), bandwidths)
+    #     nbhf = nbhf[narrow_indices]
+    # end
+
+    # AI generated -> filter out peaks with bandwidth larger than the maximum allowed
+    if bandwidth_max > 0
+        # Calculate bandwidth for each FFT
+        bandwidths = map(ffts[nbhf]) do fft_data
+            # Find the peak frequency first
+            peak_idx = argmax(fft_data)
+            
+            # Calculate the 3dB bandwidth
+            peak_value = fft_data[peak_idx]
+            threshold_3db = peak_value * 0.75
+            # threshold_3db = peak_value / 2  # -3dB is half power
+            
+            # Find points where the power drops below 3dB from the peak
+            above_threshold = fft_data .> threshold_3db
+            
+            # Count consecutive points above threshold around the peak
+            width = count(above_threshold)
+            
+            # Convert to Hz
+            width * (fs/clip_len)
+        end
+        
+        # Keep only peaks with bandwidth less than the maximum allowed
+        narrow_indices = findall(.<=(bandwidth_max), bandwidths)
+        nbhf = nbhf[narrow_indices]
+    end
+
+    pind_good = res.pind_good[nbhf]
+    pind_good_inS = pind_good ./ fs
+    ppeak = res.ppeak[nbhf]
+
+    
+
+    num_detection = length(pind_good)
+
+    audacity_label(pind_good_inS, joinpath(res_dir, res.outfname *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  "_nbhf_$min_freq.txt" |> basename))
+    raven_label(pind_good_inS, joinpath(res_dir, "raven_" * res.outfname *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  "_nbhf_$min_freq.txt" |> basename))
+    
+    res_new = (;pind_good_inS,pind_good,ppeak,
+        len_data = res.len_data,
+        outfname = res.outfname,
+        threshold = res.threshold,
+        dist = res.dist,
+        pind = res.pind_good)
+    # @info (return (res_new..., ffts, freqss, peak_freqs, clips))
+    #flag_returnFFT && (return (res_new..., ffts=ffts, freqss=freqss, peak_freqs=peak_freqs, clips=clips))
+    if flag_returnFFT
+        r = (res_new..., ffts=ffts, freqss=freqss, peak_freqs=peak_freqs, clips=clips, nbhf)
+        # @info r
+        return r
+    end
+
+    # @info res_new
+    return res_new
+end
+
+function detect_impulseNarrowBand(aufname::String, res_dir=nothing; kwargs...)
+    @info basename(aufname)
+    data, fs, _, opt, timestamp = readAudio(aufname)
+    detect_impulseNarrowBand((aufname, data, fs), res_dir; kwargs...)#, data_filt, fs
+end
 
 conv_onesided(u,v) = conv(u, v)[length(v):end-(length(v)-1)]
+
+function detect_impulsetrain(pind_good, pind_good_inS, ppeak, len_data, outfname, res_dir=res_dir; 
+    click_train_minlen=click_train_minlen, click_train_check_interval=click_train_check_interval)
+
+    res = (;pind_good_inS = pind_good_inS, 
+        pind_good = pind_good,
+        ppeak = ppeak,
+        len_data = len_data,
+        outfname = outfname)
+    return detect_impulsetrain(res, res_dir; 
+        click_train_minlen=click_train_minlen, click_train_check_interval=click_train_check_interval)
+end
 
 function detect_impulsetrain(res, res_dir=res_dir; 
     click_train_minlen=click_train_minlen, click_train_check_interval=click_train_check_interval)
@@ -156,6 +312,9 @@ function detect_impulsetrain(res, res_dir=res_dir;
     train_start = Int[]
     train_end = Int[]
     train_start_ind = Int[]
+
+    train_impulse_list = []
+    train_impulse_index = 0
     for i in 1:length(click_inds)
         if click_inds[i]
             push!(click_accum, i)
@@ -164,7 +323,11 @@ function detect_impulsetrain(res, res_dir=res_dir;
                 train_count += 1
                 push!(train_start, res.pind_good[i])
                 push!(train_start_ind, length(click_in_trains))
+                
+                push!(train_impulse_list, Int[])
+                train_impulse_index += 1
             end
+            push!(train_impulse_list[train_impulse_index], res.pind_good[i])
             train_switch = true
         else
             if train_switch
@@ -183,19 +346,21 @@ function detect_impulsetrain(res, res_dir=res_dir;
         pind = res.pind_good,
         train_start, train_end,
         num_detection=train_count, num_click_in_trains=length(click_in_trains),
-        train_start_ind, click_train_check_interval, click_train_minlen)
+        train_start_ind, click_train_check_interval, click_train_minlen, train_impulse_list)
 
         
     if res_dir isa String
         !isdir(res_dir) || mkpath(res_dir)
 
         audacity_label(res_new.pind_good_inS, joinpath(res_dir, res.outfname *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  ".txt" |> basename))
+        raven_label(res_new.pind_good_inS, joinpath(res_dir, "raven_" * res.outfname *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  ".txt" |> basename))
         # label train
         if isempty(click_accum)
             @info "no click trains detected"
         else
             fs = round(Int, (res_new.pind_good[1] - 1) / res_new.pind_good_inS[1])
             audacity_label([train_start train_end] ./ fs, joinpath(res_dir, res.outfname *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  "_train-only.txt" |> basename))
+            raven_label([train_start train_end] ./ fs, joinpath(res_dir, "raven_" * res.outfname *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  "_train-only.txt" |> basename); channel=ref_channel, prefix="ct")
             # audacity_label([train_start train_end] ./ fs, joinpath(res_dir, splitext(res.aufname)[1]*"_t"*string(res.threshold)*"_d"*string(res.dist) *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  "_train-only.txt" |> basename))
         end
     else
@@ -231,16 +396,17 @@ end
 get the histogram of the inter pulse interval of the detected impulses
 """
 function detect_impulsetrain2(aufname_data_fs; 
-    res_dir=nothing, ref_channel=1, dist_impulsive=80,
+    res_dir=nothing, ref_channel=1, dist_impulsive=dist_impulsive,
     bin_interval=100, time_interval = 0.1,
-    fullplot=false, plot_everytimeintervalhistogram=false, display=x->x)
+    fullplot=false, plot_everytimeintervalhistogram=false, display=x->x,
+    impulsive_band_pass=impulsive_band_pass, butterworth_size=butterworth_size)
     # aufname = "/Users/abel/Documents/data_res/megafauana/clicks - all/click_HantuW_20210210_1.wav"
     # res_dir = "/Users/abel/Documents/data_res/megafauana/clicks_res"
     # ref_channel = 1
     # dist_impulsive=200
     aufname, data, fs = aufname_data_fs
     # data, fs, nbits, opt, timestamp = readAudio(aufname);
-    res_impulse = detect_impulse((aufname,data,fs), res_dir; ref_channel=ref_channel, band_pass=[500 Inf], dist=dist_impulsive, threshold=nothing)#.01)
+    res_impulse = detect_impulse((aufname,data,fs), res_dir; ref_channel=ref_channel, band_pass=impulsive_band_pass, dist=dist_impulsive, threshold=nothing)#.01)
     times = res_impulse.pind_good
     timediff = zeros(Int,length(times),length(times)) 
     # using LinearAlgebra, StatsBase, Plots
@@ -355,8 +521,8 @@ end
 using DataFrames, CSV
 function detect_impulsetrain2_folder(folname; res_dir=nothing, bin_interval=100, time_interval=0.1)
     # bin_interval=100; time_interval=0.1; #bin_interval=100; time_interval=0.1;
-    folname = "/Users/abel/Documents/data_res/megafauana/clicks - all"
-    res_dir = "/Users/abel/Documents/data_res/megafauana/clicks_res5_$bin_interval-bin_$time_interval-s__rawhisto-goodonly_new-direct_withcountNall3_shortheatmap_rawhistox2"
+    # folname = "/Users/abel/Documents/data_res/megafauana/clicks - all"
+    res_dir = "$(res_dir)_$bin_interval-bin_$time_interval-s__rawhisto-goodonly_new-direct_withcountNall3_shortheatmap_rawhistox2"
     rr = detect_impulsetrain2.(readdir(folname; join=true); res_dir = res_dir, fullplot=true, bin_interval=bin_interval, time_interval=time_interval)
 
 
@@ -403,6 +569,18 @@ function detect_impulsetrain2_folder(folname; res_dir=nothing, bin_interval=100,
     jldsave(joinpath(res_dir,"result.jld2"); histo,timediff,times,rr,fnames, timediff_single, df)
 end
 
+function detect_impulsegroup(times)
+    # times = res_impulse.pind_good
+    timediff = zeros(Int,length(times),length(times)) 
+    # using LinearAlgebra, StatsBase, Plots
+    timediff = UpperTriangular(timediff)
+    Threads.@threads for i in 1:length(times) 
+        for j in i:length(times)
+            timediff[i,j] = times[j] - times[i]
+        end
+    end
+    timediff
+end
 
 
 # for i in 1:length(d["times"]); plot(d["times"][i][1:end-1]./fs, d["timediff_single"][i]; title=d["fnames"][i]) |> display; end

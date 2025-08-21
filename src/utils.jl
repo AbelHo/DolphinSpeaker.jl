@@ -107,6 +107,89 @@ function replace_suffix(src::AbstractString, suffix, replacement=""; preview=tru
     end
 end
 
+# Function to search for files with specific string and suffix, then run a function on threshold_impulsive
+function func_on(a, b; needle="", filetype="", prefix="", func=(x,y)->nothing, verbose=false)
+    fname = basename(a)
+    verbose && print("\t",a,b, "\n")
+    if occursin(needle, fname) && endswith(fname, filetype) && startswith(fname, prefix)
+        func(a, joinpath(b, fname))
+    end
+end
+
+"""
+# Transfer some files to a new folder with the same folder structure as the original folder.
+# example:
+infol = "/media/spin/anas2/data_res/dolphin/marecet/datai/new_20250724/raw/173648"
+outfol = "/home/spin/Documents/data_res/marecet/temp/Datai_20250724/detection_files2"
+# func_new(x, y) = func_on(x, y; needle="cps40.0", filetype=".txt", func=(a,b)->print("\t",a,"  ",b,"\n"), verbose=false)
+# transfer raven files
+func_new(x, y) = func_on(x, y; prefix="raven_", needle="cps40.0", filetype=".txt", func=cp, verbose=false)
+process_files_hierarchy_with_func(infol, outfol; func=func_new)#verbose=true)
+# transfer counts.csv files
+func_new(x, y) = func_on(x, y; prefix="counts", needle="", filetype=".csv", func=cp, verbose=false)
+process_files_hierarchy_with_func(infol, outfol; func=func_new)#verbose=true
+
+count_files = glob("*/counts.csv", infol) |> sort
+df = CSV.read.(count_files, DataFrame)
+select!(df[2], Not(:filepath)); df = vcat(df...)
+CSV.write(joinpath(outfol, "counts_all.csv"), df)
+# df = vcat(CSV.read.(count_files, DataFrame)...)
+"""
+function process_files_hierarchy_with_func(folname, outfolder, args...; verbose=false, func=(x,y)->nothing, flag_skiphiddenfiles=true, kwargs...)
+    flist = readdir(folname; join=true) 
+    flag_skiphiddenfiles && (flisth = flist |> skiphiddenfiles)
+    for file in flist
+        if isdir(file)
+            @info "directory: $file"
+            mkpath(joinpath(outfolder, basename(file)))
+            process_files_hierarchy_with_func( file, joinpath(outfolder, basename(file)), args...; 
+                func=func, verbose=verbose, flag_skiphiddenfiles=flag_skiphiddenfiles, kwargs...)
+        else
+            verbose && print("file: $file, outfolder: $outfolder\n")
+            func(file, outfolder, args...; kwargs...)
+        end
+    end
+end
+
+
+# using Glob
+# """
+    # make_clip_index_html(folder)# flag_sort_number=false)#; outname="index.html", prefix="clip_")
+# """
+function make_clip_index_html(folder::AbstractString; outname="index2.html", prefix="clip_", flag_sort_number=true, output_type="html")
+    # Extract number from filename for sorting
+    function clipnum(f)
+        m = match(Regex("^" * prefix * "(\\d+)\\.$output_type\$"), basename(f))
+        isnothing(m) ? typemax(Int) : parse(Int, m.captures[1])
+    end
+
+    files = filter(f -> occursin(Regex("^" * prefix * "\\d+\\.$output_type\$"), basename(f)), readdir(folder; join=true))
+    if flag_sort_number 
+        files = sort(files, by=clipnum)
+    else
+        files = sort(files)
+    end
+    outpath = joinpath(dirname(folder), outname)
+
+    open(outpath, "w") do io
+        println(io, "<!DOCTYPE html>\n<html>\n<head><title>Clips Index</title></head>\n<body>")
+        for f in files
+            fname = basename(f)
+            relpath = joinpath(basename(folder), fname)
+            println(io, """<h3>$fname</h3>""")
+            if output_type in ["png", "jpg", "jpeg", "gif", "webp", "svg", "svg", "bmp", "tiff"]
+                println(io, """<img src="$relpath" alt="$fname" style="max-width:100%; height:auto;">""")
+            else
+                println(io, """<iframe src="$relpath" width="100%" height="400" style="border:none;margin-bottom:1em;"></iframe>""")
+            end
+        end
+        println(io, "</body>\n</html>")
+    end
+    return outpath
+end
+
+
+
 """
     run_func_fileauto(dname, outfolder; sensor_names=["acoustic", "topview", "uw1"], sensor_filetypes=[".ogg", ".mkv", ".mkv"], func=x->x, prefix_filter="", kwargs...)
 
@@ -200,7 +283,27 @@ end
 #         throw(ArgumentError("The @parallel_comprehension macro expects a comprehension expression."))
 #     end
 # end
+# Convert Dict to NamedTuple
+dict2namedtuple(d) = NamedTuple(Symbol(k) => v for (k, v) in d)
 
+function find_filse_with_string(folname, str)
+    # folname = "/media/spin/anas2/data/marecet/datai/deployment_18012024_18042024/SDcard3/wav"
+    files = readdir(folname; join=true) |> filter(contains(str))
+    if isempty(files)
+        @warn "No files found containing $str in $folname"
+    end
+    return files
+end
+function find_files_with_suffix(folname, suffix)
+    # folname = "/media/spin/anas2/data/marecet/datai/deployment_18012024_18042024/SDcard3/wav"
+    files = readdir(folname; join=true) |> filter(endswith(suffix))
+    if isempty(files)
+        @warn "No files found with suffix $suffix in $folname"
+    end
+    return files
+end
+
+readdirjoin(x) = readdir(x; join=true)
 
 @info "end utils.jl"
 

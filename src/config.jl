@@ -18,6 +18,12 @@ window_impulsive = -50:200; #-5000:10000 #-50:300
 impulsive_band_pass = [60, Inf] #fs/2*.98]
 impulsive_autothreshold_median_ratio = 4;
 
+#~ impulsive narrowband
+impulseNarrowBand_min_freq = 100_000 #80_000 # Hz
+flag_returnFFT = false #true # return the FFT of the clip
+impulseNarrowBand_clip_len = #40
+nb_bandpass = [1000, Inf]
+
 #~ tonal sound detector parameters
 window_tonal = 0.01
 nfft_inS = 0.01
@@ -164,6 +170,75 @@ function set_device__calf_hk2_smallarray()
     global rx_vect = [real(rx); imag(rx); zeros(1,3)]
 end
 
+function set_device_default()
+    global DEFAULT_fname2timestamp_func = fname2dt_date_time
+    global tonal_band_pass = [500 47000]
+    global impulsive_band_pass = [500 47000]
+    global click_train_minlen = 3
+    global click_train_check_interval = .2
+    global ref_channel = 1
+
+    global rx_vect = [0;0;0]; #[-1 1; 0 0; 0 0]
+    # res6 = detect_impulseNtonal(aufname, res_dir; threshold_tonal=18)
+    # res3 = detect_impulseNtonal(aufname, res_dir; threshold_tonal=22, freq_maxbandwidth=3000, freq_width_db=10)
+    # res5 = detect_impulseNtonal(aufname, res_dir; threshold_tonal=4, freq_maxbandwidth=3000, freq_width_db=10);
+end
+
+function set_device__soundtrap()
+    global DEFAULT_fname2timestamp_func = fname2dt_soundtrap
+    global threshold_tonal = nothing
+    global tonal_band_pass = [2500, 40_000]
+    # global tonal_band_pass = [80_000 Inf] #for porpoise click train #[500 47000]
+    # global nfft_inS = 0.01
+    # global freq_maxbandwidth = 100_000
+    # global freq_width_db = 340
+    
+    global impulsive_band_pass = [80_000, Inf]
+    global click_train_minlen = 3
+    global click_train_check_interval = .1
+    global ref_channel = 1
+
+    global impulsive_autothreshold_median_ratio = 20
+    global threshold_impulsive = 47 # nothing
+
+    global impulsive_autothreshold_median_ratio = 1#4
+    global threshold_impulsive = nothing
+    
+    global threshold_boat = 1e3
+    global band_pass_boat = [1 500]
+
+    global rx_vect = [0;0;0]; #[-1 1; 0 0; 0 0]
+
+    # global DEFAULT_fname2timestamp_func = aufname -> fname2dt_date_time(aufname; skip_front=3) 
+end
+
+function set_device__hydromoth()
+    global DEFAULT_fname2timestamp_func = fname2dt_date_time
+    global threshold_tonal = nothing
+    global tonal_band_pass = [2500, 40_000]
+    # global tonal_band_pass = [80_000 Inf] #for porpoise click train #[500 47000]
+    # global nfft_inS = 0.01
+    # global freq_maxbandwidth = 100_000
+    # global freq_width_db = 340
+    
+    global impulsive_band_pass = [10_000 Inf] #[80_000 Inf]
+    global click_train_minlen = 3
+    global click_train_check_interval = .1
+    global ref_channel = 1
+
+    global impulsive_autothreshold_median_ratio = 20
+    global threshold_impulsive = 47 # nothing
+
+    global impulsive_autothreshold_median_ratio = 1#4
+    global threshold_impulsive = nothing
+    
+    global threshold_boat = 1e4
+    global band_pass_boat = [1 500]
+
+    global rx_vect = [0;0;0]; #[-1 1; 0 0; 0 0]
+
+    # global DEFAULT_fname2timestamp_func = aufname -> fname2dt_date_time(aufname; skip_front=3) 
+end
 #~ default
     impulsive_band_pass = [1000, Inf] #fs/2*.98]
     threshold_impulsive = nothing #.1# .003#calf_hk

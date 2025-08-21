@@ -6,12 +6,13 @@ using Statistics
 include("config.jl")
 
 include("audacity.jl") # if required reading from audiofile directly instead of just calling detector
+include("raven.jl")
 
 # aufname = "/Volumes/dd/Bahamas_2022/2022.06.27/0000/Aud_2022-06-27_11.16.17.wav"
 # vidfname = "/Volumes/dd/Bahamas_2022/2022.06.27/0000/Vid_2022-06-27_11.16.16.mkv"
 #res_dir
 #fs
-#data, assumise last channel is synch channel and not used for processing
+#data, assume last channel is synch channel and not used for processing
 
 amp2pow(ampl) = 20 * log10.(abs.(ampl))
 # ft = stft_norm(cww, nfft, 0; fs=fs)
@@ -224,7 +225,7 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     # data, fs = wavread(aufname, format="native")
     @info ("Duration: " * string(size(data,1)/fs) *"seconds")
 
-    nfft = nextfastfft(nfft_inS*fs)
+    nfft = nextfastfft(round(Int, nfft_inS*fs))
     freq_filt = 2:Int(nfft÷2+1)
     if !isnothing(band_pass)
         bp_top = band_pass[2]
@@ -360,6 +361,7 @@ function combine_detections_conv(data, res_new, nfft=1280, infl_len=30;
 
     if !isnothing(res_dir)
         audacity_label([train_start train_end] ./ res_new.fs, joinpath(res_dir, res_new.outfname *"__len"* string(nfft*infl_len) *"_sigma"*string(σ)* "_segment-thresh$threshold"*"_segment-continue$thresh_continue" * "_segment-only.txt" |> basename))
+        raven_label([train_start train_end] ./ res_new.fs, joinpath(res_dir, "raven_" * res_new.outfname *"__len"* string(nfft*infl_len) *"_sigma"*string(σ)* "_segment-thresh$threshold"*"_segment-continue$thresh_continue" * "_segment-only.txt" |> basename); channel=ref_channel, prefix="w")
     end
 
     return (;pind_good_inS, 

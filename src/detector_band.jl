@@ -1,6 +1,7 @@
 using DSP
 include("config.jl")
 include("audacity.jl") # if required reading from audiofile directly instead of just calling detector
+include("raven.jl")
 
 
 function detect_boat(aufname::String, res_dir=nothing; kwargs...)
@@ -15,9 +16,10 @@ function detect_boat(aufname_data_fs::Tuple, res_dir=nothing;
     isinf(thresh) && return (;ppeak=nothing, time_index=nothing, tonal_indices=nothing, num_detection=-1, detected_tonal_inS=nothing, thresh=thresh, band_pass, nfft_inS, ref_channel)
     nfft_multiplier = 10
 
-    aufname, data, fs = aufname_data_fs 
-    filter_weight = digitalfilter(Bandpass(band_pass[1], band_pass[2], fs=fs), Butterworth(butterworth_size))
-    data_filt = mapslices( x -> filtfilt( filter_weight, x), data, dims=1)
+    aufname, data, fs = aufname_data_fs
+    data_filt = filter_simple(data, band_pass; fs=fs)
+    # filter_weight = digitalfilter(Bandpass(band_pass[1], band_pass[2], fs=fs), Butterworth(butterworth_size))
+    # data_filt = mapslices( x -> filtfilt( filter_weight, x), data, dims=1)
 
     lp = arraysplit(data_filt[:,ref_channel], Int(nfft_inS*fs*nfft_multiplier), 0)
 
@@ -34,7 +36,10 @@ function detect_boat(aufname_data_fs::Tuple, res_dir=nothing;
     detected_tonal_inS = time_index[tonal_indices]
     # mkpath(res_dir)
     # @debug "audacity label: "*joinpath(res_dir, splitext(aufname)[1]*"_tonal_t"*string(thresh_tonal)*"_bp"*string(band_pass[1])*"_"*string(band_pass[2])*".txt" |> basename)
-    isnothing(res_dir) || audacity_label(detected_tonal_inS, joinpath(res_dir, splitext(aufname)[1]*"___noise_t"*string(thresh)*"_bp"*string(band_pass[1])*"_"*string(band_pass[2]) *"_nfftS"*string(nfft_inS) *"_refCh"*string(ref_channel)* ".txt" |> basename) )
+    @info size(detected_tonal_inS)
+    @info joinpath(res_dir, splitext(aufname)[1]*"___noise_t"*string(thresh)*"_bp"*string(band_pass[1])*"_"*string(band_pass[2]) *"_nfftS"*string(nfft_inS) *"_refCh"*string(ref_channel)* ".txt" |> basename)
+    (isnothing(res_dir) && isempty(detected_tonal_inS)) || audacity_label(detected_tonal_inS, joinpath(res_dir, splitext(aufname)[1]*"___noise_t"*string(thresh)*"_bp"*string(band_pass[1])*"_"*string(band_pass[2]) *"_nfftS"*string(nfft_inS) *"_refCh"*string(ref_channel)* ".txt" |> basename) )
+    (isnothing(res_dir) && isempty(detected_tonal_inS)) || raven_label(detected_tonal_inS, joinpath(res_dir, "raven_" * splitext(aufname)[1]*"___noise_t"*string(thresh)*"_bp"*string(band_pass[1])*"_"*string(band_pass[2]) *"_nfftS"*string(nfft_inS) *"_refCh"*string(ref_channel)* ".txt" |> basename) )
     
 
     return (;ppeak, time_index, tonal_indices, num_detection, detected_tonal_inS, thresh, band_pass, nfft_inS, ref_channel)

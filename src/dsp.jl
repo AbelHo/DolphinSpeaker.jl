@@ -6,11 +6,11 @@ function filter_simple(data, band_pass, band_stop=nothing; fs=1, butterworth_siz
     if !iszero(band_pass[1]) || !isinf(band_pass[2])
         filter_type = nothing
         if iszero(band_pass[1]) 
-            filter_type = Lowpass(band_pass[2]; fs=fs)
+            filter_type = Lowpass(band_pass[2]/fs*2)
         elseif isinf(band_pass[2]) 
-            filter_type = Highpass(band_pass[1]; fs=fs)
+            filter_type = Highpass(band_pass[1]/fs*2)
         else
-            filter_type = Bandpass(band_pass[1], band_pass[2]; fs=fs)
+            filter_type = Bandpass(band_pass[1]/fs*2, band_pass[2]/fs*2)
         end
 
         filter_weight = digitalfilter(filter_type, Butterworth(butterworth_size))
@@ -22,7 +22,7 @@ function filter_simple(data, band_pass, band_stop=nothing; fs=1, butterworth_siz
             else
                 for bs in band_stop
                     @debug bs
-                    filter_type = Bandstop(bs[1], bs[2]; fs=fs)
+                    filter_type = Bandstop(bs[1]/fs*2, bs[2]/fs*2)
                     filter_weight = filter_weight * digitalfilter(filter_type, Butterworth(butterworth_size))
                 end
             end
@@ -359,9 +359,15 @@ end
 
 extrema_abs(args; dims=1, kwargs...) = extrema(args; dims=dims, kwargs...) .|> x->maximum(abs.(x))
 
+# peak to peak dB calculation
 p2p_db(x) = 20 * log10( -reduce(-, extrema(x)) )
 p2p_db(arr::Array{T, 2} where T) = mapslices2(p2p_db, arr)
 
+# example normalization function
+# nfunc(x) = sqrt(sum(abs2.(x)))
+# nfunc(x) = energy(x)
+# nfunc(x) = 1
+# nfunc(x) = maximum(abs.(x); dims=1)
 norm_max(args...; norm_func=x->maximum(abs.(x); dims=1), kwargs...) = args[1]./norm_func(args[1])
 
 
@@ -498,3 +504,96 @@ end
 
 filter_band(x, band_pass=[0, Inf]; fs=fs) = mapslices(extrema, filter_simple(x, band_pass; fs=fs, mapslices2=mapslices, dims=1);dims=1)
 # filter_bandfft()
+
+
+diff_func(a::AbstractVector; kwargs...) = diff_func(a; dims=1, kwargs...)
+
+"""
+    diff_func(A::AbstractVector)
+    diff_func(A::AbstractArray; dims::Integer)
+
+Finite diff_funcerence operator on a vector or a multidimensional array `A`. In the
+latter case the dimension to operate on needs to be specified with the `dims`
+keyword argument.
+
+!!! compat "Julia 1.1"
+    `diff_func` for arrays with dimension higher than 2 requires at least Julia 1.1.
+
+# Examples
+```jldoctest
+julia> a = [2 4; 6 16]
+2×2 Matrix{Int64}:
+ 2   4
+ 6  16
+
+julia> diff_func(a, dims=2)
+2×1 Matrix{Int64}:
+  2
+ 10
+
+julia> diff_func(vec(a))
+3-element Vector{Int64}:
+  4
+ -2
+ 12
+```
+"""
+function diff_func(a::AbstractArray{T,N}; dims::Integer, kwargs...) where {T,N}
+    require_one_based_indexing(a)
+    1 <= dims <= N || throw(ArgumentError("dimension $dims out of range (1:$N)"))
+
+    r = axes(a)
+    r0 = ntuple(i -> i == dims ? UnitRange(1, last(r[i]) - 1) : UnitRange(r[i]), N)
+    r1 = ntuple(i -> i == dims ? UnitRange(2, last(r[i])) : UnitRange(r[i]), N)
+
+    return view(a, r1...) .- view(a, r0...)
+end
+function diff_func(r::AbstractRange{T}; dims::Integer=1, func=(r,i)->r[i+1]-r[i]) where {T}
+    dims == 1 || throw(ArgumentError("dimension $dims out of range (1:1)"))
+    return [@inbounds func(r,i) for i in firstindex(r):lastindex(r)-1]
+end
+
+
+"""
+    similarity_matrix(signals::Vector{Vector{Float64}})
+
+Computes the normalized cross-correlation similarity score between all pairs of signals.
+Returns a matrix where element (i, j) is the maximum normalized cross-correlation between signals[i] and signals[j].
+"""
+function similarity_matrix(signals::Vector{Vector{Float64}})
+    n = length(signals)
+    sim_matrix = zeros(Float64, n, n)
+
+    for i in 1:n
+        for j in i:n
+            sig1 = signals[i]
+            sig2 = signals[j]
+            # Normalize both signals to zero mean and unit variance
+            sig1_norm = (sig1 .- mean(sig1)) ./ std(sig1)
+            sig2_norm = (sig2 .- mean(sig2)) ./ std(sig2)
+
+            # Compute full cross-correlation
+            cc = xcorr(sig1_norm, sig2_norm)#, mode = :full)
+            # Normalize by product of norms to get correlation coefficient
+            norm_factor = sqrt(sum(sig1_norm .^ 2) * sum(sig2_norm .^ 2))
+            ncc = cc ./ norm_factor
+
+            # Max correlation is our similarity score
+            max_sim = maximum(ncc)
+            sim_matrix[i, j] = max_sim
+            sim_matrix[j, i] = max_sim  # symmetric
+        end
+    end
+
+    return sim_matrix
+end
+
+# # Example usage:
+# s1 = randn(100)
+# s2 = 2 .* s1 .+ 0.1 .* randn(100)  # Highly similar, different scale
+# s3 = reverse(s1)                   # Less similar
+# s4 = randn(80)                     # Random, shorter length
+
+# signals = [s1, s2, s3, s4]
+# sim_matrix = similarity_matrix(signals)
+# println("Similarity Matrix:\n", round.(sim_matrix; digits=3))

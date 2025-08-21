@@ -7,3 +7,6 @@
 /docs/Manifest.toml
 .DS_Store
 .vscode/settings.json
+/temp
+/src/__pycache__
+/results

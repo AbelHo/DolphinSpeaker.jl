@@ -119,7 +119,8 @@ end
 
 simple_fname2dt(aufname) = DateTime(basename(aufname)[1:17], dateformat"yyyymmdd_H.M.S")
 fname2dt_dashdot(aufname) = DateTime(basename(aufname)[1:19], dateformat"yyyy-mm-dd_H.M.S")
-fname2dt_date_time(aufname) = DateTime(basename(aufname)[1:15], dateformat"yyyymmdd_HHMMSS")
+fname2dt_date_time(aufname; skip_front=0) = DateTime(basename(aufname)[(1:15) .+ skip_front], dateformat"yyyymmdd_HHMMSS")
+fname2dt_soundtrap(aufname) = DateTime("20"*basename(aufname)[findfirst(".", basename(aufname))[1] .+ (1:12)], dateformat"yyyymmddHHMMSS") #DateTime("20"*basename(aufname)[6:17], dateformat"yyyymmddHHMMSS")
 fname2dt_ls1 = fname2dt_date_time
 
 function writeWAV(data, fpath; Fs=1)
@@ -591,6 +592,110 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
     end
     isnothing(accum_res) || push!(accum_res, (filepath, maxi))
     return conversion_error #data_new, correction
+end
+
+# """
+# Extract audio clips
+# """
+# function extract_clips(data, timestamps, clip_length, fs)
+#     clips = []
+#     for i in 1:length(timestamps)
+#         start = timestamps[i] - clip_length/2
+#         stop = timestamps[i] + clip_length/2
+#         start = max(1, start)
+#         stop = min(length(data), stop)
+#         push!(clips, data[round(Int, start*fs):round(Int, stop*fs)])
+#     end
+#     return clips
+# end
+
+"""
+Extract audio clips sample
+"""
+function extract_clips(data, t_sample, clip_length; flag_matrix=false)
+    clips = []
+    if ndims(t_sample)==1
+        clip_length_half = clip_length ÷ 2
+        starts = t_sample .- clip_length_half .+ 1
+        stops = t_sample .+ clip_length_half
+    else
+        starts = t_sample[:,1]
+        stops = t_sample[:,2]
+    end
+
+    for i in 1:size(t_sample,1)
+        # start = t_sample[i] - clip_length_half
+        # stop = t_sample[i] + clip_length_half
+        start = max(1, starts[i])
+        stop = min(length(data), stops[i])
+        push!(clips, data[start:stop,:])
+    end
+    if flag_matrix
+        return hcat(clips...)
+    else
+        return clips
+    end
+end
+
+function extract_clips_matrix(data, t_sample, clip_length)
+    clip_length_half = clip_length ÷ 2
+    
+
+    if ndims(t_sample)==1
+        starts = t_sample .- clip_length_half .+ 1
+        stops = t_sample .+ clip_length_half
+        clip_size = clip_length
+        num_clips = length(t_sample)
+    else
+        starts = t_sample[:,1]
+        stops = t_sample[:,2]
+        clip_size = t_sample[1,2] - t_sample[1,1] + 1
+        num_clips = size(t_sample,1)
+    end
+    clips_matrix = zeros(eltype(data), clip_size, num_clips)
+    # @debug size(clips_matrix)
+    
+    for i in 1:num_clips
+        # start = t_sample[i] - clip_length_half +1
+        # stop = t_sample[i] + clip_length_half
+        start = max(1, starts[i])
+        stop = min(size(data,1), stops[i])
+        
+        clip = data[start:stop]
+        # @debug (start, stop)
+        # @debug size(clip)
+        clips_matrix[1:length(clip), i] = clip
+    end
+    
+    return clips_matrix
+end
+
+"""
+Extract audio clips sample
+"""
+function extract_clips2(data, t_sample, clip_length)
+    clips = 
+    clip_length_half = clip_length ÷ 2
+    for i in 1:length(t_sample)
+        start = t_sample[i] - clip_length_half
+        stop = t_sample[i] + clip_length_half
+        start = max(1, start)
+        stop = min(length(data), stop)
+        push!(clips, data[start:stop,:])
+    end
+    return clips
+end
+
+
+fftfreq2(siglen, fs=1.0) = (0:div(siglen,2)) .* fs / siglen # 0:(fs/siglen):fs÷2
+
+function audiofft(snip, fs=1.0; type=:linear)
+    fft_val = rfft(snip, 1) .|> abs
+	freqss =  fftfreq2(size(snip, 1), fs)
+    if type == :log
+        fft_val = 20 .* log10.(fft_val)
+    end
+    return fft_val, freqss
 end
 
 
