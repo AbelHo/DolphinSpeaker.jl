@@ -225,9 +225,10 @@ function get_media_info(fname)
 	@ffmpeg_env read(`$ffprobe $fname -loglevel error -v quiet -print_format json -show_format -show_streams`, String) |> JSON.parse
 end
 
-function get_duration_smart(fname; vidtype=r".mkv|.MP4|.avi|.mp4", autype=r".wav|.mat|.flac|.mp3|.aac")
-	occursin(vidtype, fname) && return get_number_frames(fname) / get_fps(fname) |> Float64
-	occursin(autype, fname)  && return get_duration(fname)
+function get_duration_smart(fname; vidtype=r".mkv|.avi|.mp4", autype=r".wav|.mat|.flac|.mp3|.aac")
+	fname_lowered = lowercase(fname)
+	occursin(vidtype, fname_lowered) && return get_number_frames(fname) / get_fps(fname) |> Float64
+	occursin(autype, fname_lowered)  && return get_duration(fname)
 end
 
 function mediatype(filename; vidtypes=vidtypes, autypes=autypes)
