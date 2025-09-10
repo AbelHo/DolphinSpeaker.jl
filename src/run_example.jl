@@ -165,6 +165,10 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
     # pixel_related = map( (x,y)->((x[1] .+(vidau_syncdiff*fps) .|>round.|>Int,x[2])..., y...), detector_set, pt_config)
 
     pixel_estimated_set = process_detections(aufname, vidfname; res_dir=res_dir)
+    @debug "--------------------------------"
+    @debug size(pixel_estimated_set)
+    @debug pixel_estimated_set
+    
     pixel_estimated_set = pixel_estimated_set[DETECTION_TYPES]
     # @info "---------------- ------------------"
     # @info pixel_estimated_set
@@ -289,6 +293,54 @@ function process_folder(foldername; outfolder=foldername, skipdone=false, kwargs
         # combine_2v1a(joinpath(dname,"cam_topview",fname_split*"_topview.mkv"), joinpath(dname,"cam_uw1",fname_split*"_uw1.mkv"), joinpath(aufolder,fname), joinpath(outfolder,fname_split*"_norm.mp4"))
     end
 end
+
+
+"""
+    run_analysis_split_vidau(folname; res_dir="")
+
+Analyze and synchronize video and audio files within a specified folder.
+
+# Arguments
+- `folname::AbstractString`: Path to the folder containing video and audio files.
+- `res_dir::AbstractString=""`: Optional directory to store results. Defaults to a subdirectory named after `folname`.
+
+# Description
+This function:
+1. Identifies video and audio files in `folname` using predefined file type lists (`vidtypes`, `autypes`).
+2. Combines all video files into a single video using FFmpeg.
+3. Computes the synchronization delay between the first video and audio file using `find_vid_vs_audio_syncdiff_timesegment`.
+4. Saves the synchronization delay and confidence score to a CSV file in the results directory.
+
+# Returns
+- `delays`: The computed synchronization delay (in seconds).
+- `conf`: Confidence score of the synchronization.
+"""
+function run_analysis_split_vidau(folname; res_dir="")
+    res_dir = joinpath(res_dir, basename(folname))
+    occursin.( Ref(Regex(join(vidtypes, '|'))), readdir(folname))
+
+    vidlist = filter( x -> occursin(Regex(join(vidtypes, '|')), x|>lowercase), readdir(folname; join=true))
+    audlist = filter( x -> occursin(Regex(join(autypes, '|')), x|>lowercase), readdir(folname; join=true))
+
+    # combine all video files into one file
+    mkpath(res_dir)
+    temp_filelist = joinpath(res_dir, "temp_filelist.txt")
+    write(temp_filelist, join(["file '$v'" for v in vidlist], "\n"))
+
+    cmd = `ffmpeg -f concat -safe 0 -i $temp_filelist -c copy $res_dir/combined__$(join(basename.(vidlist), '_')).mp4`
+    print(cmd)
+    try
+        @ffmpeg_env run(cmd)
+        rm(temp_filelist)
+    catch e
+        @error "FFmpeg command failed: $e"
+    end
+
+    delays, conf = find_vid_vs_audio_syncdiff_timesegment(vidlist[1], audlist[1]; flag_verbose=true, flag_return_conf=true)
+    write(joinpath(res_dir, "sync_delay.csv"), "foldername,delay_s,confidence\n$(basename(folname)),$(delays),$(conf)\n")
+    return delays, conf
+end
+
 
 function test()
     println("test 2 ...")
