@@ -114,7 +114,7 @@ function split_vid_au(folname; vidtype=r".mkv|.MP4|.avi|.mp4", autype=r".wav|.ma
     filter( x -> occursin(vidtype, x), flist), filter( x -> occursin(autype, x), flist)
 end
 
-find_vidVSau_sync(vidfname, aufname; band_pass=[2900 3100]) = findVidAudioBlip(vidfname; plot_window_inS=nothing, band_pass=band_pass) - findAudioBlip(aufname; plot_window_inS=nothing, band_pass=band_pass)
+find_vidVSau_sync(vidfname, aufname; band_pass=[2900 3100], plot_window_inS=nothing, kwargs...) = findVidAudioBlip(vidfname; band_pass=band_pass, plot_window_inS=plot_window_inS, kwargs...) - findAudioBlip(aufname; band_pass=band_pass, plot_window_inS=plot_window_inS, kwargs...)
 
 function findBlip_any(filename; kwargs...)
     if mediatype(filename) == "video"
@@ -188,6 +188,22 @@ function check_syncthreshold(dolphin;
     dd = filter( d -> d.fft_snr < threshold, df)
     flag_show && showall(dd)
     return dd
+end
+
+# find correlation between segment to look for sync, for HK new recording device1
+function find_vid_vs_audio_syncdiff_timesegment(vidfname, aufname; segment_inS=(60,120), fs=500_000,
+    flag_verbose=false, flag_return_conf=false, kwargs...)
+    data, fs = readAudio(aufname)
+    data_v, fs_v = get_videos_audiodata(vidfname)
+
+    data_down = resample(@view(data[1:fs*segment_inS[2],1]), fs_v/fs)
+    template_start = fs_v*segment_inS[1]
+    template_end = fs_v*segment_inS[2]
+    template_sig = data_down[template_start:template_end]
+    delays, delay_conf = finddelay2(@view(data_v[:,1]), template_sig)
+    flag_verbose && @info "Video against audio signal time: $((delays - template_start)/fs_v)s, confidence: $delay_conf"
+    flag_return_conf && return (delays - template_start)/fs_v, delay_conf
+    return (delays - template_start)/fs_v
 end
 
 @info "end"
