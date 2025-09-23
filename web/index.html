@@ -20,7 +20,45 @@
 <body>
   <h2>CSV Table Viewer & Editor</h2>
   <input type="file" id="fileInput" accept=".csv">
+  <div id="drop-area" style="border: 2px dashed #aaa; border-radius: 8px; padding: 1.5em; text-align: center; color: #888; margin-bottom: 1em; background: #f9f9f9;">
+    <b>Drag & drop a CSV file here</b> or click above to select
+  </div>
   <button onclick="downloadCSV()">Download CSV</button>
+  <script>
+    // Drag and drop support
+    window.addEventListener('DOMContentLoaded', function() {
+      const dropArea = document.getElementById('drop-area');
+      dropArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        dropArea.style.background = '#e0f7fa';
+        dropArea.style.color = '#00796b';
+      });
+      dropArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        dropArea.style.background = '#f9f9f9';
+        dropArea.style.color = '#888';
+      });
+      dropArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dropArea.style.background = '#f9f9f9';
+        dropArea.style.color = '#888';
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+          const file = files[0];
+          if (file.name.endsWith('.csv')) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+              currentCSV = e.target.result;
+              renderTable(currentCSV);
+            };
+            reader.readAsText(file);
+          } else {
+            alert('Please drop a .csv file.');
+          }
+        }
+      });
+    });
+  </script>
   <div id="table-container">Loading...</div>
   <div id="plot-controls">
     <select id="chartType" onchange="refreshPlot()">
