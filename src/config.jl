@@ -56,6 +56,7 @@ DEFAULT_bin_channels = 4
 #~ video overlay parameters
 pt_config = [((1,0,0),63), ((1,1,0),58), ((0,1,0),53), ((1,0,1),48), ((1,1,1),33)]
 DETECTION_TYPES = 1:2
+OVERLAY_DEFAULT_ALPHA = 0.5
 # pt_config = [((1,1,0),25), ((1,0,0),30), ((0,1,0),20), ((1,0,1),15), ((1,1,1),10)]
 
 #~ audio merge parameters
@@ -120,6 +121,7 @@ function set_device__calf_hk()
 
     #~ overlay parameters
     global DETECTION_TYPES = 1:1
+    global OVERLAY_DEFAULT_ALPHA = 0.3
 end
 
 function set_device__aspod2()
