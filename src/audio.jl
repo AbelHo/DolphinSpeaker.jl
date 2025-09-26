@@ -586,6 +586,20 @@ function mat2flac(filepath; Fs=500_000, outfilepath=filepath, normalization_fact
         if maxi < remove_original_errortolerance
             rm(filepath)
             @info "-- deleted: " * filepath
+            # check if _2 file exists and the final file is longer than the duration of the first file #FIXME doesnt work yet
+            if filepath[end-5:end-4] == "_1"
+                if isfile( splitext(filepath)[1][1:end-1]*"2.mat" ) && (get_duration(outfilepath) - 360) < 0.5 #FIXME not the best implementation, temporary fix just for op hk
+                    try
+                        rm( splitext(filepath)[1][1:end-1]*"2.mat" )
+                        @info "-- deleted: " * splitext(filepath)[1][1:end-1]*"2.mat"
+                    catch err
+                        @warn "Failed to open 2nd File.............."
+                        @warn err
+                    end
+                else
+                    @warn "-- 2nd file was not deleted"
+                end
+            end #FIXME ends
         else
             @error "Conversion Error > $remove_original_errortolerance, not removing original file: $filepath....................."
         end
