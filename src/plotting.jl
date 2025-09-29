@@ -1,4 +1,4 @@
-using Plots
+import Plots
 using ProgressMeter
 using Pipe: @pipe
 # include("map.jl")
@@ -116,7 +116,7 @@ function plot_one_event(event_plots_dir, vidfname, pind_good_inS, data, pind_thr
         #     legend=false)
 		# @info p
 		# @info p2
-        pnew = Plots.plot(p, p2, layout=@layout [a b])
+        pnew = Plots.plot(p, p2, layout=Plots.@layout [a b])
 		# @info pnew
 		return pnew
 end
@@ -163,7 +163,7 @@ function plot_all_clicks(event_plots_dir, vidfname, pind_good_inS, data, pind_th
         #     legend=false)
 		# @info p
 		# @info p2
-        pnew = Plots.plot(p, p2, layout=@layout [a b]; size=plotsize)
+        pnew = Plots.plot(p, p2, layout=Plots.@layout [a b]; size=plotsize)
 		if false #plotfunc == plotlyjs
 			open(joinpath(event_plots_dir, string(i)*".html"), "w") do io
 				PlotlyBase.to_html(io, pnew)
@@ -541,7 +541,7 @@ function plot_map_detections_bearing_gif(node_loc,radius, res_new, ang2, ang2_co
 	colmap = palette_continuous(0:1/fps:res_new.pind_good_inS[end];regular=false)
 	i=1
 	p=plot_nodes(node_loc; radius=radius)
-	anim = @animate for t ∈ 0:1/fps:res_new.pind_good_inS[end] #1:length(res_new.train_start_ind)
+	anim = Plots.@animate for t ∈ 0:1/fps:res_new.pind_good_inS[end] #1:length(res_new.train_start_ind)
 		win = findall(x -> x>t && x<t+1/fps, res_new.pind_good_inS)
 		# if i < length(res_new.train_start_ind) 
 		# 	win = res_new.train_start_ind[i]:res_new.train_start_ind[i+1]
@@ -580,7 +580,7 @@ function plot_map_detections_bearing_gif_hold(node_loc,radius, res_new, ang2, an
 	colmap = palette_continuous(0:1/fps:res_new.pind_good_inS[end];regular=false)
 	i=1
 	p=plot_nodes(node_loc; radius=radius)
-	anim = @animate for t ∈ 0:1/fps:res_new.pind_good_inS[end] #1:length(res_new.train_start_ind)
+	anim = Plots.@animate for t ∈ 0:1/fps:res_new.pind_good_inS[end] #1:length(res_new.train_start_ind)
 		# win = findall(x -> x>t && x<t+1/fps, res_new.pind_good_inS)
 		win = findall(x -> x>t-t_fade_lag && x<t+1/fps, res_new.pind_good_inS)
 		# if i < length(res_new.train_start_ind) 
@@ -865,7 +865,7 @@ end
 
 plot_fft!(args...; kwargs...) = plot_fft(args...; plot=plot!,kwargs...)
 
-lay = @layout [a b];
+lay = Plots.@layout [a b];
 function plot_time_fft(snip, fs=1.0; layout=lay, kwargs_plotfft=(), kwargs...)
 	# a = plot(signal(snip,fs))
 	a = plot(snip)
@@ -911,7 +911,7 @@ function plot_ambient(data_fs; res_dir=nothing, kwargs...)
 	ch_list, correction, freqss, pow, pp = ambientnoise_correction(data_fs; kwargs...)
 
 	p1=plot(freqss,pow); p2=plot(freqss,pp);
-	p = plot(p1,p2; layout=@layout([a;b]))
+	p = plot(p1,p2; layout=Plots.@layout([a;b]))
 	title!(basename(aufname))
 	if !isnothing(res_dir) 
 		savefig(p, joinpath(res_dir, (splitext(aufname)[1]|>basename) * ".html") )
@@ -976,3 +976,262 @@ end
 
 # Apply to your data:
 # waterfall_3d(clips, selections)
+# """
+# respath = "/media/spin/anas2/data_res/dolphin/calf/Single_ball/res_20250910/20250227_101058/20250227_10.10.58_log_t251.28621036482684_d200__cps60.0.jld2"
+# train_indx = [ x:( i+1<length(res.res_impulsetrain.train_start_ind) ? res.res_impulsetrain.train_start_ind[i+1]-1 : length(res.res_impulsetrain.pind_good)) for (i,x) in enumerate(res.res_impulsetrain.train_start_ind)]
+# res_dir = joinpath(result_directory, "20250227_10.10.58")
+# plot_color_clicks.(train_indx, 
+#     "$res_dir/color_click/click_" .* [ "$(res.res_impulsetrain.pind_good_inS[train_indx[i][1]])_$(train_indx[i][1])" for i in 1:length(train_indx)] 
+#         .* "..html";
+#     rgbs_alpha_offset=0.2
+#     )
+
+# """
+function plot_color_clicks(win_anal, savefname;
+	clips=clips, res=res, fs=fs, 
+	rgb_bands=[[10_000, 60_000], [60_000, 110_000], [110_000, 160_000]],
+	rgbs_alpha_offset=0.0)
+	if dirname(savefname) |> isdir == false
+		mkpath(dirname(savefname))
+	end
+	rgbs, rgba = sig2rgb(clips[:,win_anal]; fs=fs, rgb_bands=rgb_bands)
+	rgbs[4,:] .+= rgbs_alpha_offset
+	p = plot(res.res_impulsetrain.pind_good_inS[win_anal], rgbs[4,:]; 
+		color=rgbs|> eachcol .|> x-> RGBA(x...), 
+		# color=rgba,
+		seriestype=:scatter, 
+		hover = string.(win_anal) .* ", " .* string.(round.(res.res_impulsetrain.pind_good_inS[win_anal]; digits=3)) .*"s",
+		bg=:black,markerstrokewidth = 0,
+		size=(1000,600))
+	savefig(savefname)
+	return p
+end
+
+
+"""
+    multispec_rgb(x, fs; nffts=[128,512,2048], hops = nothing,
+                  db=true, dynrange=80.0, ref=1.0, gamma=1/2.2,
+                  power=true, pad=true, norm=:per_channel)
+
+Compute three spectrograms with different `nfft` values and pack them into RGB channels.
+
+Returns:
+  specs  :: NTuple{3,Matrix{Float64}}   (each power/amp spectrogram, size: fbin × frame)
+  freqs  :: NTuple{3,Vector{Float64}}
+  times  :: NTuple{3,Vector{Float64}}
+  rgb    :: Array{Float32,3}  (F × T × 3, nearest-upscaled & 0–1)
+
+Arguments:
+  x        : 1-D signal
+  fs       : sampling rate
+  nffts    : vector of 3 FFT sizes (R,G,B)
+  hops     : hop sizes (defaults to nfft ÷ 4 each)
+  db       : convert to dB if true
+  dynrange : clamp lower (max - dynrange) in dB scaling
+  ref      : reference for dB (10*log10(P/ref))
+  gamma    : gamma correction applied after 0–1 scaling
+  power    : if true use |X|^2, else |X|
+  pad      : reflect pad to fit last frame
+  norm     : :per_channel (independent scaling) or :global
+
+Example:
+    specs, freqs, times, rgb = multispec_rgb(sig, fs; nffts=[128,512,2048])
+"""
+function multispec_rgb(x::AbstractVector, fs;
+    nffts = [128,512,2048],
+    hops::Union{Nothing,AbstractVector}=nothing,
+    db=true, dynrange=80.0, ref=1.0, gamma=1/2.2,
+    power=true, pad=true, norm=:per_channel)
+
+    @assert length(nffts)==3 "Need exactly 3 nfft values"
+    hops === nothing && (hops = nffts .÷ 4)
+
+    # Hann window helper
+    hann(n) = 0.5 .- 0.5*cos.(2π*(0:n-1)/(n-1))
+
+    function one_spec(x, fs, nfft, hop)
+        w = hann(nfft)
+        L = length(x)
+        if pad && L < nfft
+            xpad = vcat(x, zeros(eltype(x), nfft-L))
+            L = length(xpad); xuse = xpad
+        else
+            xuse = x
+        end
+        nframes = 1 + max(0, (L - nfft) ÷ hop)
+        nfreq = nfft ÷ 2 + 1
+        S = Matrix{Float64}(undef, nfreq, nframes)
+        for k in 0:nframes-1
+            i1 = k*hop + 1
+            i2 = i1 + nfft - 1
+            if i2 > L
+                if pad
+                    seg = similar(xuse, nfft)
+                    nremain = L - i1 + 1
+                    seg[1:nremain] .= @view xuse[i1:end]
+                    seg[nremain+1:end] .= 0
+                else
+                    break
+                end
+            else
+                seg = @view xuse[i1:i2]
+            end
+            frame = seg .* w
+            spec = rfft(frame)
+            mag = abs.(spec)
+            power && (mag .*= mag)
+            S[:, k+1] = mag
+        end
+        # Compute times at frame centers
+        times = ( (0:size(S,2)-1).*hop .+ (nfft/2) ) ./ fs
+        freqs = (0:nfreq-1) .* (fs/nfft)
+        return S, freqs, times
+    end
+
+	raw_specs = Vector{Matrix{Float64}}(undef, 3)
+	freqlist  = Vector{Vector{Float64}}(undef, 3)
+	timelist  = Vector{Vector{Float64}}(undef, 3)
+
+	for (i,(nfft,hop)) in enumerate(zip(nffts,hops))
+		S,freqs,times = one_spec(x, fs, nfft, hop)
+		raw_specs[i] = S
+		freqlist[i]  = freqs
+		timelist[i]  = times
+	end
+
+	raw_specs_tuple = (raw_specs[1], raw_specs[2], raw_specs[3])
+	freqlist_tuple  = (freqlist[1], freqlist[2], freqlist[3])
+	timelist_tuple  = (timelist[1], timelist[2], timelist[3])
+
+    # dB & scaling
+	proc_specs = map(raw_specs_tuple) do S
+        if db
+            # SdB = 10 .* log10.(S .+ eps()) .- 10*log10(ref)
+			SdB = log10.(S)
+            mx = maximum(SdB)
+            SdB_clamped = clamp.(SdB, mx - dynrange, mx)
+            A = (SdB_clamped .- (mx - dynrange)) ./ dynrange
+        else
+            # amplitude/power direct normalization
+            mx = maximum(S)
+            A = mx>0 ? S./mx : S
+        end
+        gamma == 1 ? A : A .^ gamma
+    end
+
+    # Combine with nearest-neighbor resizing to largest dimensions
+    target_f = maximum(size(S,1) for S in proc_specs)
+    target_t = maximum(size(S,2) for S in proc_specs)
+    rgb = Array{Float32,3}(undef, target_f, target_t, 3)
+
+    function nn_resize(S, F, T)
+        fsrc, tsrc = size(S)
+        out = Matrix{Float32}(undef, F, T)
+        for j in 1:T
+            tj = clamp(round(Int, (j-1)/(T-1) * (tsrc-1) + 1), 1, tsrc)
+            for i in 1:F
+                fi = clamp(round(Int, (i-1)/(F-1) * (fsrc-1) + 1), 1, fsrc)
+                out[i,j] = S[fi, tj]
+            end
+        end
+        out
+    end
+
+    for c in 1:3
+        rgb[:,:,c] = nn_resize(proc_specs[c], target_f, target_t)
+    end
+
+    if norm == :global
+        mx = maximum(rgb)
+        mx>0 && (rgb ./= mx)
+    end
+
+	return raw_specs_tuple, freqlist_tuple, timelist_tuple, rgb
+end
+
+"""
+    multispec_rgb_plot(x, fs; kwargs...)
+
+Convenience wrapper: runs `multispec_rgb` and returns an RGB image matrix
+(Height × Width × 3, Float32 in 0–1).
+"""
+function multispec_rgb_plot(x, fs; kwargs...)
+    _, _, _, rgb = multispec_rgb(x, fs; kwargs...)
+    return rgb
+end
+
+# # Example (uncomment to test):
+# using FileIO, ImageCore
+
+# sig = randn(10_000)
+# sig = chirp(1000, 2000, 3, 44100) |> real
+# # specs, freqs, times, rgb = multispec_rgb(sig, 48_000; nffts=[128,256,2048])
+# # imm = colorview(RGB, permutedims(rgb, (3,1,2)))
+# # save("temp/multispec.png", imm)
+
+# # specs .|> size
+# # freqs .|> size
+# # times .|> size
+# # rgb |> size
+
+# # rgb[:,:,1] |> Plots.heatmap
+# # rgb[:,:,2] |> Plots.heatmap
+# # rgb[:,:,3] |> Plots.heatmap
+# # Plots.heatmap(specs[1])
+# # Plots.heatmap(specs[2])
+# # Plots.heatmap(specs[3])
+# # # specgram(clips[i]; fs=fs, colorbar=nothing)
+
+
+# specgram(sig)
+
+# fs=44100
+# nffts = [128,512,2048]; hops = zeros(Int,length(nffts))
+# S=[]; F=[]; T=[];
+# for (nfft, hop) in zip(nffts, hops)
+# 	# @info typeof.([sig, nfft, hop])
+#     s = stft(sig, nfft, hop; window=hann) .|> abs
+#     push!(S, s)
+#     # push!(F, f)
+#     # push!(T, t)
+# end
+
+# target_f = maximum(size(s,1) for s in S)
+# target_t = maximum(size(s,2) for s in S)
+# rgb = Array{Float32,3}(undef, target_f, target_t, 3)
+# rgb .= 0
+# function nn_resize(S, F, T)
+# 	fsrc, tsrc = size(S)
+# 	out = Matrix{Float32}(undef, F, T)
+# 	for j in 1:T
+# 		tj = clamp(round(Int, (j-1)/(T-1) * (tsrc-1) + 1), 1, tsrc)
+# 		for i in 1:F
+# 			fi = clamp(round(Int, (i-1)/(F-1) * (fsrc-1) + 1), 1, fsrc)
+# 			# @info i, j, fi, tj
+# 			out[i,j] = S[fi, tj]
+# 		end
+# 	end
+# 	out
+# end
+
+# for c in 1:3
+# 	rgb[:,:,c] = nn_resize(S[c], target_f, target_t)
+# 	rgb[:,:,c] ./= maximum(rgb[:,:,c])
+# end
+
+# # rgb to RGB image
+# img = colorview(RGB, permutedims(rgb, (3,1,2))[:, end:-1:1, :])
+# save("temp/multispec_img_hann-green.png", img)
+
+# rgb[:,:,1] |> Plots.heatmap
+# savefig("temp/multispec_1.html")
+# rgb[:,:,2] |> Plots.heatmap
+# savefig("temp/multispec_2.html")
+# rgb[:,:,3] |> Plots.heatmap
+# savefig("temp/multispec_3.html")
+
+# # save img
+
+# specgram(sig; fs=fs, nfft=128, noverlap=0, colorbar=nothing
+# 	, downsample=nothing, pooling=nothing)
+# savefig("temp/multispec_specgram_128.html")
