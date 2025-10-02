@@ -1,4 +1,5 @@
 using FFMPEG
+using JSON
 # using Glob
 
 function get_fps(file::AbstractString, streamno::Integer = 0)
@@ -240,6 +241,16 @@ function mediatype(filename; vidtypes=vidtypes, autypes=autypes)
 	else
 		return "other"
 	end
+end
+
+"""
+  get_ffmpeg_metadata(filename::AbstractString)
+
+Obtain metadata from a media file using ffprobe (part of ffmpeg). Returns a parsed JSON object with all available metadata.
+"""
+function get_ffmpeg_metadata(fname::AbstractString)
+  output = @ffmpeg_env read(`ffprobe -v quiet -print_format json -show_format -show_streams $fname`, String)
+  return JSON.parse(output)
 end
 
 @info "LOADED!\tmedia_info"
