@@ -124,6 +124,30 @@ function set_device__calf_hk()
     global OVERLAY_DEFAULT_ALPHA = 0.3
 end
 
+
+function set_device__ophk_acoustic_D3()
+    global impulsive_band_pass = [1000, Inf] #fs/2*.98]
+    global threshold_impulsive = nothing# .003#calf_hk
+    global impulsive_autothreshold_median_ratio = 12
+
+    global threshold_tonal = nothing #-110#calf_hk -15#aspod2
+    global click_train_minlen = 2#calf 7 #5 20
+    global click_train_check_interval = 8#calf 1 #.01
+    global window_impulsive = -300:700 #-50:100
+    global dist_impulsive = 15000# 15000#pinger
+
+    global rx = 0.4/sqrt(3) .* exp.(im.* deg2rad.([150 -90 30]) ) # calf_hk
+    global imsize=(2160, 3840)
+    global fov_angle=[54,34,0]
+    
+    global DEFAULT_fname2timestamp_func = fname2dt_zoomf6
+    # join(opt[1].data .|> Char) # ZOOM F6 .WAV file metadata info
+
+    fov = get_cam_fov_fromMeasuredDistancesofFOVd(112,80,missing,77.73)
+    global fov_angle = [fov.horizontal_angle, fov.vertical_angle, fov.diagonal_angle]
+    # fov_angle = [71.54116671149038, 54.46086642417594, missing]
+end
+
 function set_device__aspod2()
     global band_pass = [5000, 24000]; winlen=0.01s;
     global threshold_impulsive = .005*32767#aspod2 .003#calf_hk #0.01 # 0.1#pinger/clickler #0.2
