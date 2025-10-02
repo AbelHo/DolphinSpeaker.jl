@@ -717,24 +717,33 @@ function detectionsfiles2plot(fname; res_dir=nothing, plottype=PlotlyJS.bar)
 end
 
 function detectionsfiles2plot2(fname; res_dir=nothing, plottype=PlotlyJS.bar, 
-                             add_daynight=true, latitude=21.3, longitude=-157.8) # Hawaii coordinates by default
+	add_daynight=true, latitude=21.3, longitude=-157.8, # Hawaii coordinates by default
+	trace_list = [:num_tonal=>"tonal", :num_noise=>"noise", :num_impulsetrain=>"click_train", :num_impulseINtrain=>"click",
+	:count=>"count"]
+	)
+
+	dts_colname = :datetime
+
+
 	if typeof(fname) == DataFrame
 		df = fname
-		fname = Dates.format(df[1,:datetime], "yyyy-mm-dd_HHMMSS") * "/"
+		dts_colname = Symbol( hasproperty(df, dts_colname) ? dts_colname : hasproperty(df, Symbol("timestamp")) ? "timestamp" : hasproperty(df, Symbol("time")) ? "time" : hasproperty(df, Symbol("date_time")) ? "date_time" : "dts" )
+		fname = Dates.format(df[1,dts_colname], "yyyy-mm-dd_HHMMSS") * "/"
 		@info "autoname: $fname"
     else
         df = CSV.read(fname, DataFrame)
+		dts_colname = Symbol( hasproperty(df, dts_colname) ? dts_colname : hasproperty(df, Symbol("timestamp")) ? "timestamp" : hasproperty(df, Symbol("time")) ? "time" : hasproperty(df, Symbol("date_time")) ? "date_time" : "dts" )
 	end
 
     try
-        df.datetime = ZonedDateTime.(String.(df.datetime)) .|> DateTime
+        df[!, dts_colname] = ZonedDateTime.(String.(df[!,dts_colname])) .|> DateTime
     catch error
         @error "no zoned date time"
     end
-    
+    @debug "after zoned dt"
     # Create the base plot
     layout = PlotlyJS.Layout(
-        title="Detections ("* string(df.datetime[1] |> Date) *")",
+        title="Detections ("* string(df[1, dts_colname] |> Date) *")",
         xaxis_title="DateTime",
         yaxis_title="Number of Detections",
         # Add transparency to better see the shading
@@ -746,20 +755,22 @@ function detectionsfiles2plot2(fname; res_dir=nothing, plottype=PlotlyJS.bar,
     # Add day/night shading if requested
     if add_daynight
         # Get unique dates in the data
-        dates = unique(Date.(df.datetime))
+        dates = unique(Date.(df[!, dts_colname]))
         
         # Add night rectangles (can use SunCalc.jl or Astro.jl for accurate sunrise/sunset)
         shapes = PlotlyJS.Shape[]
         
         for date in dates
+			@debug "date: $date"
             # Approximate sunrise (6am) and sunset (6pm)
             # For more accuracy, use sunrise/sunset calculation based on lat/long
             sun_time = get_sun_times(date, latitude, longitude)
+			@debug sun_time
 			sunrise = sun_time.sunrise
             sunset = sun_time.sunset
 			# sunrise = DateTime(date) + Hour(6)
             # sunset = DateTime(date) + Hour(18)
-            
+            @debug "sunrise: $sunrise, sunset: $sunset"
             # Day rectangle from surise to sunset
             push!(shapes, PlotlyJS.rect(
                 x0 = sunrise,
@@ -790,13 +801,21 @@ function detectionsfiles2plot2(fname; res_dir=nothing, plottype=PlotlyJS.bar,
 		layout[:shapes] = shapes
 		p = PlotlyJS.plot(layout)
     end
-    
+    @debug "HERE!!!!!!!!!!!!!!!!!!!!!"
     # Add data traces
-    PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_tonal; name="tonal"))
-    PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_noise; name="noise"))
-    PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_impulsetrain; name="click_train"))
-    PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_impulseINtrain; name="click"))
+	for (col, name) in trace_list
+		if hasproperty(df, col)
+			PlotlyJS.add_trace!(p, plottype(df, x=dts_colname, y=col; name=name))
+		else
+			@warn "Column $col not found in DataFrame"
+		end
+	end
+    # PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_tonal; name="tonal"))
+    # PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_noise; name="noise"))
+    # PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_impulsetrain; name="click_train"))
+    # PlotlyJS.add_trace!(p, plottype(df, x=:datetime, y=:num_impulseINtrain; name="click"))
 
+	isnothing(res_dir) && (return p)
     # Save output
     mkpath(res_dir)
     PlotlyJS.savefig(p, joinpath(res_dir,basename(dirname(fname))*".png"))
@@ -812,6 +831,7 @@ using SunCalc, TimeZones, TimeZoneFinder
 function get_sun_times(date, latitude, longitude; localtime=true)
     # times = SunCalc.getTimes(date, latitude, longitude)
     times = SunCalc.getTimes(date, latitude, longitude)
+	@debug times
     if localtime
         return NamedTuple{keys(times)}(
             TimeZones.ZonedDateTime.(values(times),
