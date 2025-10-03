@@ -1,6 +1,7 @@
+using DataFrames
 export audacity_label
 
-function audacity_label(event_time, io=stdout; prefix="")
+function audacity_label0(event_time, io=stdout; prefix="")
     # write audacity label file
     # labelfile = res_dir*fname[end-22:end]*"_label.txt"
     # f=open(io, "w")
@@ -21,12 +22,39 @@ function audacity_label(event_time, io=stdout; prefix="")
     # labelfile
 end
 
-function audacity_label(event_time, fname::String)
+function audacity_label(event_time, fname::String, args...; kwargs...)
     # labelfile = res_dir*fname[end-22:end]*"_label.txt"
     f=open(fname, "w")
-    audacity_label(event_time, f)
+    audacity_label(event_time, f, args...; kwargs...)
     close(f)
 end
+
+function audacity_label(event_time, io=stdout, labels=nothing; prefix="")
+    isnothing(labels) && (return audacity_label0(event_time, io; prefix=prefix))
+    # write audacity label file
+    # labelfile = res_dir*fname[end-22:end]*"_label.txt"
+    # f=open(io, "w")
+    if size(event_time,2)==1
+        for i in 1:length(event_time)
+            write(io, string(event_time[i]) *
+            "\t"*string(event_time[i]) *
+            "\t"* prefix * labels[i] *"\n")
+        end
+    elseif size(event_time,2)==2
+        for i in 1:size(event_time,1)
+            write(io, string(event_time[i,1]) *
+            "\t"*string(event_time[i,2]) *
+            "\t"* prefix * labels[i] *"\n")
+        end
+    end
+    # close(io)
+    # labelfile
+end
+
+audacity_label(df::DataFrame, io::String; kwargs...) = 
+    audacity_label([df[:,"Start (s)"] df[:,"Stop (s)"]], 
+        io, 
+        df.Behavior .* "(" .* df.Subject .*")"; kwargs...)
 
 
 # using Dates
