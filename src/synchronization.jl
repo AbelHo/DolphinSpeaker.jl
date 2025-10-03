@@ -109,9 +109,9 @@ function findBlip_bothVidAudio(folname; filename_only=false, vidtype=r".mkv|.MP4
     return trigger_times
 end
 
-function split_vid_au(folname; vidtype=r".mkv|.MP4|.avi|.mp4", autype=r".wav|.mat|.flac|.mp3")
+function split_vid_au(folname; vidtype=Regex("\\"*join(vidtypes, "|\\")), autype=Regex("\\"*join(autypes, "|\\")))
     flist = readdir(folname; join=true) |> skiphiddenfiles
-    filter( x -> occursin(vidtype, x), flist), filter( x -> occursin(autype, x), flist)
+    filter(x -> occursin(vidtype, x), flist), filter(x -> occursin(autype, x), flist)
 end
 
 find_vidVSau_sync(vidfname, aufname; band_pass=[2900 3100], plot_window_inS=nothing, kwargs...) = findVidAudioBlip(vidfname; band_pass=band_pass, plot_window_inS=plot_window_inS, kwargs...) - findAudioBlip(aufname; band_pass=band_pass, plot_window_inS=plot_window_inS, kwargs...)
@@ -191,16 +191,30 @@ function check_syncthreshold(dolphin;
 end
 
 # find correlation between segment to look for sync, for HK new recording device1
-function find_vid_vs_audio_syncdiff_timesegment(vidfname, aufname; segment_inS=(60,120), fs=500_000,
+function find_vid_vs_audio_syncdiff_timesegment(vidfname, aufname; segment_inS=:auto, auto_segment_len=120, fs=500_000,
     flag_verbose=false, flag_return_conf=false, kwargs...)
     data, fs = readAudio(aufname)
     data_v, fs_v = get_videos_audiodata(vidfname)
 
-    data_down = resample(@view(data[1:fs*segment_inS[2],1]), fs_v/fs)
-    template_start = fs_v*segment_inS[1]
-    template_end = fs_v*segment_inS[2]
+    segment_new = nothing
+    if segment_inS == :auto
+        segment_start = argmax( abs.(@view(data_v[:,1]))) / fs - 1
+        segment_end = segment_start + auto_segment_len
+        @debug "$segment_end, $fs, $(size(data_v,1))"
+        if segment_end*fs_v > size(data_v,1)
+            segment_end = size(data_v,1)/fs_v - 10
+        end
+        segment_inS_new = (round(Int,segment_start), round(Int,segment_end))
+        @info "Auto segment_inS: $segment_inS_new"
+    else
+        segment_inS_new = segment_inS
+    end
+
+    data_down = resample(@view(data[1:fs*segment_inS_new[2],1]), fs_v/fs)
+    template_start = fs_v*segment_inS_new[1]
+    template_end = fs_v*segment_inS_new[2]
     template_sig = data_down[template_start:template_end]
-    delays, delay_conf = finddelay2(@view(data_v[:,1]), template_sig)
+    delays, delay_conf = finddelay2(@view(data_v[:,1]), template_sig; kwargs...)
     flag_verbose && @info "Video against audio signal time: $((delays - template_start)/fs_v)s, confidence: $delay_conf"
     flag_return_conf && return (delays - template_start)/fs_v, delay_conf
     return (delays - template_start)/fs_v
