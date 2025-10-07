@@ -79,6 +79,65 @@ function plot_signal2vid(data,fs, outvidname; fps=25, kwargs...)
     @ffmpeg_env run(`$ffmpeg -i $outgifname -pix_fmt yuv420p $outvidname -hide_banner -y`)
 end
 
+"""
+# Example usage:
+```
+vidfname = "/media/spin/anas2/data/calf/new_2025_freeplay_report/20250227_10.16.59_log.mp4"
+res_dir = "/media/spin/anas2/data_res/dolphin/calf/new_2025_freeplay_report/video/tarsier/6s"
+make_video_clips_ffmpeg(df, vidfname; outdir=res_dir, min_duration=6.0)
+```
+"""
+function make_video_clips_ffmpeg(df::DataFrame, input_video::AbstractString; outdir="clips", min_duration=-1,
+    subject_col=:Subject, behavior_col=:Behavior, start_col=Symbol("Start (s)"), stop_col=Symbol("Stop (s)"), duration_col=Symbol("Duration (s)"))
+    
+    mkpath(outdir)
+    for row in eachrow(df)
+        subject   = row[subject_col]
+        behavior  = row[behavior_col]
+        start     = row[start_col]
+        stop      = row[stop_col]
+        duration  = row[duration_col]
+        # If duration is less than min_duration, extend stop time
+        if duration < min_duration
+            stop = start + min_duration
+        end
+        # Sanitize filename
+        fname = "$(behavior)_$(subject)_$(start)_$(stop).mp4"
+        fname = basename(input_video) *"_"* replace(fname, r"[^\w\.\-]" => "_")
+        outfile = joinpath(outdir, fname)
+        # ffmpeg command: -ss (start), -to (stop), -i (input), -c copy (no re-encoding)
+        cmd = `ffmpeg -y -ss $start -to $stop -i $input_video -c copy $outfile`
+        @debug cmd
+        @ffmpeg_env run(cmd)
+    end
+end
+
+"""
+    split_video_by_duration(vidfilename::AbstractString, dur::Real; outdir="clips")
+
+Split the video into multiple clips, each of length `dur` seconds.
+Output files are named as: basename_start_end.mp4
+
+## Example usage:
+    split_video_by_duration("input.mp4", 5.0; outdir="clips")
+"""
+function split_video_by_duration(vidfilename::AbstractString, dur::Real; outdir="clips")
+    mkpath(outdir)
+    total_duration = get_duration(vidfilename)
+    base = splitext(basename(vidfilename))[1]
+    start = 0.0
+    clip_idx = 1
+    while start < total_duration
+        stop = min(start + dur, total_duration)
+        outname = joinpath(outdir, "$(base)_$(round(start,sigdigits=4))_$(round(stop,sigdigits=4)).mp4")
+        cmd = `ffmpeg -y -ss $start -to $stop -i $vidfilename -c copy $outname`
+        @debug cmd
+        @ffmpeg_env run(cmd)
+        start += dur
+        clip_idx += 1
+    end
+end
+
 
 # ffmpeg -i input1.mp4 -i input2.mp4 -i audio.ogg -filter_complex "[0:v][1:v]vstack=inputs=2[top];[2:a]showwaves=s=ow=1920:oh=ih*ow/iw:mode=line:rate=25,format=yuv420p[bottom]" -map "[top]" -map "[bottom]" -y output.mp4
 # ffmpeg -i input1.mp4 -i input2.mp4 -i audio.ogg -filter_complex "[0:v][1:v]vstack=inputs=2[top];[2:a]showwaves=s=1920x480:mode=line:rate=25,format=yuv420p[bottom]" -map "[top]" -map "[bottom]" -y output.mp4
