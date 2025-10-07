@@ -34,12 +34,20 @@ function tabulate_data(fol::String;
   flag_filepath=false,
   flag_lastmodified=true,
   flag_overwrite = false,
-  title="filename,duration,datetime",
+  flag_media_info=false,
+  title=nothing,
   fname2timestamp_func = nothing,
   flag_recursive::Bool = false
   )
 
-  title_final = title * (flag_filesize ? ",filesize" : "") * (flag_filepath ? ",filepath" : "") * (flag_lastmodified ? ",last_modified" : "")
+  # Set default title if not provided
+  if isnothing(title)
+    title = "filename,duration,datetime"
+    if flag_media_info
+      title *= ",samplerate,channel,fps,height,width,stream_num"
+    end
+  end
+  title_final = title * (flag_filesize ? ",filesize" : "") * (flag_filepath ? ",filepath" : "") * (flag_lastmodified ? ",last_modified" : "") * (flag_media_info ? ",media_info_json" : "")
   # Prepare output stream
   output_stream = output
   output_is_stream = false
@@ -80,7 +88,7 @@ function tabulate_data(fol::String;
       println(stdout, "Files in $root")
       for file in files
         file_ext = splitext(file)[2]
-        if filetype == :all
+        if filetype == :all ||
             (filetype==:media && occursin(Regex(join( vcat(autypes,vidtypes), '|')), file_ext |> lowercase)) || 
             (filetype==:audio && occursin(Regex(join( autypes, '|')), file_ext |> lowercase)) || 
             (filetype==:video && occursin(Regex(join( vidtypes, '|')), file_ext |> lowercase)) ||
@@ -122,9 +130,42 @@ function tabulate_data(fol::String;
             @error("cant convert this time: \t$fname_time")
             dt = missing
           end
+
+          # Add media info columns if enabled
+          if flag_media_info
+            info = try
+              get_media_info(joinpath(root,file))
+            catch
+              nothing
+            end
+            if info !== nothing
+              # Audio
+              stream_num = 1
+              media_type = occursin(Regex(join( autypes, '|')), file_ext |> lowercase) ? "audio" : "video"
+              while media_type != get(info["streams"][stream_num], "codec_type", "") 
+              @warn("$file: stream 0 is not $media_type, trying stream $(stream_num + 1)")
+              stream_num += 1
+              end
+              samplerate = get(info["streams"][stream_num], "sample_rate", "")
+              channels = get(info["streams"][stream_num], "channels", "")
+              # Video
+              fps = get(info["streams"][stream_num], "r_frame_rate", "")
+              fps = isempty(fps) ? "" : reduce(/, parse.(Float64,split(fps, '/')))
+              height = get(info["streams"][stream_num], "height", "")
+              width = get(info["streams"][stream_num], "width", "")
+              # Escape double quotes by doubling them for CSV compliance
+              json_str = JSON.json(info)
+              json_str_escaped = replace(json_str, "\"" => "\"\"")
+              print(output_stream, ",$samplerate,$channels,$fps,$height,$width,$stream_num") #,\"$json_str_escaped\"
+            else
+              print(output_stream, ",,,,,,")
+            end
+          end
+
           flag_filesize && print(output_stream, ","*string(filesize(joinpath(root,file))))
           flag_filepath && print(output_stream, ",\""*joinpath(root,file)*"\"")
           flag_lastmodified && print(output_stream, ",\""* (mtime(joinpath(root,file))|>unix2datetime|>string) *"\"")
+          flag_media_info && print(output_stream, ",\"" * (info !== nothing ? replace(JSON.json(info), "\"" => "\"\"") : "") * "\"")
           print(output_stream, "\n")
         end
       end
