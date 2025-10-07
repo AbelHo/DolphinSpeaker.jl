@@ -19,35 +19,46 @@ title = "filename,duration,datetime"#,filesize,filepath"
 # postfix = "" #"_0001"
 
 ## fmt_str="epochtime-10h"
+"""
+Example usage:
+tabulate_data("/Users/aa/Documents/data/calf"; filetype=:media, flag_recursive=true, flag_filepath=true, flag_filesize=true, output="/Users/aa/Documents/data/calf/summary_media.csv")
+"""
 function tabulate_data(fol::String;
-  output = stdout, filetype::String = "flac",
+
+  output = stdout, filetype::Union{String,Symbol} = "flac",
   fmt_str::String = "yyyymmdd_HHMMSS",
   fname_fmt = "end",
   separator = ",", postfix::String = "",
-  filesize_flag=false,
+  flag_filesize=false,
   flag_normalmedia=true,
   flag_filepath=false,
   flag_lastmodified=true,
   flag_overwrite = false,
   title="filename,duration,datetime",
-  fname2timestamp_func = nothing
+  fname2timestamp_func = nothing,
+  flag_recursive::Bool = false
   )
 
-  title_final = title * (filesize_flag ? ",filesize" : "") * (flag_filepath ? ",filepath" : "") * (flag_lastmodified ? ",last_modified" : "")
+  title_final = title * (flag_filesize ? ",filesize" : "") * (flag_filepath ? ",filepath" : "") * (flag_lastmodified ? ",last_modified" : "")
+  # Prepare output stream
+  output_stream = output
+  output_is_stream = false
   if typeof(output) == IOStream
     println(output, title_final)
+    output_stream = output
+    output_is_stream = true
   elseif typeof(output) == String
     if flag_overwrite
-      output = open(output,"w")
-      println(output, title_final)
+      output_stream = open(output,"w")
+      println(output_stream, title_final)
     else
       if !isfile(output)
-        output = open(output,"w")
+        output_stream = open(output,"w")
         @info("Creating new file: $output")
-        println(output, title_final)
+        println(output_stream, title_final)
       else
         # @warn("File $output already exists. Use flag_overwrite=true to overwrite.")
-        output = open(output,"a")
+        output_stream = open(output,"a")
       end
     end
   end
@@ -60,56 +71,75 @@ function tabulate_data(fol::String;
     epoch = false
   end
 
-  for (root, dirs, files) in walkdir(fol)
-    println(stdout, "Files in $root")
-    for file in files
-      if file[end-length(filetype)+1:end]==filetype
-        print(output, "$file$separator")
-        try
-          dur = get_duration(joinpath(root,file))
-          dur = ismissing(dur) ? "" : dur
-          flag_normalmedia && print(output, dur )
-        catch
-          @error("cant open this file: \t$file")
-          print(output, "-99999999" )
-        end
-        print(output, "$separator")
-          #print("$separator")
-        minlen = (1+length(filetype)+length(postfix))
-        @debug basename(file), minlen
-        if length(basename(file)) < minlen + length(fmt_str)
-          fname_time = file
-        elseif fname_fmt == "end"
-          fname_time = file[end-minlen-length(fmt_str)+1:end-minlen]
-        else
-          fname_time = file[1:length(fmt_str)]
-        end
-        @debug fname_time
+  function process_dir(dir)
+    for (root, dirs, files) in walkdir(dir)
+      # If not recursive, only process the top-level directory
+      if !flag_recursive && root != dir
+        break
+      end
+      println(stdout, "Files in $root")
+      for file in files
+        file_ext = splitext(file)[2]
+        if filetype == :all
+            (filetype==:media && occursin(Regex(join( vcat(autypes,vidtypes), '|')), file_ext |> lowercase)) || 
+            (filetype==:audio && occursin(Regex(join( autypes, '|')), file_ext |> lowercase)) || 
+            (filetype==:video && occursin(Regex(join( vidtypes, '|')), file_ext |> lowercase)) ||
+            file_ext==filetype
 
-        try
-          if epoch
-            dt = unix2datetime(parse(Int, fname_time)/1000 + timediff)
-          else
-            if isnothing(fname2timestamp_func)
-              dt = DateTime(fname_time, fmt)
-            else
-              dt = fname2timestamp_func(file)
-            end
+          print(output_stream, "$file$separator")
+          try
+            dur = get_duration(joinpath(root,file))
+            dur = ismissing(dur) ? "" : dur
+            flag_normalmedia && print(output_stream, dur )
+          catch
+            @error("cant open this file: \t$file")
+            print(output_stream, "-99999999" )
           end
-          print(output, dt)
-        catch
-          @error("cant convert this time: \t$fname_time")
-          dt = missing
-        end
-        filesize_flag && print(output, ","*string(filesize(joinpath(root,file))))
-        flag_filepath && print(output, ",\""*joinpath(root,file)*"\"")
-        flag_lastmodified && print(output, ",\""* (mtime(joinpath(root,file))|>unix2datetime|>string) *"\"")
-        print(output, "\n")
+          print(output_stream, "$separator")
+          minlen = (length(file_ext)+length(postfix))
+          @debug basename(file), minlen
+          if length(basename(file)) < minlen + length(fmt_str)
+            fname_time = file
+          elseif fname_fmt == "end"
+            fname_time = file[end-minlen-length(fmt_str)+1:end-minlen]
+          else
+            fname_time = file[1:length(fmt_str)]
+          end
+          @debug fname_time
 
+          try
+            if epoch
+              dt = unix2datetime(parse(Int, fname_time)/1000 + timediff)
+            else
+              if isnothing(fname2timestamp_func)
+                dt = DateTime(fname_time, fmt)
+              else
+                dt = fname2timestamp_func(file)
+              end
+            end
+            print(output_stream, dt)
+          catch
+            @error("cant convert this time: \t$fname_time")
+            dt = missing
+          end
+          flag_filesize && print(output_stream, ","*string(filesize(joinpath(root,file))))
+          flag_filepath && print(output_stream, ",\""*joinpath(root,file)*"\"")
+          flag_lastmodified && print(output_stream, ",\""* (mtime(joinpath(root,file))|>unix2datetime|>string) *"\"")
+          print(output_stream, "\n")
+        end
+      end
+      # If not recursive, do not process subdirectories
+      if !flag_recursive
+        break
       end
     end
   end
-  close(output)
+
+  process_dir(fol)
+
+  if !output_is_stream
+    close(output_stream)
+  end
   # if typeof(output) == IOStream
   #   close(output)
   # end
@@ -176,14 +206,14 @@ array_tostring(x; delim=';') = join(x, delim)
 # include("tabulate_data.jl");
 # infol = "/volume1/data-megafauna/data/SD_WN_1"
 # outfol = "/volume1/data4-S2S/Megafauna/results/data_index"
-# tabulate_data(infol; output=joinpath(outfol,"summary_$(basename(infol))_new.csv"), filesize_flag=true, flag_filepath=true, flag_normalmedia=true, filetype="flac")
+# tabulate_data(infol; output=joinpath(outfol,"summary_$(basename(infol))_new.csv"), flag_filesize=true, flag_filepath=true, flag_normalmedia=true, filetype="flac")
 # infol = "/volume1/data-megafauna/data/SD_WN_2"
-# tabulate_data(infol; output=joinpath(outfol,"summary_$(basename(infol))_new.csv"), filesize_flag=true, flag_filepath=true, flag_normalmedia=true, filetype="flac")
+# tabulate_data(infol; output=joinpath(outfol,"summary_$(basename(infol))_new.csv"), flag_filesize=true, flag_filepath=true, flag_normalmedia=true, filetype="flac")
 # infol = "/volume1/data-megafauna/data/SD_WN_3"
-# tabulate_data(infol; output=joinpath(outfol,"summary_$(basename(infol))_new.csv"), filesize_flag=true, flag_filepath=true, flag_normalmedia=true, filetype="flac")
+# tabulate_data(infol; output=joinpath(outfol,"summary_$(basename(infol))_new.csv"), flag_filesize=true, flag_filepath=true, flag_normalmedia=true, filetype="flac")
 # infol = "/volume1/data-megafauna/data/SD_WS_1"
-# tabulate_data(infol; output=joinpath(outfol,"summary_$(basename(infol))_new.csv"), filesize_flag=true, flag_filepath=true, flag_normalmedia=true, filetype="flac")
+# tabulate_data(infol; output=joinpath(outfol,"summary_$(basename(infol))_new.csv"), flag_filesize=true, flag_filepath=true, flag_normalmedia=true, filetype="flac")
 # infol = "/volume1/data-megafauna/temp"
-# tabulate_data(infol; output=joinpath(outfol,"summary_tempbin.csv"), filesize_flag=true, flag_filepath=true, flag_normalmedia=false, filetype="bin")
-# tabulate_data(infol; output=joinpath(outfol,"summary_$(basename(infol)).csv"), filesize_flag=true, flag_filepath=true, flag_normalmedia=true, filetype="flac")
+# tabulate_data(infol; output=joinpath(outfol,"summary_tempbin.csv"), flag_filesize=true, flag_filepath=true, flag_normalmedia=false, filetype="bin")
+# tabulate_data(infol; output=joinpath(outfol,"summary_$(basename(infol)).csv"), flag_filesize=true, flag_filepath=true, flag_normalmedia=true, filetype="flac")
 
