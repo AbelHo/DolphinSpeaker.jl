@@ -223,7 +223,13 @@ function get_videos_audiodata_all(vidfname, streamno=:all)
 end
 
 function get_media_info(fname)
-	@ffmpeg_env read(`$ffprobe $fname -loglevel error -v quiet -print_format json -show_format -show_streams`, String) |> JSON.parse
+	try 
+		@ffmpeg_env read(`$ffprobe $fname -loglevel error -v quiet -print_format json -show_format -show_streams`, String) |> JSON.parse
+	catch e
+		@warn "Error getting media info for $fname, with Julia's FFMPEG package"
+		@info "try with system default ffprobe instead"
+		read(`$ffprobe $fname -loglevel error -v quiet -print_format json -show_format -show_streams`, String) |> JSON.parse
+	end
 end
 
 function get_duration_smart(fname; vidtype=r".mkv|.avi|.mp4", autype=r".wav|.mat|.flac|.mp3|.aac")
