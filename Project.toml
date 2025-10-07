@@ -1,3 +1,8 @@
+name = "DolphinSpeaker"
+uuid = "a5340efd-1a1e-46c0-b5f5-ffa99f3394da"
+authors = ["AbelHo <21101710+AbelHo@users.noreply.github.com>"]
+version = "0.0.7"
+
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
