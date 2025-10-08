@@ -747,3 +747,74 @@ end
 # ch=3
 # h = fit(Histogram, sort(dd[ch].keys)|>diff, nbins=2^16)
 # h.edges[1][sortperm(h.weights; rev=true)]
+
+"""
+    extract_audio_segment(aufname, t, outfolder; win_size=1.0)
+
+Extracts audio segments from the input audio file `aufname` and saves them to the specified `outfolder`.
+
+# Arguments
+- `aufname::AbstractString`: Path to the input audio file.
+- `t`: Specifies the time(s) for extraction. If `t` is a 1D array, each element is treated as the center (in seconds) of a segment of length `win_size`. If `t` is a 2D array, each row specifies `[start, stop]` times (in seconds) for the segment.
+- `outfolder::AbstractString`: Directory where the extracted audio segments will be saved.
+
+# Keyword Arguments
+- `win_size::Float64=1.0`: Duration (in seconds) of each segment when `t` is 1D.
+
+# Description
+- For 1D `t`: Extracts segments centered at each value in `t` with duration `win_size`.
+- For 2D `t`: Extracts segments from `t[i,1]` to `t[i,2]` for each row `i`.
+
+The function uses `ffmpeg` to perform the extraction and saves each segment as a new file in `outfolder`. Output filenames include the original base name and the segment time range.
+
+# Returns
+- `nothing`
+
+# Example
+"""
+function extract_audio_segment(aufname, t, outfolder; win_size=1.0)
+    mkpath(outfolder)
+    base, ext = splitext(basename(aufname))
+
+    if ndims(t) == 1
+        # 1D: t is center(s), win_size in seconds
+        for i in 1:length(t)
+            t_start = t[i] - win_size/2
+            t_end = t[i] + win_size/2
+            outname = joinpath(outfolder, "$(base)_clip_$(t_start)-$(t_end)s$(ext)")
+            cmd = `ffmpeg -hide_banner -loglevel error -y -ss $(round(t_start, digits=6)) -to $(round(t_end, digits=6)) -i $(aufname) -c copy $outname`
+            @ffmpeg_env run(cmd)
+        end
+    else
+        # 2D: t[:,1] = start, t[:,2] = stop (seconds)
+        for i in 1:size(t,1)
+            t_start = t[i,1]
+            t_end = t[i,2]
+            outname = joinpath(outfolder, "$(base)_clip_$(round(t_start, digits=6))-$(round(t_end, digits=6))s$(ext)")
+            cmd = `ffmpeg -hide_banner -loglevel error -y -ss $(t_start) -to $(t_end) -i $(aufname) -c copy $outname`
+            @ffmpeg_env run(cmd)
+        end
+    end
+    return nothing
+end
+
+
+function extract_segments_from_ravenlabels(labelfname, aufname, outfolder; timestamp_func=DEFAULT_fname2timestamp_func, kwargs...)
+    labels = CSV.read(labelfname, DataFrame)
+
+    if !any(endswith.(autypes, splitext(aufname)[2] |> Ref)) 
+        # not an audio file
+        data_table_fname = aufname
+        dts = timestamp_func(labelfname)
+        df_data = CSV.read(data_table_fname, DataFrame)
+        idx = findfirst(==(dts), df_data.datetime)
+        if isnothing(idx)
+            @warn "No matching datetime found for $(dts) in $(data_table_fname)"
+            return nothing
+        end
+        aufname = df_data.filepath[idx]
+        @info "Using audio file: $aufname"
+    end
+    extract_audio_segment(aufname, labels[:,["Begin Time (s)","End Time (s)"]], outfolder; kwargs...)
+    return nothing
+end
