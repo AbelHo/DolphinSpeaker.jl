@@ -157,6 +157,8 @@ detectionsfiles2plot2(df_filt; res_dir=res_dir, plottype=PlotlyJS.bar,
     latitude=6.3675, longitude=99.79774, add_daynight=true)
 
 
+readdirjoin(x) = readdir(x; join=true)
+
 function analyze_and_plot_clips(
     target,#::AbstractString,
     summary_fname::AbstractString,
@@ -168,20 +170,29 @@ function analyze_and_plot_clips(
     ;
     plot_dir_prefix::AbstractString="temp/clips_train_",
     output_types = ["html"],
-    flag_extra_plot = false
+    flag_extra_plot = false,
+    fname2dt_func = DEFAULT_fname2timestamp_func,
+    ref_channel=ref_channel
 )
-    # Find closest row and get audio file
-    result = find_closest_row(summary_fname, target)
-    aufname = result.filepath
+    if isfile(target)
+        aufname = target
+    else
+        # Find closest row and get audio file
+        result = find_closest_row(summary_fname, target)
+        aufname = result.filepath
+    end
     @info "Processing audio file: $aufname"
 
+    if isfile(result_directory)
+        respath = result_directory
+    else
     # Find result path
-    readdirjoin(x) = readdir(x; join=true)
-    respath = readdir(result_directory; join=true) |>
-        filter(isdir) .|> readdirjoin .|>
-        filter(endswith(".jld2")) .|>
-        filter(contains(splitext(basename(aufname))[1])) |>
-        filter(!isempty) |> first
+        respath = readdir(result_directory; join=true) |>
+            filter(isdir) .|> readdirjoin .|>
+            filter(endswith(".jld2")) .|>
+            filter(contains(splitext(basename(aufname))[1])) |>
+            filter(!isempty) |> first
+    end
 
     @info "loading result from: $respath"
     res = load(respath)
@@ -193,7 +204,7 @@ function analyze_and_plot_clips(
     end
 
     # Read and filter audio
-    data, fs, _, _, timestamp = readAudio(aufname; fname2timestamp_func=fname2dt_soundtrap)
+    data, fs, _, _, timestamp = readAudio(aufname; fname2timestamp_func=fname2dt_func)
     data_filt = filter_simple(data, impulsive_band_pass; fs=fs)
 
     # Extract clips
@@ -209,6 +220,9 @@ function analyze_and_plot_clips(
     autocor_clips = Int[]
 
     for i in eachindex(clips)
+        if size(clips[i], 2) > 1
+            clips[i] = clips[i][:,ref_channel]
+        end
         a = plot(signal(clips[i],fs); title=string(i))
         b = specgram(clips[i]; fs=fs, colorbar=nothing, nfft=128, crange=80)
         c = specgram(clips[i]; fs=fs, colorbar=nothing, nfft=round(Int,fs*.01)|>nextfastfft )
@@ -238,10 +252,13 @@ function analyze_and_plot_clips(
     end
     autocor_clips |> show
     for ftype = output_types
-            make_clip_index_html(clips_plot_dir; outname=basename(clips_plot_dir)*"_$ftype.html", output_type=ftype)
+        make_clip_index_html(clips_plot_dir; outname=basename(clips_plot_dir)*"_$(ftype)clips.html", output_type=ftype, prefix="clip_")
+        if flag_extra_plot
+            make_clip_index_html(clips_plot_dir; outname=basename(clips_plot_dir)*"_$(ftype)_all.html", output_type=ftype, prefix="all_")
+        end
     end
     # make_clip_index_html(clips_plot_dir; outname=basename(clips_plot_dir)*".html", output_types)
-    return autocor_clips, clips_plot_dir, threshold_autocor, threshold_n_autocor
+    return autocor_clips, clips_plot_dir, threshold_autocor, threshold_n_autocor, clips_fixed
 end
 
 target_dt = "2024-02-14T20:15"
