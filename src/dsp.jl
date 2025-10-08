@@ -389,12 +389,16 @@ julia> finddelay2([1, 2, 3], [0, 0, 1, 2, 3])
 -2
 ```
 """
-function finddelay2(x_o::AbstractVector{<: Real}, y_o::AbstractVector{<: Real}; norm_func=x->x)
+function finddelay2(x_o::AbstractVector{<: Real}, y_o::AbstractVector{<: Real};
+    norm_func=x->x, flag_norm_rms=false)
+
     x = norm_func(x_o)
     y = norm_func(y_o)
 
     s = xcorr(y, x, padmode=:none)
+    # @debug argmax(abs.(s))
     max_corr = maximum(abs, s)
+    # @debug max_corr
     max_idxs = findall(x -> abs(x) == max_corr, s)
 
     center_idx = length(x)
@@ -403,6 +407,14 @@ function finddelay2(x_o::AbstractVector{<: Real}, y_o::AbstractVector{<: Real}; 
     # closest to the center.
     d_ind = argmin(abs.(center_idx .- max_idxs))
     d = center_idx - max_idxs[d_ind]
+
+    max_corr = s[max_idxs[d_ind]]
+
+    if flag_norm_rms
+        norm_factor = sqrt(sum(abs2, x) * sum(abs2, y))
+        max_corr /= norm_factor
+        s ./= norm_factor
+    end
     return d, max_corr, s
 end
 
@@ -597,3 +609,256 @@ end
 # signals = [s1, s2, s3, s4]
 # sim_matrix = similarity_matrix(signals)
 # println("Similarity Matrix:\n", round.(sim_matrix; digits=3))
+
+# compute normal rfft
+function compute_rfft(snip, fs=1.0; type=:amplitude, plot=plot) 
+	fft_val = rfft(snip, 1) .|> abs
+	freqss =  fftfreq2(size(snip,1),fs)  #0:(fs/size(snip,1)):fs÷2
+
+	type == :log && (fft_val = 20 .* log10.(fft_val))
+	@debug (size(snip), size(freqss), size(fft_val), typeof(freqss), typeof(fft_val))
+	fft_val, freqss
+end
+
+function sig2rgb(sig; fs=1.0, rgb_bands=[[1000, 70_000], [70_000, 120_000], [120_000, 170_000]], kwargs...)
+    fft_val, freqss = compute_rfft(sig, fs; kwargs...)
+
+    # Map frequency bands to RGB channels
+    rgb = zeros(Float32, 4, size(fft_val,2))
+    for (i, band) in enumerate(rgb_bands)
+        # Find frequencies within the band
+        mask = (freqss .>= band[1]) .& (freqss .< band[2])
+        # Compute average magnitude in the band
+        rgb[i, :] = mean(fft_val[mask,:], dims=1)
+    end
+
+    sum_rgb = sum(rgb; dims=1)
+    rgb[4,:] = sum_rgb./maximum(sum_rgb)
+
+    # Normalize each channel to [0, 1]
+    rgb[1:3, :] .= @view(rgb[1:3, :]) ./ maximum(@view(rgb[1:3, :]); dims=1)
+
+
+    # convert to color
+    rgb, colorview(RGBA, rgb)
+
+    # return rgb
+end
+
+function extract_clips_single_channel(clips_fixed, ref_channel=0)
+    if ref_channel != 0
+        return clips = hcat(map(x-> x[:,ref_channel], clips_fixed)...)
+    else
+        return clips = hcat(map(x-> x[:, argmax(maximum(abs.(x); dims=1))[2] ], clips_fixed)...)
+    end
+end
+
+# function filter_extract(data::AbstractMatrix, fs::Real; 
+#         band_pass=[0, Inf], band_stop=nothing, ref_channel=0, window_impulsive=(-100:100), pind_good=Int[], kwargs...)
+#     data_filt = filter_simple(data, band_pass, band_stop; fs=fs)
+
+    
+#         data_filt = filter_simple(data, band_pass, band_stop; fs=fs, mapslices2=mapslices2, dims=1, kwargs...)
+#     clips_fixed = extract_clips(data_filt, window_extract .+ res.res_impulsetrain.pind_good, NaN; flag_matrix=false)
+#     clips = extract_clips_single_channel(clips_fixed, ref_channel)
+#     return clips, data_filt
+# end
+
+# function filter_extract(data::AbstractMatrix, fs::Real; band_pass=[0, Inf], band_stop=nothing, ref_channel=0, window_impulsive=(-100:100), pind_good=Int[], kwargs...)
+#     data_filt = filter_simple(data, band_pass, band_stop; fs=fs, mapslices2=mapslices2, dims=1, kwargs...)
+#     clips_fixed = extract_clips(data_filt, window_extract .+ res.res_impulsetrain.pind_good, NaN; flag_matrix=false)
+#     clips = extract_clips_single_channel(clips_fixed, ref_channel)
+#     return clips, data_filt
+# end
+
+# rgbs, a = sig2rgb(clips[:,:]; fs=fs, 
+#     rgb_bands=[[10_000, 60_000], [60_000, 110_000], [110_000, 160_000]])
+# save("temp/test.png", a)
+
+# Helper function for resizing
+function nn_resize(S, F, T)
+    fsrc, tsrc = size(S)
+    out = Matrix{Float32}(undef, F, T)
+    for j in 1:T
+        tj = clamp(round(Int, (j-1)/(T-1) * (tsrc-1) + 1), 1, tsrc)
+        for i in 1:F
+            fi = clamp(round(Int, (i-1)/(F-1) * (fsrc-1) + 1), 1, fsrc)
+            out[i,j] = S[fi, tj]
+        end
+    end
+    out
+end
+
+function multispec_rgb_image(sig::AbstractVector, fs::Real;
+    nffts = [128, 512, 2048],
+    window=hann,
+    norm=:per_channel,
+    dynrange=80.0,
+    gamma=1/2.2,
+    savepath::Union{Nothing,String}=nothing
+)
+    # Compute spectrograms for each nfft
+    S = Matrix{Float64}[]
+    for nfft in nffts
+        hop = nfft ÷ 4
+        s = stft(sig, nfft, hop; window=window) .|> abs
+        push!(S, s)
+    end
+
+    # Resize and normalize each spectrogram
+    target_f = maximum(size(s,1) for s in S)
+    target_t = maximum(size(s,2) for s in S)
+    rgb = Array{Float32,3}(undef, target_f, target_t, 3)
+    for c in 1:3
+        # Resize
+        rgb[:,:,c] = nn_resize(S[c], target_f, target_t)
+        # Normalize
+        mx = maximum(rgb[:,:,c])
+        if mx > 0
+            rgb[:,:,c] ./= mx
+        end
+    end
+
+    # Convert to RGB image and flip vertically
+    img = colorview(RGB, permutedims(rgb, (3,1,2))[:, end:-1:1, :])
+
+    # Optionally save
+    if !isnothing(savepath)
+        save(savepath, img)
+    end
+
+    return img, rgb
+end
+
+# function autocorrelation_analysis(clips; threshold_autocor=4, threshold_n_autocor=3, nfunc=x->sqrt(sum(abs2.(x))), plot_dir::Union{Nothing,String}=nothing)
+#     autocor_clips = Int[]
+#     for i in eachindex(clips)
+#         ac = xcorr(clips[:,i], clips[:,i]; padmode=:none)
+#         ac = ac ./ maximum(abs.(ac))
+#         ac = @view ac[length(clips[:,i]):end]
+#         peaks, _ = findmaxima(ac)
+#         peakproms!(peaks, ac; minprom=0.1)
+#         n_peaks = length(peaks)
+#         if n_peaks >= threshold_n_autocor && maximum(ac[peaks]) >= threshold_autocor/10
+#             push!(autocor_clips, i)
+#         end
+
+#         if !isnothing(plot_dir)
+#             plot(ac; title="Clip $i Autocorrelation (n_peaks=$n_peaks)", xlabel="Lag", ylabel="Normalized Amplitude")
+#             scatter!(peaks, ac[peaks]; color=:red, label="Peaks")
+#             savefig(joinpath(plot_dir, "clip_$(lpad(i,3,'0'))_autocorrelation.png"))
+#             close("all")
+#         end
+#     end
+#     return autocor_clips
+# end
+function autocor_analysis(clips, fs, ref_channel, train_start_ind)
+    if size(clips[i], 2) > 1
+        clips[i] = clips[i][:,ref_channel]
+    end
+    a = plot(signal(clips[i],fs); title=string(i))
+    b = specgram(clips[i]; fs=fs, colorbar=nothing, nfft=128, crange=80)
+    c = specgram(clips[i]; fs=fs, colorbar=nothing, nfft=round(Int,fs*.01)|>nextfastfft )
+    selections = train_start_ind[i]:train_start_ind[i+1]-1
+    snip = clips_fixed[:, selections]
+    d = plot_time_fft(snip, fs; legend_position=:outerbottom, labels=reshape(string.(selections),1,length(selections)))
+
+    correls = map(snip|>eachcol) do ref
+        map(x-> mfilter(norm_max(ref; norm_func=nfunc), norm_max(x; norm_func=nfunc)),  eachcol(snip)) .|> energy
+    end
+
+    e = Plots.bar(selections, map(x-> mfilter(norm_max(x; norm_func=nfunc), norm_max(x; norm_func=nfunc)),  eachcol(snip)) .|> energy)
+    Plots.hline!([threshold_autocor], label="Threshold", color=:red)
+
+    for ftype = output_types
+            savefig(joinpath(clips_plot_dir, "clip_$(i).$ftype"))
+            if flag_extra_plot
+            Plots.plot(d, e; layout=(2,1), legend_position=:outerbottom)#, size=(1200,800), title=string(i))
+            savefig(joinpath(clips_plot_dir, "all_$(i).$ftype"))
+            end
+    end
+    # savefig(joinpath(clips_plot_dir, "clip_$(i).html"))
+
+    if count(map(x-> mfilter(norm_max(x; norm_func=nfunc), norm_max(x; norm_func=nfunc)),  eachcol(snip)) .|> energy .> threshold_autocor) > threshold_n_autocor
+        push!(autocor_clips, i)
+    end
+end
+
+
+function analyze_clips(
+    target,#::AbstractString,
+    summary_fname::AbstractString,
+    result_directory::AbstractString,
+    impulsive_band_pass::AbstractVector,
+    window_extract,
+    threshold_autocor::Real=4,
+    threshold_n_autocor::Int=3
+    ;
+    func = x->x,
+    plot_dir_prefix::AbstractString="temp/clips_train_",
+    output_types = [],#["html"],
+    flag_extra_plot = false,
+    fname2dt_func = DEFAULT_fname2timestamp_func,
+    ref_channel=ref_channel
+)
+    if isfile(target)
+        aufname = target
+    else
+        # Find closest row and get audio file
+        result = find_closest_row(summary_fname, target)
+        aufname = result.filepath
+    end
+    @info "Processing audio file: $aufname"
+
+    if isfile(result_directory)
+        respath = result_directory
+    else
+    # Find result path
+        respath = readdir(result_directory; join=true) |>
+            filter(isdir) .|> readdirjoin .|>
+            filter(endswith(".jld2")) .|>
+            filter(contains(splitext(basename(aufname))[1])) |>
+            filter(!isempty) |> first
+    end
+
+    @info "loading result from: $respath"
+    res = load(respath)
+    res = dict2namedtuple(res)
+
+    if res.res_impulsetrain.train_start |> isempty
+        @warn "No impulsive train detected in the result."
+        return Int[], "", threshold_autocor, threshold_n_autocor
+    end
+
+    # Read and filter audio
+    data, fs, _, _, timestamp = readAudio(aufname; fname2timestamp_func=fname2dt_func)
+    data_filt = filter_simple(data, impulsive_band_pass; fs=fs)
+
+    # Extract clips
+    clips_fixed = extract_clips(data_filt, window_extract .+ res.res_impulsetrain.pind_good, NaN; flag_matrix=true)
+    clips = extract_clips(data_filt, [res.res_impulsetrain.train_start res.res_impulsetrain.train_end], NaN; flag_matrix=false)
+
+    # Prepare output directory
+    clips_plot_dir = plot_dir_prefix * Dates.format(timestamp, "yyyymmdd_HHMMSS")
+    mkpath(clips_plot_dir)
+
+    train_start_ind = [res.res_impulsetrain.train_start_ind... length(res.res_impulsetrain.pind_good)+1]
+    nfunc(x) = sqrt(sum(abs2.(x)))
+    autocor_clips = Int[]
+
+    for i in eachindex(clips)
+        out = func(clips[i])
+        selections = train_start_ind[i]:train_start_ind[i+1]-1
+        snip = clips_fixed[:, selections]
+
+    end
+    
+    for ftype = output_types
+        make_clip_index_html(clips_plot_dir; outname=basename(clips_plot_dir)*"_$(ftype)clips.html", output_type=ftype, prefix="clip_")
+        if flag_extra_plot
+            make_clip_index_html(clips_plot_dir; outname=basename(clips_plot_dir)*"_$(ftype)_all.html", output_type=ftype, prefix="all_")
+        end
+    end
+    # make_clip_index_html(clips_plot_dir; outname=basename(clips_plot_dir)*".html", output_types)
+    return out
+end
