@@ -315,29 +315,33 @@ This function:
 - `delays`: The computed synchronization delay (in seconds).
 - `conf`: Confidence score of the synchronization.
 """
-function run_analysis_split_vidau(folname; res_dir="")
-    res_dir = joinpath(res_dir, basename(folname))
+function run_analysis_split_vidau(folname; res_dir="",
+     flag_verbose=true, kwargs...)
+
     occursin.( Ref(Regex(join(vidtypes, '|'))), readdir(folname))
+    vidlist = filter( x -> occursin(Regex(join(vidtypes, "|\\")), x|>lowercase), readdir(folname; join=true))
+    audlist = filter( x -> occursin(Regex(join(autypes, "|\\")), x|>lowercase), readdir(folname; join=true))
 
-    vidlist = filter( x -> occursin(Regex(join(vidtypes, '|')), x|>lowercase), readdir(folname; join=true))
-    audlist = filter( x -> occursin(Regex(join(autypes, '|')), x|>lowercase), readdir(folname; join=true))
-
+    delays, conf = find_vid_vs_audio_syncdiff_timesegment(vidlist[1], audlist[1]; flag_verbose=flag_verbose, flag_return_conf=true, kwargs...)
     # combine all video files into one file
-    mkpath(res_dir)
-    temp_filelist = joinpath(res_dir, "temp_filelist.txt")
-    write(temp_filelist, join(["file '$v'" for v in vidlist], "\n"))
+    if !isempty(res_dir) && !isnothing(res_dir)
+        res_dir = joinpath(res_dir, basename(folname))
+        mkpath(res_dir)
+        write(joinpath(res_dir, "sync_delay.csv"), "foldername,delay_s,confidence\n$(basename(folname)),$(delays),$(conf)\n")
 
-    cmd = `ffmpeg -f concat -safe 0 -i $temp_filelist -c copy $res_dir/combined__$(join(basename.(vidlist), '_')).mp4`
-    print(cmd)
-    try
-        @ffmpeg_env run(cmd)
-        rm(temp_filelist)
-    catch e
-        @error "FFmpeg command failed: $e"
+        temp_filelist = joinpath(res_dir, "temp_filelist.txt")
+        write(temp_filelist, join(["file '$v'" for v in vidlist], "\n"))
+        cmd = `ffmpeg -hide_banner -loglevel error -f concat -safe 0 -i $temp_filelist -c copy $res_dir/combined__$(join(basename.(vidlist), '_')).mp4`
+        print(cmd)
+        try
+            @ffmpeg_env run(cmd)
+            rm(temp_filelist)
+        catch e
+            @error "FFmpeg command failed: $e"
+            rm(temp_filelist)
+        end
     end
 
-    delays, conf = find_vid_vs_audio_syncdiff_timesegment(vidlist[1], audlist[1]; flag_verbose=true, flag_return_conf=true)
-    write(joinpath(res_dir, "sync_delay.csv"), "foldername,delay_s,confidence\n$(basename(folname)),$(delays),$(conf)\n")
     return delays, conf
 end
 
