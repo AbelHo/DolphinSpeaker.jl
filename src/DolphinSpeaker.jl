@@ -1,5 +1,5 @@
 module DolphinSpeaker
-    version = "2024-03-15T20:00"
+    version = "2025-10-08T10:00"
     @info "version v$version =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-"
     include("utils.jl")
     export showall, skiphiddenfiles, process_files
