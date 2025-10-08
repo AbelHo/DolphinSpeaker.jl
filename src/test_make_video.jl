@@ -44,21 +44,58 @@ struct AlwaysFirstArray{T}
 end
 Base.getindex(a::AlwaysFirstArray, i::Int) = a.data[1]
 
-function display_corners!(img, corners_list; dot_size=25, colors=[1,0,0], opacity=0.4)
+function display_corners!(img, corners_list; dot_size=25, colors=[1,0,0], opacity=OVERLAY_DEFAULT_ALPHA)
     len_cl = length(corners_list)
-    color = nothing
+    color = colors
     if !(colors[1] isa Array)
         color = AlwaysFirstArray([colors])
     end
+    @debug color
     for j in 1:len_cl
         corner = corners_list[j]
+        @debug corner
         for i in 1:size(corner,2)
-            # @info([corner[1,i], corner[2,i]])
-            # @info(dot_size)
-            # @info(typeof(img[1])(colors...))
-            draw!(img, Ellipse(CirclePointRadius(Int(round(corner[1,i])), Int(round(corner[2,i])), dot_size)), typeof(img[1])(colors[i]...); opacity=opacity)
+            @debug([corner[1,i], corner[2,i]])
+            @debug(dot_size)
+            @debug(typeof(img[1])(colors[i]...))
+            draw!(img, Ellipse(CirclePointRadius(Int(round(corner[1,i])), Int(round(corner[2,i])), dot_size)), typeof(img[1])(color[j]...); opacity=opacity)
             #@debug [corner[1,i], corner[2,i]]
         end
+    end
+    return img
+end
+fff2(x) = x
+
+function display_corners3!(img, corners_list, dot_size=25, colors=[1,0,0], opacity=OVERLAY_DEFAULT_ALPHA)
+    len_cl = length(corners_list)
+    color = nothing
+    if !(colors[1] isa Array)
+        colors = AlwaysFirstArray([colors])
+    end
+    if !(dot_size isa Array)
+        dot_size = AlwaysFirstArray([dot_size])
+    end
+    if !(opacity isa Array)
+        opacity = AlwaysFirstArray([opacity])
+    end
+    @debug corners_list|>size
+    for i in 1:size(corners_list,1)
+        @debug corners_list[i,:]
+        @debug dot_size[i]
+        draw!(img, Ellipse(CirclePointRadius(Int(round(corners_list[i,1])), Int(round(corners_list[i,2]))
+            , dot_size[i])), 
+            typeof(img[1])(colors[i]...); opacity=opacity[i])
+            #@debug [corner[1,i], corner[2,i]]
+
+        # corner = corners_list[j]
+        # @debug corner
+        # for i in 1:size(corner,2)
+        #     @debug([corner[1,i], corner[2,i]])
+        #     @debug(dot_size)
+        #     @debug(typeof(img[1])(colors...))
+        #     draw!(img, Ellipse(CirclePointRadius(Int(round(corner[1,i])), Int(round(corner[2,i])), dot_size)), typeof(img[1])(colors[i]...); opacity=opacity)
+        #     #@debug [corner[1,i], corner[2,i]]
+        # end
     end
     return img
 end
@@ -217,6 +254,11 @@ function overlay_points!(img, counter, extra_arg)
         end
     end
     return img
+end
+
+function get_image(vid, time=1.0)
+    seek(vid, time)
+    img = read(vid)
 end
 
 @info "END"
