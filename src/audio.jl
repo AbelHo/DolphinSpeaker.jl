@@ -67,7 +67,13 @@ function readAudio(aufname; fname2timestamp_func=DEFAULT_fname2timestamp_func,
                 timestamp = wav_info_read(opt)[:INAM]
             end
         catch
-            @info "No timestamp in metadata"
+            try
+                timestamp = fname2timestamp_func(aufname)
+            catch err
+                @warn "No timestamp in metadata"
+                @warn "Cant convert filename to timestamp"
+                @warn err
+            end
         end
     elseif ".mat" == filetype
         d = nothing
