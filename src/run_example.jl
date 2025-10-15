@@ -233,7 +233,7 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
             channel_list = [parse(Int, m.captures[1]) for m in m]
             m = eachmatch(r"Peak level dB: (.*)", ss)
             peak_db_list = [parse(Float64, m.captures[1]) for m in m]
-            norm_gain = -maximum(peak_db_list[1:size(rx_vect,2)])
+            norm_gain = -maximum(peak_db_list[get_relevant_channels(rx_vect)])
 
             # m = match(r"max_volume: (.*) dB", ss)
             # max_volume = m !== nothing ? parse(Float64, m.captures[1]) : nothing

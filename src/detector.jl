@@ -110,7 +110,7 @@ function detect_impulseNtonal(aufname_data_fs_timestamp::Tuple, res_dir;
     res_tonal = nothing
     res_tonalsegment = nothing
     task_tonal = @async begin
-        res_tonal = detect_tonal((aufname, @view(data[:,1:size(rx_vect,2)]), fs), res_dir; 
+        res_tonal = detect_tonal((aufname, @view(data[:,get_relevant_channels(rx_vect)]), fs), res_dir; 
                     ref_channel=ref_channel, thresh_tonal=threshold_tonal,
                     band_pass=tonal_band_pass,
                     freq_maxbandwidth=freq_maxbandwidth, freq_width_db=freq_width_db,

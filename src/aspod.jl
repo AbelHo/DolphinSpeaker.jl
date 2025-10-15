@@ -67,7 +67,7 @@ end
 # res = res_impulse;
 
 # include("localization.jl")
-# angs, tdoas = detection2angle(res_impulse.data_filt, res_impulse.pind_good, rx_vect; fs=res_impulse.fs, return_residual=true, window=window_impulsive)#, ref_channel=ref_channel, channels_relevant=1:size(rx_vect,2),
+# angs, tdoas = detection2angle(res_impulse.data_filt, res_impulse.pind_good, rx_vect; fs=res_impulse.fs, return_residual=true, window=window_impulsive)#, ref_channel=ref_channel, channels_relevant=get_relevant_channels(rx_vect),
 # # getTDOA_func=get_tdoa_raw, solver_func=default_tdoa2dir_solver, cost_tdoa2ang=cost_tdoa2ang, return_residual=false)
 
 # scatter(res_impulse.pind_good_inS, angs[1].|>rad2deg; markershape=:xcross, alpha=res_impulse.ppeak.^2/maximum(res_impulse.ppeak.^2), labels=["azimuth" "inclination"]); 
@@ -149,9 +149,11 @@ function localization_method(res, window, rx_vect, fs, getTDOA_func, fov_angle, 
     pind_vidframes3 = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
 
     pixel_related_impulsive3 = [pind_vidframes3, p_pixels3]
-    open( joinpath(res_dir, splitext(basename(aufname))[1] *"_$(prefix)_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
-        writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, [pind_vidframes3 p_pixels3], ',')
+    if !isnothing(res_dir) && !isempty(res_dir)
+        open( joinpath(res_dir, splitext(basename(aufname))[1] *"_$(prefix)_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
+            writedlm(io, ["p_pixel" "px" "py"], ',')
+            writedlm(io, [pind_vidframes3 p_pixels3], ',')
+        end
     end
 
     return pixel_related_impulsive3
@@ -173,7 +175,8 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     window = window_impulsive
     # detection2angle(res_new.data_filt, res_impulse.pind_good, rx_vect; fs=res_new.fs, return_residual=true, window=window)
     # angs = detection2angle(res_new.data_filt, res_new.pind_good, rx_vect; fs=fs, window=window, return_residual=true)
-    angs = detection2angle(res.res_impulse.data_filt, res_new.pind_good, rx_vect; fs=fs, window=window, return_residual=true)
+    @debug size(res.res_impulse.data_filt)
+    angs = detection2angle(res.res_impulse.data_filt, res_new.pind_good, rx_vect[:,get_relevant_channels(rx_vect)]; fs=fs, window=window, return_residual=true)
     # res = (;  Base.structdiff(res, NamedTuple{(:res_impulse,)})..., res_impulse=Base.structdiff(res.res_impulse, NamedTuple{(:data_filt,)}))
     ang = angs[1][1]
     # plot_ang(res_new, ang; label=["azimuth" "inclination"], type="Power")
@@ -185,9 +188,11 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     pind_vidframes = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
 
     # writedlm( joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".csv"), ["p_pixel" "px" "py"], ',')
-    open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
-        writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, [pind_vidframes p_pixels], ',')
+    if !isnothing(res_dir) && !isempty(res_dir)
+        open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
+            writedlm(io, ["p_pixel" "px" "py"], ',')
+            writedlm(io, [pind_vidframes p_pixels], ',')
+        end
     end
 
     # [pind_vidframes, p_pixels]
@@ -197,7 +202,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     #~ impulse xcorr
     res_new = res.res_impulsetrain
     window = -130:130#window_impulsive
-    angs2 = detection2angle(res.res_impulse.data_filt, res_new.pind_good, rx_vect;
+    angs2 = detection2angle(res.res_impulse.data_filt, res_new.pind_good, rx_vect[:,get_relevant_channels(rx_vect)];
         fs=fs, window=window, return_residual=true,
         getTDOA_func=get_tdoa_raw_MaxEnergyRefChannel)
     ang2 = angs2[1][1]
@@ -207,15 +212,17 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     pind_vidframes2 = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
 
     pixel_related_impulsive2 = [pind_vidframes2, p_pixels2]
-    open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse2_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
-        writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, [pind_vidframes2 p_pixels2], ',')
+    if !isnothing(res_dir) && !isempty(res_dir)
+        open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse2_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
+            writedlm(io, ["p_pixel" "px" "py"], ',')
+            writedlm(io, [pind_vidframes2 p_pixels2], ',')
+        end
     end
 
     #~ impulse lowpassed hilbert
     res_new = res.res_impulsetrain
     window = window_impulsive#-130:130#
-    angs3 = detection2angle(res.res_impulse.data_filt, res_new.pind_good, rx_vect;
+    angs3 = detection2angle(res.res_impulse.data_filt, res_new.pind_good, rx_vect[:,get_relevant_channels(rx_vect)];
         fs=fs, window=window, return_residual=true,
         getTDOA_func=get_tdoa_envelope_filtered)
     ang3 = angs3[1][1]
@@ -225,12 +232,14 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     pind_vidframes3 = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
 
     pixel_related_impulsive3 = [pind_vidframes3, p_pixels3]
-    open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse3_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
-        writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, [pind_vidframes3 p_pixels3], ',')
+    if !isnothing(res_dir) && !isempty(res_dir)
+        open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse3_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
+            writedlm(io, ["p_pixel" "px" "py"], ',')
+            writedlm(io, [pind_vidframes3 p_pixels3], ',')
+        end
     end
     
-    pixel_related_impulsive4 = localization_method(res, window_impulsive, rx_vect, fs, get_tdoa_raw_MaxPeakRefChannel, fov_angle, aufname, vidfname, res_dir, "Impulse4")
+    pixel_related_impulsive4 = localization_method(res, window_impulsive, rx_vect[:,get_relevant_channels(rx_vect)], fs, get_tdoa_raw_MaxPeakRefChannel, fov_angle, aufname, vidfname, res_dir, "Impulse4")
 
 
     res = (;  Base.structdiff(res, NamedTuple{(:res_impulse,)})..., res_impulse=Base.structdiff(res.res_impulse, NamedTuple{(:data_filt,)}))
@@ -240,8 +249,8 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     #~ tonal to angle to pixel
     res_new = res.res_tonalsegment
     windows_tonal = map( i -> res_new.train_start[i]:res_new.train_end[i], eachindex(res_new.train_start))
-    data_filt = filter_simple(data, tonal_band_pass; fs=fs)
-    ang_tonal, tdoas_tonal = detection2angle(data_filt, windows_tonal, rx_vect;
+    data_filt = filter_simple(@view(data[:,get_relevant_channels(rx_vect)]), tonal_band_pass; fs=fs)
+    ang_tonal, tdoas_tonal = detection2angle(data_filt, windows_tonal, rx_vect[:,get_relevant_channels(rx_vect)];
         getTDOA_func = get_tdoa_raw_flexi,        
         fs=fs, window=window_impulsive)#, getTDOA_func=get_tdoa_max)
 
@@ -274,16 +283,18 @@ function process_detections(aufname, vidfname; res_dir=nothing)
 
     res_new = res.res_tonal
     # writedlm( joinpath(res_dir, splitext(basename(aufname))[1] *"_t"*string(thresh)*"_d"*string(dist)*".csv"), ["p_pixel" "px" "py"], ',')
-    open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Tonal_t"*string(res_new.threshold)*"tonal_bp"*string(res_new.band_pass[1])*"_"*string(res_new.band_pass[2])*".csv"), "w") do io
-        writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, [pind_vidframes_tonal p_pixels_tonal], ',')
+    if !isnothing(res_dir) && !isempty(res_dir)
+        open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Tonal_t"*string(res_new.threshold)*"tonal_bp"*string(res_new.band_pass[1])*"_"*string(res_new.band_pass[2])*".csv"), "w") do io
+            writedlm(io, ["p_pixel" "px" "py"], ',')
+            writedlm(io, [pind_vidframes_tonal p_pixels_tonal], ',')
+        end
     end
 
     #~ tonal short window
-    ang_tonal_short, tdoas_tonal_short = detection2angle(data_filt, windows_tonal, rx_vect;
-        getTDOA_func = get_tdoa_raw_flexi,        
-        fs=fs, window=window_impulsive)#, getTDOA_func=get_tdoa_max)
-    ang_tonal_short = detection2angle(data_filt, res_new.pind_good, rx_vect; fs=fs, window=window, return_residual=true)
+    # ang_tonal_short, tdoas_tonal_short = detection2angle(data_filt, windows_tonal, rx_vect[:,get_relevant_channels(rx_vect)];
+    #     getTDOA_func = get_tdoa_raw_flexi,        
+    #     fs=fs, window=window_impulsive)#, getTDOA_func=get_tdoa_max)
+    ang_tonal_short = detection2angle(data_filt, res_new.pind_good, rx_vect[:,get_relevant_channels(rx_vect)]; fs=fs, window=window, return_residual=true)
     ang_tonal_short = ang_tonal_short[1][1]
 
     # plot_ang(res_new, ang_tonal; label=["azimuth" "inclination"], type="Power")
@@ -293,10 +304,11 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     pind_vidframes_tonal_short = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
     
     pixel_related_tonal_short = [pind_vidframes_tonal_short, p_pixels_tonal_short]
-
-    open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Tonal-short_t"*string(res_new.threshold)*"tonal_bp"*string(res_new.band_pass[1])*"_"*string(res_new.band_pass[2])*".csv"), "w") do io
-        writedlm(io, ["p_pixel" "px" "py"], ',')
-        writedlm(io, [pind_vidframes_tonal_short p_pixels_tonal_short], ',')
+    if !isnothing(res_dir) && !isempty(res_dir)
+        open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Tonal-short_t"*string(res_new.threshold)*"tonal_bp"*string(res_new.band_pass[1])*"_"*string(res_new.band_pass[2])*".csv"), "w") do io
+            writedlm(io, ["p_pixel" "px" "py"], ',')
+            writedlm(io, [pind_vidframes_tonal_short p_pixels_tonal_short], ',')
+        end
     end
 
 
@@ -305,7 +317,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
 
     @info res_dir
     @info res.fname
-    if !isnothing(res_dir)
+    if !isnothing(res_dir) && !isempty(res_dir)
         savejld(joinpath(res_dir, splitext(res.fname)[1]*"_angles.jld2"); ang_impulsive=angs, ang_tonal=ang_tonal, ang_tonal_short=ang_tonal_short,
             pixel_related_impulsive=pixel_related_impulsive, pixel_related_tonal=pixel_related_tonal, pixel_related_tonal_short=pixel_related_tonal_short)
     end
@@ -382,7 +394,7 @@ function ang2pixel(ang, pind_good_inS, vidfname, outfname)
     pind_vidframes, p_pixels
 end
 
-# angs, tdoas = detection2angle(res_impulse.data_filt, res_impulse.pind_good, rx_vect; fs=res_impulse.fs, return_residual=true, window=window_impulsive)#, ref_channel=ref_channel, channels_relevant=1:size(rx_vect,2),
+# angs, tdoas = detection2angle(res_impulse.data_filt, res_impulse.pind_good, rx_vect; fs=res_impulse.fs, return_residual=true, window=window_impulsive)#, ref_channel=ref_channel, channels_relevant=get_relevant_channels(rx_vect),
 # # getTDOA_func=get_tdoa_raw, solver_func=default_tdoa2dir_solver, cost_tdoa2ang=cost_tdoa2ang, return_residual=false)
 
 # scatter(res_impulse.pind_good_inS, angs[1].|>rad2deg; markershape=:xcross, alpha=res_impulse.ppeak.^2/maximum(res_impulse.ppeak.^2), labels=["azimuth" "inclination"]); 

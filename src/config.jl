@@ -69,7 +69,11 @@ autypes = [".wav",".ogg",".mat",".flac",".mp3"]
 
 PARAM_TONALSPREAD = false
 
-calf_timestamp_func(fname) = DateTime(basename(fname)[1:17], DateFormat("yyyymmdd_HH.MM.SS"))
+# calf_timestamp_func(fname) = DateTime(basename(fname)[1:17], DateFormat("yyyymmdd_HH.MM.SS"))
+
+CHANNELS_RELEVANT = 1:3
+rx_vect = [0;0;0]
+get_relevant_channels(rx_vect) = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 
 function set_device__hk_clicker()
     global impulsive_band_pass = [1000, Inf] #fs/2*.98]
@@ -85,6 +89,7 @@ function set_device__hk_clicker()
     global rx = 0.4/sqrt(3) .* exp.(im.* deg2rad.([150 -90 30]) ) # calf_hk
     global imsize=(2160, 3840)
     global fov_angle=[54,34,0]
+    global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 end
 
 function set_device__calf_hk()
@@ -112,7 +117,7 @@ function set_device__calf_hk()
     global band_pass_boat = [1 500]
     # global default_getTDOA_func = get_tdoa_raw_MaxEnergyRefChannel
 
-    global DEFAULT_fname2timestamp_func = calf_timestamp_func
+    # global DEFAULT_fname2timestamp_func = calf_timestamp_func
 
     # bin file parameters
     global FILE_device_ID = "ophk_acoustic_D1.2.0"
@@ -122,6 +127,7 @@ function set_device__calf_hk()
     #~ overlay parameters
     global DETECTION_TYPES = 1:1
     global OVERLAY_DEFAULT_ALPHA = 0.3
+    global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 end
 
 
@@ -136,16 +142,18 @@ function set_device__ophk_acoustic_D3()
     global window_impulsive = -300:700 #-50:100
     global dist_impulsive = 15000# 15000#pinger
 
-    global rx = 0.4/sqrt(3) .* exp.(im.* deg2rad.([150 -90 30]) ) # calf_hk
-    global imsize=(2160, 3840)
-    global fov_angle=[54,34,0]
+    global rx = 0.18 /sqrt(3) .* exp.(im.* deg2rad.([-30 90 210]) )
+    global rx_vect = [NaN .* zeros(3,2) [real(rx); imag(rx); zeros(1,3)]]
+    global imsize=(1520,2740)
+    # global fov_angle=[71.54,54.46,0]
     
     global DEFAULT_fname2timestamp_func = fname2dt_zoomf6
     # join(opt[1].data .|> Char) # ZOOM F6 .WAV file metadata info
 
-    fov = get_cam_fov_fromMeasuredDistancesofFOVd(112,80,missing,77.73)
-    global fov_angle = [fov.horizontal_angle, fov.vertical_angle, fov.diagonal_angle]
-    # fov_angle = [71.54116671149038, 54.46086642417594, missing]
+    # fov = get_cam_fov_fromMeasuredDistancesofFOVd(112,80,missing,77.73)
+    # global fov_angle = [fov.horizontal_angle, fov.vertical_angle, fov.diagonal_angle]
+    fov_angle = [71.54116671149038, 54.46086642417594, missing]
+    global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x))) 
 end
 
 function set_device__aspod2()
@@ -155,6 +163,7 @@ function set_device__aspod2()
     global rx = 0.14722/sqrt(3) .* exp.(im.* deg2rad.([-30 90 -150]) ) #aspod 2
     global imsize=(2160, 3840)
     global fov_angle=[62.61721188568244,35.793211268714096,71.6855447884958]
+    global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 end
 
 function set_device__rwsnus()
@@ -166,6 +175,7 @@ function set_device__rwsnus()
     global FILE_gain_setting = "0000"
 
     global rx_vect = randn(3,16)
+    global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 end
 
 function set_device__LS1()
@@ -184,6 +194,7 @@ function set_device__LS1()
     # global FILE_device_ID = "rwsnus_array_1.0.0"
     # global FILE_location_ID = "rws"
     # global FILE_gain_setting = "0000"
+    global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 end
 
 function set_device__calf_hk2_smallarray()
@@ -194,6 +205,7 @@ function set_device__calf_hk2_smallarray()
 
     global rx = 0.07/sqrt(3) .* exp.(im.* deg2rad.([150 -90 30]) )
     global rx_vect = [real(rx); imag(rx); zeros(1,3)]
+    global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 end
 
 function set_device_default()
@@ -208,6 +220,7 @@ function set_device_default()
     # res6 = detect_impulseNtonal(aufname, res_dir; threshold_tonal=18)
     # res3 = detect_impulseNtonal(aufname, res_dir; threshold_tonal=22, freq_maxbandwidth=3000, freq_width_db=10)
     # res5 = detect_impulseNtonal(aufname, res_dir; threshold_tonal=4, freq_maxbandwidth=3000, freq_width_db=10);
+   global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 end
 
 function set_device__soundtrap()
@@ -236,6 +249,7 @@ function set_device__soundtrap()
     global rx_vect = [0;0;0]; #[-1 1; 0 0; 0 0]
 
     # global DEFAULT_fname2timestamp_func = aufname -> fname2dt_date_time(aufname; skip_front=3) 
+    global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 end
 
 function set_device__hydromoth()
@@ -264,6 +278,7 @@ function set_device__hydromoth()
     global rx_vect = [0;0;0]; #[-1 1; 0 0; 0 0]
 
     # global DEFAULT_fname2timestamp_func = aufname -> fname2dt_date_time(aufname; skip_front=3) 
+    global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 end
 #~ default
     impulsive_band_pass = [1000, Inf] #fs/2*.98]
@@ -341,6 +356,36 @@ elseif device_name=="calf_hk_clicker"
 end
 
 rx_vect = [real(rx); imag(rx); zeros(1,3)]
+# CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x))) #get_relevant_channels(rx_vect)
+
+# plot hydrophone array sensor positions
+# p = scatter(; xlabel="real(rx)", ylabel="imag(rx)", legend=:right)
+# for (i, ch) in enumerate(CHANNELS_RELEVANT)
+#     scatter!(p, [rx_vect[1, ch]], [rx_vect[2, ch]], label = string(i))
+# end
+# display(p)
+
+# check array geometry distances
+# distance between center and each hydrophone
+function norm2d(rx_vect)
+    res = norm.(eachcol(rx_vect))
+    @debug "distance sensor to center:\n $res m"
+    res
+end
+
+
+# distance between each hydrophone
+function distance_pairwise(rx_vect)
+    channels_relevant = get_relevant_channels(rx_vect)
+    D = [norm(rx_vect[:, i] - rx_vect[:, j]) for i in channels_relevant, j in channels_relevant]
+    @debug "distance between each hydrophone:"
+    @debug ("$(join(D|>eachrow, "\n")) m")
+    return D
+end
+
+
+# @info "distance between each hydrophone:"; print("$(join([norm(rx_vect[:,i] - rx_vect[:,j]) for i in CHANNELS_RELEVANT, j in CHANNELS_RELEVANT]|>eachrow, "\n")) m")
+
 
 # folname = "/Users/abel/Documents/data/aspod/field/bahamas_2022"
 # res_dir = "/Users/abel/Documents/data_res/aspod/real/bahamas_2022_10_test"

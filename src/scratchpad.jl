@@ -26,9 +26,9 @@ plot_ang(d["res_impulsetrain"], d["ang_impulsive"][1][1]; label=["azimuth" "incl
 d = load(["/Users/abel/Documents/data_res/calf/coop/2023-11-28/more_dev_old/20231128_15.16.48_log_t4_d800.jld2", "/Users/abel/Documents/data_res/calf/coop/2023-11-28/more_dev_old/20231128_15.16.48_log_t46.36293944139811_d800__cps60.0_angles.jld2", "/Users/abel/Documents/data_res/calf/coop/2023-11-28/more_dev_old/20231128_15.16.48_log_t46.36293944139811_d800__cps60.0.jld2"])
 d = load(["/Users/abel/Documents/data_res/calf/coop/2023-11-28/20231128_15.16.48_log_t28.855573029963317_d800__cps60.0.jld2", "/Users/abel/Documents/data_res/calf/coop/2023-11-28/20231128_15.16.48_log_t28.855573029963317_d800__cps60.0_angles.jld2"])
 
-data_filt = filter_simple(data[:,1:size(rx_vect,2)], impulsive_band_pass; fs=fs)
-data_filt = filter_simple(data[:,1:size(rx_vect,2)], [5_000 180_000], [[30_000,31_000],[61_000,62_000]]; fs=fs)
-data_filt = filter_simple(data[:,1:size(rx_vect,2)], [70_000 130_000]; fs=fs, butterworth_size=32)
+data_filt = filter_simple(data[:,get_relevant_channels(rx_vect)], impulsive_band_pass; fs=fs)
+data_filt = filter_simple(data[:,get_relevant_channels(rx_vect)], [5_000 180_000], [[30_000,31_000],[61_000,62_000]]; fs=fs)
+data_filt = filter_simple(data[:,get_relevant_channels(rx_vect)], [70_000 130_000]; fs=fs, butterworth_size=32)
 
 data_filt = mapslices2(x->denoise(x.|>Float64, TI=true), data_filt)
 
@@ -72,13 +72,13 @@ plot( mapslices(x->denoise(x, TI=true), snip, dims=1) |> norm_max); vline2(tdoas
 # vline!([tdoa[i] for i in 1:length(tdoa)], color = [palette(:default)[i] for i in 1:length(tdoa)], linewidth = 3)
 # vline!(tdoa;  color=palette(:default)[1:3] , width=3)
 finddelay
-snip = data_filt[window_impulsive .+ d["res_impulsetrain"].pind_good[i],1:size(rx_vect,2)]
+snip = data_filt[window_impulsive .+ d["res_impulsetrain"].pind_good[i],get_relevant_channels(rx_vect)]
 # plot_time_fft(snip, fs)
 plotlyjs();
 plot(snip)
 vline!(d["ang_impulsive"][2][i,:])
 plot(abs.(hilbert(snip)))
-chs = 1:size(rx_vect,2)
+chs = get_relevant_channels(rx_vect)
 
 # tdoas = []
 # tdoas = Array{NamedTuple}(undef, length(chs))

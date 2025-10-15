@@ -54,7 +54,7 @@ function extrema_index(arr)
 end
 
 
-function mapslices2(func, arr::Array{T, 2} where T; kwargs...)
+function mapslices2(func, arr::AbstractArray{T, 2} where T; kwargs...)
     # extrema_indices = Array{Tuple{T, Int, T, Int}, 1}(undef, size(arr, 2))
     extrema_indices = Array{Any}(undef,size(arr, 2))
     # lock = ReentrantLock()
@@ -460,7 +460,7 @@ end
 function ambientnoise_correction(data_fs; res_dir=nothing, ch_list=:auto, ch_db=:auto, threshold_fft_error=:auto, threshold_fft_error_multiple=.35, rx_vect=nothing)
 	# data, fs = readAudio(aufname)
 	data, fs = data_fs
-	!isnothing(rx_vect) && (data = @view data[:,1:size(rx_vect,2)])
+	!isnothing(rx_vect) && (data = @view data[:,get_relevant_channels(rx_vect)])
 	# @info size(data)
 	pow, freqss = psd2(data; fs=fs)
 	correction=nothing
