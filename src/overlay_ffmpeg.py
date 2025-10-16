@@ -138,6 +138,11 @@ def _detect_ffmpeg_gpu(verbose: bool = False):
     candidates = [
         ("h264_nvenc", []),
         ("hevc_nvenc", []),
+        # macOS hardware encoders: VideoToolbox and newer MPS encoders
+        ("h264_videotoolbox", []),
+        ("hevc_videotoolbox", []),
+        ("mps_h264", []),
+        ("mps_hevc", []),
         ("h264_qsv", []),
         ("hevc_qsv", []),
         ("h264_vaapi", ["-vaapi_device", "/dev/dri/renderD128"]),
