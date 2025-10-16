@@ -31,11 +31,31 @@ function is_flag(s)
     startswith(s, "-")
 end
 
+function natural_key(s::AbstractString)
+    parts = Vector{Tuple{Int,Any}}()
+    i = firstindex(s)
+    n = lastindex(s)
+    while i <= n
+        if isdigit(s[i])
+            j = i
+            while j <= n && isdigit(s[j]) j += 1 end
+            push!(parts, (0, parse(Int, s[i:j-1])))
+            i = j
+        else
+            j = i
+            while j <= n && !isdigit(s[j]) j += 1 end
+            push!(parts, (1, lowercase(s[i:j-1])))
+            i = j
+        end
+    end
+    return Tuple(parts)  # return a tuple of tuples so comparisons are lexicographic
+end
+
 function build_filelist(in_folder::String)
     exts = Set([".png", ".jpg", ".jpeg", ".bmp", ".gif"])
     all = readdir(in_folder)
     files = [f for f in all if lowercase(splitext(f)[2]) in exts]
-    sort!(files)
+    sort!(files, by = f -> natural_key(splitext(f)[1]))  # natural sort by basename (no ext)
     return files
 end
 
