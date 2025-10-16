@@ -2,6 +2,7 @@ using VideoIO
 using FFMPEG
 include("media_info.jl")
 include("synchronization.jl")
+include("pic2vid.jl")
 #  @time open_video_out(newvidname, img2, framerate=get_fps(vidfname), encoder_options=encoder_options) do writer
     
 # resolution=(1080,720)
@@ -155,16 +156,134 @@ function overlay_boxes_on_video(csv_path::String, video_path::String, output_pat
         x = round(Int, row.px)
         y = round(Int, row.py)
         push!(filters,
-            "drawbox=x=$(x-radius÷2):y=$(y-radius÷2):w=$radius:h=$radius:color=red@0.7:t=fill:enable='eq(n,$frame)'"
+            "drawbox=x=$(x-radius÷2):y=$(y-radius÷2):w=$radius:h=$radius:color=red@0.5:t=fill:enable='eq(n,$frame)'"
         )
     end
+
+    # If the combined filter string is very long, the shell/OS can hit ARG_MAX
+    # and raise E2BIG. To avoid that, write the filtergraph to a temporary file
+    # and pass it to ffmpeg using -filter_complex_script (or -vf script for a
+    # single-input video). This keeps the command-line short.
     filter_str = join(filters, ",")
-    cmd = `ffmpeg -i $video_path -vf $filter_str -codec:a copy $output_path`
+
+    # Create a temporary file for the filtergraph
+    tmp = tempname()
+    # ffmpeg expects a plain text file; use UTF-8
+    open(tmp, "w") do io
+        write(io, filter_str)
+    end
+
+    # Build ffmpeg command using -filter_complex_script when possible. For a
+    # single video input, -vf script can be used but -filter_complex_script is
+    # acceptable and general.
+    cmd = `ffmpeg -y -i $video_path -filter_complex_script $tmp -codec:a copy $output_path`
     println(cmd)
-    flag_dryrun && return
-    run(cmd)
+    flag_dryrun && (rm(tmp); return)
+
+    try
+        @ffmpeg_env run(cmd)
+    finally
+        # Ensure temp file is removed
+        isfile(tmp) && rm(tmp)
+    end
 end
 
+function overlay_boxes_on_video_imageonly(csv_path::String, video_path::String, output_path::String; radius::Int=100,
+    flag_dryrun=false)
+    fps = get_fps(video_path)
+    duration = get_duration(video_path)
+    vid = VideoIO.openvideo(video_path)
+
+    df = CSV.read(csv_path, DataFrame)
+    mkpath(output_path)
+
+    # For each CSV row: seek to the corresponding frame, read the image, overlay points
+    for row in eachrow(df)
+        frame = round(Int, row.frame)
+        time = (frame - 1) / fps
+        if time > duration
+            @warn "Frame $frame at time $time exceeds video duration $duration. Ending!......."
+            break
+        end
+        img = nothing
+        # read the frame at the requested time
+        try
+            seek(vid, time)
+            img = read(vid)
+        catch err
+            @error "Failed to read frame $frame at time $time" err
+            continue
+        end
+
+        x = round(Int, row.px)
+        y = round(Int, row.py)
+
+        # Prepare extra_arg in the format expected by overlay_points!
+        # overlay_points!(img, counter, extra_arg) expects extra_arg to be an
+        # iterable of tuples (pind_vidframes, p_pixels, colour, ptsize).
+        pind_vidframes = [frame]
+        p_pixels = reshape([x, y], 1, 2)   # 1 x 2 matrix: rows are points, cols are x,y
+        colour = [1.0, 0.0, 0.0]
+        ptsize = radius
+        extra_arg = [(pind_vidframes, p_pixels, colour, ptsize)]
+
+        try
+            overlay_points!(img, frame, extra_arg)
+        catch err
+            @error "overlay_points! failed on frame $frame" err
+        end
+
+        # Save the overlaid image named "<frame>_<time-in-seconds>.png"
+        time_str = string(round(time, digits=3))
+        fname = joinpath(output_path, "$(frame)_$(time_str)s.png")
+        @debug "Saving overlaid image to $fname"
+        flag_dryrun && continue
+        save(fname, img)
+    end
+end
+
+# """
+# # Example: generate one frame per CSV row with overlay drawbox
+# using CSV, DataFrames, FileIO, ImageIO, Images, ColorTypes, Colors, Printf
+# """
+# function generate_frames_from_csv(csv_path::AbstractString, base_image_path::AbstractString, out_dir::AbstractString)
+#     df = CSV.File(csv_path) |> DataFrame
+#     img = load(base_image_path)                           # load base image (height x width x channels)
+#     mkpath(out_dir)
+
+#     # helper to draw rectangle border (works on Images arrays)
+#     function draw_rect!(img, x::Int, y::Int, w::Int, h::Int, color, thickness::Int=3)
+#         h_img, w_img = size(img, 1), size(img, 2)
+#         x1 = clamp(x, 1, w_img); y1 = clamp(y, 1, h_img)
+#         x2 = clamp(x + w - 1, 1, w_img); y2 = clamp(y + h - 1, 1, h_img)
+#         for t in 0:thickness-1
+#             top_y = clamp(y1 + t, 1, h_img);       bottom_y = clamp(y2 - t, 1, h_img)
+#             left_x = clamp(x1 + t, 1, w_img);      right_x = clamp(x2 - t, 1, w_img)
+#             # top and bottom horizontal lines
+#             img[top_y, left_x:right_x] .= color
+#             img[bottom_y, left_x:right_x] .= color
+#             # left and right vertical lines
+#             img[y1:y2, left_x] .= color
+#             img[y1:y2, right_x] .= color
+#         end
+#     end
+
+#     for (i, row) in enumerate(eachrow(df))
+#         frame = copy(img)
+#         # adjust these to your CSV column names:
+#         x = Int(round(row.x))           # left coordinate (1-based)
+#         y = Int(round(row.y))           # top coordinate (1-based)
+#         w = Int(round(row.w))           # width in pixels
+#         h = Int(round(row.h))           # height in pixels
+#         time_seconds = hasproperty(row, :time_seconds) ? row.time_seconds : (hasproperty(row, :time) ? row.time : i)
+
+#         color = RGBA{N0f8}(1, 0, 0, 1)  # red box
+#         draw_rect!(frame, x, y, w, h, color, 3)
+
+#         fname = joinpath(out_dir, @sprintf("frame%04d_time-%.3f.png", i, Float64(time_seconds)))
+#         save(fname, frame)
+#     end
+# end
 
 
 # ffmpeg -i input1.mp4 -i input2.mp4 -i audio.ogg -filter_complex "[0:v][1:v]vstack=inputs=2[top];[2:a]showwaves=s=ow=1920:oh=ih*ow/iw:mode=line:rate=25,format=yuv420p[bottom]" -map "[top]" -map "[bottom]" -y output.mp4
