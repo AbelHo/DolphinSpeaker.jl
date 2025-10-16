@@ -346,7 +346,7 @@ function run_analysis_split_vidau(folname; res_dir="",
     return delays, conf, output_vidname, vidlist, audlist, res_dir
 end
 
-function run_contiguous_folders(folname; res_dir="", kwargs...)
+function run_contiguous_folders(folname; res_dir="", overlay_radius=50, kwargs...)
     @info "Processing folder: $folname ............."
     
     delays, conf, output_vidname, vidlist, audlist, res_dir2 = run_analysis_split_vidau(folname; res_dir=res_dir, auto_segment_len=250, flag_norm_rms=true)
@@ -359,14 +359,23 @@ function run_contiguous_folders(folname; res_dir="", kwargs...)
     for (ind, res) in enumerate(results)
         write_mode = ind==1 ? "w" : "a"
         open( detection_pixels, write_mode) do io
-            writedlm(io, ["frame" "px" "py"], ',')
+            (write_mode == "w") && writedlm(io, ["frame" "px" "py"], ',')
             writedlm(io, [res[detection_type][1] .+ ( (cum_duration + delays)*get_fps(vidlist[1])) res[detection_type][2]], ',') # add sync delay and cumulative duration
         end
         cum_duration += get_duration(audlist[ind])
     end
 
+    overlay_boxes_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mp4"; radius=overlay_radius)
+    overlay_boxes_on_video_imageonly(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaidIMG"; radius=overlay_radius)
+    pic2vid(splitext(output_vidname)[1]*"_overlaidIMG", splitext(output_vidname)[1]*"_overlaidIMG.mp4"; auto_mode=true)
+
     # vidpath = "/media/spin/anas2/data_res/dolphin/calf/temp/delete/1/combined__1.GoPro_Clicker.MP4.mp4"
-    overlay_boxes_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mp4"; radius=100)
+
+    # task_overlayvideo = @async overlay_boxes_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mp4"; radius=100)
+    # task_overlayvideo_img = @async overlay_boxes_on_video_imageonly(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaidIMG"; radius=100)
+    # wait(task_overlayvideo)
+    # wait(task_overlayvideo_img)
+    # pic2vid(splitext(output_vidname)[1]*"_overlaidIMG", splitext(output_vidname)[1]*"_overlaidIMG.mp4"; auto_mode=true)
 end
 
 
