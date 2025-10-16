@@ -72,6 +72,53 @@ delays, conf = run_analysis_split_vidau("/media/spin/anas2/data/calf/upload/Two-
 
 run_analysis_split_vidau("/media/spin/anas2/data/calf/upload/Double_ball_S1"; res_dir=res_dir)
 
+delays, conf = run_analysis_split_vidau("/media/spin/anas2/data/calf/Calibration/Housingv3_test_28_03_2025/1"; res_dir=res_dir, auto_segment_len=250, flag_norm_rms=true)
+delays, conf = run_analysis_split_vidau("/media/spin/anas2/data/calf/Calibration/Housingv3_test_28_03_2025/2"; res_dir="", auto_segment_len=250, flag_norm_rms=true)
+delays, conf = run_analysis_split_vidau("/media/spin/anas2/data/calf/Calibration/Housingv3_test_28_03_2025/3"; res_dir="", auto_segment_len=250, flag_norm_rms=true)
+delays, conf = run_analysis_split_vidau("/media/spin/anas2/data/calf/Calibration/Housingv3_test_28_03_2025/4"; res_dir="", auto_segment_len=250, flag_norm_rms=true)
+
+aufname = "/media/spin/anas2/data/calf/Calibration/Housingv3_test_28_03_2025/1/1.F6_Clicker.WAV"
+vidfname = "/media/spin/anas2/data/calf/Calibration/Housingv3_test_28_03_2025/1/1.GoPro_Clicker.MP4"
+
+####################################################################################################################################################################################
+#~ run analysis on folder with a set of video and audio files
+# already streamed line the the block below, ignore this
+include("run_example.jl")
+include("video.jl")
+set_device__ophk_acoustic_D3()
+
+folname = "/media/spin/anas2/data/calf/Calibration/Housingv3_test_28_03_2025/1"
+res_dir = "/media/spin/anas2/data_res/dolphin/calf/calibration/D3/localization"
+delays, conf, output_vidname, vidlist, audlist, res_dir2 = run_analysis_split_vidau(folname; res_dir=res_dir, auto_segment_len=250, flag_norm_rms=true)
+
+results = process_detections.(audlist, Ref(vidlist[1]); res_dir=res_dir2)
+# res[1][1] = res[1][1] .+ (delays*get_fps(vidfname))
+
+detection_pixels = joinpath(res_dir2, "detection_pixels.csv")
+detection_type = 1  # 1: impulsive, 2: tonal, 3: boat
+cum_duration = 0.0
+for (ind, res) in enumerate(results)
+    write_mode = ind==1 ? "w" : "a"
+    open( detection_pixels, write_mode) do io
+        writedlm(io, ["frame" "px" "py"], ',')
+        writedlm(io, [res[detection_type][1] .+ ( (cum_duration + delays)*get_fps(vidlist[1])) res[detection_type][2]], ',') # add sync delay and cumulative duration
+    end
+    cum_duration += get_duration(audlist[ind])
+end
+
+# vidpath = "/media/spin/anas2/data_res/dolphin/calf/temp/delete/1/combined__1.GoPro_Clicker.MP4.mp4"
+overlay_boxes_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mp4"; radius=100)
+
+##########################################################
+## run the function
+include("run_example.jl")
+include("video.jl")
+set_device__ophk_acoustic_D3()
+
+folders = "/media/spin/anas2/data/calf/Calibration/Housingv3_test_28_03_2025/" .* string.(2:4)
+run_contiguous_folders.(folders; res_dir = "/media/spin/anas2/data_res/dolphin/calf/calibration/D3/localization2")
+
+
 ####
 #~ run analysis on split video and audio files
 using NaturalSort

@@ -331,7 +331,8 @@ function run_analysis_split_vidau(folname; res_dir="",
 
         temp_filelist = joinpath(res_dir, "temp_filelist.txt")
         write(temp_filelist, join(["file '$v'" for v in vidlist], "\n"))
-        cmd = `ffmpeg -hide_banner -loglevel error -f concat -safe 0 -i $temp_filelist -c copy $res_dir/combined__$(join(basename.(vidlist), '_')).mp4`
+        output_vidname = "$res_dir/combined__$(join(basename.(vidlist), '_')).mp4"
+        cmd = `ffmpeg -hide_banner -loglevel error -f concat -safe 0 -i $temp_filelist -c copy $output_vidname`
         print(cmd)
         try
             @ffmpeg_env run(cmd)
@@ -342,7 +343,30 @@ function run_analysis_split_vidau(folname; res_dir="",
         end
     end
 
-    return delays, conf
+    return delays, conf, output_vidname, vidlist, audlist, res_dir
+end
+
+function run_contiguous_folders(folname; res_dir="", kwargs...)
+    @info "Processing folder: $folname ............."
+    
+    delays, conf, output_vidname, vidlist, audlist, res_dir2 = run_analysis_split_vidau(folname; res_dir=res_dir, auto_segment_len=250, flag_norm_rms=true)
+    results = process_detections.(audlist, Ref(vidlist[1]); res_dir=res_dir2)
+    # res[1][1] = res[1][1] .+ (delays*get_fps(vidfname))
+
+    detection_pixels = joinpath(res_dir2, "detection_pixels.csv")
+    detection_type = 1  # 1: impulsive, 2: tonal, 3: boat
+    cum_duration = 0.0
+    for (ind, res) in enumerate(results)
+        write_mode = ind==1 ? "w" : "a"
+        open( detection_pixels, write_mode) do io
+            writedlm(io, ["frame" "px" "py"], ',')
+            writedlm(io, [res[detection_type][1] .+ ( (cum_duration + delays)*get_fps(vidlist[1])) res[detection_type][2]], ',') # add sync delay and cumulative duration
+        end
+        cum_duration += get_duration(audlist[ind])
+    end
+
+    # vidpath = "/media/spin/anas2/data_res/dolphin/calf/temp/delete/1/combined__1.GoPro_Clicker.MP4.mp4"
+    overlay_boxes_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mp4"; radius=100)
 end
 
 
