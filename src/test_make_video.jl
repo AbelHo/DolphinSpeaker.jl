@@ -228,6 +228,34 @@ function overlay_point!(img, counter, extra_arg)
     end
 end
 
+"""
+    overlay_points!(img, counter, extra_arg)
+
+Overlay detected points onto `img` in-place for the frames indicated by `counter`.
+
+Arguments
+- `img`: mutable image object (e.g., an array representing an RGB(A) or grayscale image) that will be modified by drawing markers.
+- `counter`: a vector of frame indices (one entry per detection) used to select which detections correspond to the current frame(s).
+- `extra_arg`: a collection (e.g., vector) of elements, each element expected to unpack as
+    `(pind_vidframes, p_pixels, colour, ptsize)` where:
+    - `pind_vidframes` is a vector of frame indices corresponding to rows of `p_pixels`,
+    - `p_pixels` is an N×M array of pixel coordinates (rows are detection points),
+    - `colour` is a color spec accepted by `display_corners!`,
+    - `ptsize` is the point size (numeric) passed to `display_corners!`.
+
+Behavior
+- For each tuple in `extra_arg` the function finds detections whose `pind_vidframes` match entries in `counter`.
+- If no detections are present for the current frame, that element is skipped.
+- Selected rows of `p_pixels` are transposed and passed to `display_corners!` along with `dot_size=ptsize` and `colors=colour` to render markers on `img`.
+- Debug information is logged for matched detections. Errors raised by `display_corners!` are caught and logged (with backtrace) without aborting the loop.
+
+Returns
+- The same `img` object (mutated). The function performs in-place drawing and returns the modified image for convenience.
+
+Notes
+- Ensure `p_pixels` has the expected shape and coordinate ordering required by `display_corners!` (the function transposes the selected rows before calling).
+- The function is robust to missing detections per frame and will continue processing remaining elements even if one drawing operation fails.
+"""
 function overlay_points!(img, counter, extra_arg) 
     # pind_vidframes_list, p_pixels_list, colour, ptsize = extra_arg
     
