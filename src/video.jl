@@ -139,6 +139,34 @@ function split_video_by_duration(vidfilename::AbstractString, dur::Real; outdir=
 end
 
 
+# Example usage:
+# overlay_boxes_on_video(
+#     "detection_pixels.csv",
+#     "/media/spin/anas2/data_res/dolphin/calf/temp/delete/1/combined__1.GoPro_Clicker.MP4.mp4",
+#     "output_with_circles_fill.mkv";
+#     radius=100
+# )
+function overlay_boxes_on_video(csv_path::String, video_path::String, output_path::String; radius::Int=100,
+    flag_dryrun=false)
+    df = CSV.read(csv_path, DataFrame)
+    filters = String[]
+    for row in eachrow(df)
+        frame = round(Int, row.frame)
+        x = round(Int, row.px)
+        y = round(Int, row.py)
+        push!(filters,
+            "drawbox=x=$(x-radius÷2):y=$(y-radius÷2):w=$radius:h=$radius:color=red@0.7:t=fill:enable='eq(n,$frame)'"
+        )
+    end
+    filter_str = join(filters, ",")
+    cmd = `ffmpeg -i $video_path -vf $filter_str -codec:a copy $output_path`
+    println(cmd)
+    flag_dryrun && return
+    run(cmd)
+end
+
+
+
 # ffmpeg -i input1.mp4 -i input2.mp4 -i audio.ogg -filter_complex "[0:v][1:v]vstack=inputs=2[top];[2:a]showwaves=s=ow=1920:oh=ih*ow/iw:mode=line:rate=25,format=yuv420p[bottom]" -map "[top]" -map "[bottom]" -y output.mp4
 # ffmpeg -i input1.mp4 -i input2.mp4 -i audio.ogg -filter_complex "[0:v][1:v]vstack=inputs=2[top];[2:a]showwaves=s=1920x480:mode=line:rate=25,format=yuv420p[bottom]" -map "[top]" -map "[bottom]" -y output.mp4
 
