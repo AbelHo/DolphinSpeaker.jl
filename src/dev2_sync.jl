@@ -88,7 +88,7 @@ include("video.jl")
 set_device__ophk_acoustic_D3()
 
 folname = "/media/spin/anas2/data/calf/Calibration/Housingv3_test_28_03_2025/1"
-res_dir = "/media/spin/anas2/data_res/dolphin/calf/calibration/D3/localization"
+res_dir = "/media/spin/anas2/data_res/dolphin/calf/calibration/D3/localization0"
 delays, conf, output_vidname, vidlist, audlist, res_dir2 = run_analysis_split_vidau(folname; res_dir=res_dir, auto_segment_len=250, flag_norm_rms=true)
 
 results = process_detections.(audlist, Ref(vidlist[1]); res_dir=res_dir2)
@@ -108,6 +108,8 @@ end
 
 # vidpath = "/media/spin/anas2/data_res/dolphin/calf/temp/delete/1/combined__1.GoPro_Clicker.MP4.mp4"
 overlay_boxes_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mp4"; radius=100)
+overlay_boxes_on_video_imageonly(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaidIMG"; radius=100)
+
 
 ##########################################################
 ## run the function
@@ -115,13 +117,33 @@ include("run_example.jl")
 include("video.jl")
 set_device__ophk_acoustic_D3()
 
-folders = "/media/spin/anas2/data/calf/Calibration/Housingv3_test_28_03_2025/" .* string.(2:4)
-run_contiguous_folders.(folders; res_dir = "/media/spin/anas2/data_res/dolphin/calf/calibration/D3/localization2")
+set_device__ophk_acoustic_D3_clicker()
+folders = "/media/spin/anas2/data/calf/Calibration/Housingv3_test_28_03_2025/" .* string.(1:4)
+run_contiguous_folders.(folders; res_dir = "/media/spin/anas2/data_res/dolphin/calf/calibration/D2/localization13_fovH-80_small",
+    overlay_radius=25)#, flag_overlayvideo=false)
+
+folder = "/media/spin/anas2/data/calf/upload/Two-way_2males_06_10_2025"
+folder = "/media/spin/anas2/data/calf/Calibration/device3_calibration/Calibration_19_09_2025"
+run_contiguous_folders(folder; res_dir = "/media/spin/anas2/data/calf/upload/results", flag_overlayvideo=false)
+
+folders = ["/media/spin/anas2/data/calf/upload/Two-way_2males_06_10_2025",
+"/media/spin/anas2/data/calf/upload/Two-way_3males_19_09_2025", 
+    "/media/spin/anas2/data/calf/upload/Two-way_4males_15_10_2025",
+    "/media/spin/anas2/data/calf/upload/Two-way_4males_19_09_2025",
+    "/media/spin/anas2/data/calf/Calibration/device3_calibration/Calibration_19_09_2025"]
+run_contiguous_folders.(folders; res_dir = "/media/spin/anas2/data/calf/upload/results2", flag_overlayimages=false)
+
+#######
+include("pic2vid.jl")
+pic2vid("/media/spin/anas2/data_res/dolphin/calf/calibration/D3/localization5/4/combined__4.GoPro_Swimming_Clicker_SDrivers.MP4_overlaidIMG",
+    "/media/spin/anas2/data_res/dolphin/calf/calibration/D3/localization5/4/combined__4.GoPro_Swimming_Clicker_SDrivers.MP4_overlaidIMG_2.mp4";
+    auto_mode=true)
 
 
-####
+
+###########################################################################
 #~ run analysis on split video and audio files
-using NaturalSort
+
 data_dir = "/media/spin/anas2/data/calf/Single_ball"
 result_directory = "/media/spin/anas2/data_res/dolphin/calf/Single_ball/res_20250910"
 
