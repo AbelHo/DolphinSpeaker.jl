@@ -13,6 +13,7 @@ def overlay_with_boxes(csv_path: str,
                        input_video: str,
                        output_video: str,
                        radius: int = 100,
+                       color: str = "red",
                        dry_run: bool = False,
                        verbose: bool = False,
                        use_gpu: bool = False) -> Optional[str]:
@@ -28,6 +29,10 @@ def overlay_with_boxes(csv_path: str,
 
     Returns the ffmpeg command string when dry_run=True, otherwise returns None.
     """
+    # Accept color names like 'red' or a full ffmpeg color spec like 'red@0.5'
+    # If the user doesn't provide an alpha, default to 0.5 opacity.
+    color_spec = color if "@" in color else f"{color}@0.5"
+
     filters = []
 
     if pd is not None:
@@ -74,7 +79,7 @@ def overlay_with_boxes(csv_path: str,
         y = int(round(float(row[py_name])))
         # draw a filled box centered at (x, y)
         filters.append(
-            f"drawbox=x={x-radius//2}:y={y-radius//2}:w={radius}:h={radius}:color=red@0.5:t=fill:enable='eq(n,{frame})'"
+            f"drawbox=x={x-radius//2}:y={y-radius//2}:w={radius}:h={radius}:color={color_spec}:t=fill:enable='eq(n,{frame})'"
         )
 
     filters_str = ",".join(filters)
@@ -183,9 +188,12 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Print the ffmpeg command and exit without running it")
     parser.add_argument("--verbose", action="store_true", help="Print additional debug output")
     parser.add_argument("--use-gpu", action="store_true", help="Attempt to use a GPU encoder if available")
+    parser.add_argument("--color", default="red", help="Box color name or full ffmpeg color spec (e.g. 'red' or 'red@0.5'). Default: 'red'")
 
     args = parser.parse_args()
 
-    cmdstr = overlay_with_boxes(args.csv, args.input, args.output, radius=args.radius, dry_run=args.dry_run, verbose=args.verbose, use_gpu=args.use_gpu)
+    cmdstr = overlay_with_boxes(args.csv, args.input, args.output, radius=args.radius, color=args.color, dry_run=args.dry_run, verbose=args.verbose, use_gpu=args.use_gpu)
     if args.dry_run:
         print(cmdstr)
+
+    exit(0)
