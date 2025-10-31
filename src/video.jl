@@ -3,6 +3,7 @@ using FFMPEG
 using Images
 using Printf
 using Plots
+using ProgressMeter
 include("media_info.jl")
 include("synchronization.jl")
 include("pic2vid.jl")
@@ -272,7 +273,7 @@ Notes
 """
 function overlay_annotations_on_video(annotations, video_path::AbstractString, output_path::AbstractString;
     tmpdir::AbstractString = mktempdir(), fps=nothing, radius::Int=25, default_color::AbstractString="red@0.5",
-    default_alpha::Real=0.5, default_shape::Symbol=:circle, frame_col::Symbol=:frame, x_col::Symbol=:px, y_col::Symbol=:py,
+    default_alpha::Real=OVERLAY_DEFAULT_ALPHA , default_shape::Symbol=:circle, frame_col::Symbol=:frame, x_col::Symbol=:px, y_col::Symbol=:py,
     clean_tmp::Bool=true, flag_dryrun::Bool=false, mode::Symbol = :stream, encoder_options=(crf=23, preset="ultrafast"), max_frames::Union{Nothing,Int}=nothing)
 
     # Accept a single CSV path or DataFrame directly for convenience
@@ -474,7 +475,7 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
         try
             open_video_out(output_path, img, framerate=fps_vid, encoder_options=encoder_options) do writer #codec_name = "h264_nvenc",
                 seekstart(vid)
-                for frame_idx in 0:num_frames-1
+                @showprogress "Encoding video frames..." for frame_idx in 0:num_frames-1
                     try
                         read!(vid, img)
                     catch err
@@ -558,7 +559,7 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
         end
     end
 
-    for frame_idx in 0:num_frames-1
+    @showprogress "Encoding video frames..." for frame_idx in 0:num_frames-1
         try
             read!(vid, img)
         catch err
