@@ -274,7 +274,7 @@ Arguments
 
 Keyword arguments
 - flag_output_auto::Bool = true: When true, the output filename is auto-generated as
-	joinpath(outputfile_dir, "combined__$(join(basename.(filelist), '_'))<ext>") where <ext> is the
+	joinpath(outputfile_dir, "combined__\$(join(basename.(filelist), '_'))<ext>") where <ext> is the
 	extension of the first input file. When false, `outputfile_dir` is used as the output file path.
 - flag_overwrite::Bool = false: When true, ffmpeg is invoked with overwrite enabled (passes -y)
 	so existing output files are replaced.
