@@ -262,7 +262,7 @@ Arguments
 Keyword arguments
 - `tmpdir`: temporary folder to write frames (default: created with `mktempdir()`)
 - `fps`: output FPS for encoder (defaults to video's fps)
-- `radius`, `default_color`, `default_alpha`, `default_shape`
+- `default_radius`, `default_color`, `default_alpha`, `default_shape`
 - `frame_col`, `x_col`, `y_col`: column names in CSV/DataFrame
 - `clean_tmp`: remove temporary frames after encoding
 
@@ -273,7 +273,7 @@ Notes
 function overlay_annotations_on_video(annotations, video_path::AbstractString, output_path::AbstractString;
     tmpdir::AbstractString = mktempdir(), fps=nothing, radius::Int=25, default_color::AbstractString="red@0.5",
     default_alpha::Real=0.5, default_shape::Symbol=:circle, frame_col::Symbol=:frame, x_col::Symbol=:px, y_col::Symbol=:py,
-    clean_tmp::Bool=true, flag_dryrun::Bool=false, mode::Symbol = :stream)
+    clean_tmp::Bool=true, flag_dryrun::Bool=false, mode::Symbol = :stream, encoder_options=(crf=23, preset="ultrafast"), max_frames::Union{Nothing,Int}=nothing)
 
     # Accept a single CSV path or DataFrame directly for convenience
     if annotations isa AbstractString || annotations isa DataFrame || annotations isa Dict || annotations isa NamedTuple
@@ -400,6 +400,11 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
         num_frames = Int(ceil(dur * Float64(fps_vid)))
     end
 
+    # Respect optional testing limit
+    if !(max_frames === nothing)
+        num_frames = min(num_frames, max_frames)
+    end
+
     # read frames in sequence and draw
     @info "Processing $num_frames frames (fps=$fps_vid)"
     img = nothing
@@ -415,6 +420,8 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
     clamp1(a, lo, hi) = max(lo, min(hi, a))
 
     h_img, w_img = size(img,1), size(img,2)
+
+    
 
     function blend_pixel!(img, x, y, overlay_rgba)
         # x,y are integer pixel coordinates (1-based) where indexing is img[y,x]
@@ -454,6 +461,54 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
         y1 = Int(clamp1(round(cy+half), 1, h_img))
         for yy in y0:y1, xx in x0:x1
             blend_pixel!(img, xx, yy, overlay_rgba)
+        end
+    end
+
+    # If the user requests explicit VideoIO mode, use the `open_video_out` helper
+    # which mirrors the usage in `src/test_make_video.jl`. This attempts to open
+    # a VideoIO writer and write frames via that writer. If it fails we fall
+    # through to the existing stream/frame logic below.
+    # encoder_options = (preset="medium", crf=23)
+    if mode == :VideoIO
+        @info "Attempting VideoIO mode via open_video_out for $output_path (fps=$fps_vid)"
+        try
+            open_video_out(output_path, img, framerate=fps_vid, encoder_options=encoder_options) do writer #codec_name = "h264_nvenc",
+                seekstart(vid)
+                for frame_idx in 0:num_frames-1
+                    try
+                        read!(vid, img)
+                    catch err
+                        @warn "Failed to read frame $frame_idx: $err -- filling blank frame"
+                        img = zeros(eltype(img), size(img))
+                    end
+
+                    # iterate all annotation sets
+                    for (frames, pts, colt, radius, shape) in normalized
+                        inds = findall(==(frame_idx), frames)
+                        if isempty(inds)
+                            continue
+                        end
+                        for i in inds
+                            x = pts[i,1]; y = pts[i,2]
+                            overlay_rgba = colt
+                            if shape == :circle || shape == :dot
+                                draw_circle!(img, x, y, radius, overlay_rgba)
+                            else
+                                draw_rect!(img, x, y, radius, overlay_rgba)
+                            end
+                        end
+                    end
+
+                    # write via VideoIO writer
+                    write(writer, img)
+                end
+            end
+            close(vid)
+            @info "Wrote VideoIO-mode video to $output_path"
+            return output_path
+        catch err
+            @warn "VideoIO mode failed: $err -- falling back to other modes"
+            # fall through to existing logic (stream / frames)
         end
     end
 
