@@ -111,7 +111,7 @@ end
 
 function split_vid_au(folname; vidtype=Regex("\\"*join(vidtypes, "|\\")), autype=Regex("\\"*join(autypes, "|\\")))
     flist = readdir(folname; join=true) |> skiphiddenfiles
-    filter(x -> occursin(vidtype, x), flist), filter(x -> occursin(autype, x), flist)
+    filter(x -> occursin(vidtype, splitext(x)[2]|>lowercase), flist), filter(x -> occursin(autype, splitext(x)[2]|>lowercase), flist)
 end
 
 find_vidVSau_sync(vidfname, aufname; band_pass=[2900 3100], plot_window_inS=nothing, kwargs...) = findVidAudioBlip(vidfname; band_pass=band_pass, plot_window_inS=plot_window_inS, kwargs...) - findAudioBlip(aufname; band_pass=band_pass, plot_window_inS=plot_window_inS, kwargs...)
@@ -203,6 +203,9 @@ function find_vid_vs_audio_syncdiff_timesegment(vidfname, aufname; segment_inS=:
         @debug "$segment_end, $fs, $(size(data_v,1))"
         if segment_end*fs_v > size(data_v,1)
             segment_end = size(data_v,1)/fs_v - 10
+        end
+        if round(Int,segment_start) < 1
+            segment_start = 1
         end
         segment_inS_new = (round(Int,segment_start), round(Int,segment_end))
         @info "Auto segment_inS: $segment_inS_new"
