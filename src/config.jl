@@ -178,6 +178,8 @@ function set_device__ophk_acoustic_D3()
     global threshold_boat = Inf #1e3
     global band_pass_boat = [1 500]
 
+    global OVERLAY_DEFAULT_ALPHA = 0.2
+
 end
 
 function set_device__aspod2()
