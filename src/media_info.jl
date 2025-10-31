@@ -259,6 +259,51 @@ function get_ffmpeg_metadata(fname::AbstractString)
   return JSON.parse(output)
 end
 
+"""
+concat_media(filelist::Vector{String}, outputfile_dir::String; flag_output_auto=true, flag_overwrite=false)
+
+Concatenate multiple media files into a single output file using ffmpeg's concat demuxer,
+while attempting to preserve metadata from the first input file.
+
+Arguments
+- filelist::Vector{String}: Non-empty vector of input file paths to concatenate. All files should
+	share a compatible container/codec for stream-copy concatenation (the concat demuxer requirement).
+- outputfile_dir::String: If `flag_output_auto` is true this is treated as the directory where the
+	automatically named output file will be written. If `flag_output_auto` is false this is treated
+	as the explicit path for the output file.
+
+Keyword arguments
+- flag_output_auto::Bool = true: When true, the output filename is auto-generated as
+	joinpath(outputfile_dir, "combined__$(join(basename.(filelist), '_'))<ext>") where <ext> is the
+	extension of the first input file. When false, `outputfile_dir` is used as the output file path.
+- flag_overwrite::Bool = false: When true, ffmpeg is invoked with overwrite enabled (passes -y)
+	so existing output files are replaced.
+
+Behavior / Implementation notes
+- A temporary file named "temp_filelist.txt" is written beside the intended output location. Each line
+	is formatted as:  file 'path/to/input'
+	This file is used as input to ffmpeg's concat demuxer (-f concat -safe 0 -i <tempfile>).
+- The function also adds the first input file as a second ffmpeg input and uses `-map_metadata 1`
+	to copy global metadata from that first file into the concatenated output while `-map 0` copies
+	the concatenated streams.
+- The primary ffmpeg invocation uses `@ffmpeg_env run(...)` (FFMPEG.jl environment). If that run
+	throws an error, the function retries with a system call and forces overwrite (-y).
+- The temporary file removal is present in the code but commented out; the temporary list file may
+	remain on disk after execution.
+
+Returns
+- outputfile::String: The full path to the concatenated output file (the generated or provided path).
+
+Errors and side effects
+- Throws an exception if ffmpeg fails on both the primary and fallback attempts.
+- Requires a working ffmpeg installation in PATH and optionally FFMPEG.jl for `@ffmpeg_env`.
+- Inputs must be compatible for stream-copy concatenation. If not, ffmpeg may fail or produce invalid output.
+- Temporary file "temp_filelist.txt" may persist if cleanup is not enabled or if the process is interrupted.
+
+Example
+- concat_media(["a.mp4","b.mp4"], "/out/dir"; flag_output_auto=true, flag_overwrite=false)
+	-> creates "/out/dir/combined__a.mp4_b.mp4.mp4" (extension based on first input) and returns that path.
+"""
 function concat_media(filelist::Vector{String}, outputfile_dir::String; flag_output_auto=true, flag_overwrite=false)
 	# create a temporary text file listing the input files
 	ext = splitext(filelist[1])[2]
@@ -295,6 +340,88 @@ function concat_media(filelist::Vector{String}, outputfile_dir::String; flag_out
 	return outputfile
 end
 
+"""
+	combine_vidau(newvidname, aufname_list; vidau_syncdiff=0,
+				  MERGE_VID_AU_DYNAMIC_NORM=false, rx_vect=rx_vect,
+				  flag_rm_oldfile=false, kwargs...)
+
+Combine a video file with one or more audio files, optionally normalizing audio
+and applying an audio/video offset.
+
+Behavior
+- If `aufname_list` is a Vector of audio paths and contains more than one file,
+  the audio files will first be concatenated (via `concat_media`) into a single
+  temporary audio file which is then used for muxing.
+- If `MERGE_VID_AU_DYNAMIC_NORM` is true, the function applies FFmpeg's
+  loudness normalization filter (`loudnorm`) to the audio while remuxing the
+  video and produces an output file appended with `_DYnormalized-audio.mp4`.
+- If `MERGE_VID_AU_DYNAMIC_NORM` is false, the function:
+  1. Runs FFmpeg's `astats=metadata=1` to extract per-channel peak levels.
+  2. Selects the relevant channels based on `rx_vect` via
+	 `get_relevant_channels(rx_vect)`.
+  3. Computes a gain to normalize the loudest relevant channel to 0 dBFS and
+	 applies this gain using the `volume` audio filter.
+  4. Produces an output file appended with `_normalized-audio.mp4`.
+- The muxing command includes `-itsoffset vidau_syncdiff` to shift the audio
+  start relative to the video by `vidau_syncdiff` seconds.
+- The function attempts to run FFmpeg via the `@ffmpeg_env` wrapper and falls
+  back to a system call if that invocation fails.
+
+Arguments
+- newvidname::AbstractString
+	Path to the input video file (and base for the output filename).
+- aufname_list::Union{AbstractString, Vector{<:AbstractString}}
+	A single audio path or a vector of audio paths to be concatenated/muxed.
+
+Keyword arguments
+- vidau_syncdiff::Real=0
+	Time offset (in seconds) to apply to the audio stream relative to the
+	video when muxing (`-itsoffset`).
+- MERGE_VID_AU_DYNAMIC_NORM::Bool=false
+	If true, use FFmpeg's loudnorm filter (two-pass style loudness
+	normalization) instead of a simple peak-based volume adjustment.
+- rx_vect
+	Receiver/channel selection vector used by `get_relevant_channels` to pick
+	which channels' peaks are considered when computing normalization gain.
+- flag_rm_oldfile::Bool=false
+	If true, remove the original `newvidname` file after successful creation of
+	the normalized/muxed output.
+- kwargs...
+	Additional keyword arguments are accepted but not consumed by the current
+	implementation (preserved for forward compatibility).
+
+Return
+- String
+	Path to the created muxed/normalized MP4 file:
+	either "<newvidname>_DYnormalized-audio.mp4" or
+	"<newvidname>_normalized-audio.mp4" depending on `MERGE_VID_AU_DYNAMIC_NORM`.
+
+Side effects and cleanup
+- Creates a temporary file when analyzing audio with FFmpeg's `astats`, and
+  removes it after parsing.
+- May create a concatenated temporary audio file when multiple audio inputs are
+  provided; that temporary file is removed after muxing.
+- May delete the original video file if `flag_rm_oldfile` is true and the new
+  output file exists.
+- Prints the FFmpeg command to stdout before running it.
+- Relies on external functions/variables: `ffmpeg` (binary or command wrapper),
+  `@ffmpeg_env`, `concat_media`, and `get_relevant_channels`. These must be
+  available in the calling scope.
+
+Errors
+- Propagates errors from FFmpeg if both the primary (`@ffmpeg_env`) and the
+  fallback system invocation fail.
+- If `aufname_list` is not a string or array of strings, behavior is undefined.
+
+Example
+	# Single audio file, no dynamic normalization, 0.2s audio delay
+	out = combine_vidau("video.mp4", "audio.wav"; vidau_syncdiff=0.2)
+
+	# Multiple audio files, dynamic loudness normalization, remove old video
+	out = combine_vidau("video.mp4", ["a1.wav","a2.wav"];
+					   MERGE_VID_AU_DYNAMIC_NORM=true,
+					   flag_rm_oldfile=true)
+"""
 #~ combine video and audio
 function combine_vidau(newvidname, aufname_list; vidau_syncdiff=0, MERGE_VID_AU_DYNAMIC_NORM=false, rx_vect=rx_vect, flag_rm_oldfile=false, kwargs...) #TODO: swap audio channel according to rx_vect location to correspond Left, Right, Center
     if aufname_list isa Array
