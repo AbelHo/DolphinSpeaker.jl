@@ -1,5 +1,8 @@
 using VideoIO
 using FFMPEG
+using Images
+using Printf
+using Plots
 include("media_info.jl")
 include("synchronization.jl")
 include("pic2vid.jl")
@@ -177,6 +180,7 @@ function overlay_boxes_on_video(csv_path::String, video_path::String, output_pat
     # single video input, -vf script can be used but -filter_complex_script is
     # acceptable and general.
     cmd = `ffmpeg -y -i $video_path -filter_complex_script $tmp -codec:a copy $output_path`
+    # cmd = `ffmpeg -y -i $video_path -/filter_complex $tmp -codec:a copy $output_path`
     println(cmd)
     flag_dryrun && (rm(tmp); return)
 
@@ -240,6 +244,358 @@ function overlay_boxes_on_video_imageonly(csv_path::String, video_path::String, 
         flag_dryrun && continue
         save(fname, img)
     end
+end
+
+"""
+    overlay_annotations_on_video(annotations, video_path, output_path; kwargs...)
+
+Overlay annotations onto a video using pure-Julia drawing (no ffmpeg CLI for overlay).
+
+Arguments
+- `annotations`: A vector where each element is either
+    - a String path to a CSV (must contain columns `frame`, `px`, `py`), or
+    - a `DataFrame` with columns `frame`, `px`, `py`, or
+    - a NamedTuple / Dict with keys `:df` or `:csv` (DataFrame or CSV path) and optional `:color`, `:radius`, `:alpha`, `:shape`.
+- `video_path`: path to input video
+- `output_path`: path to output video
+
+Keyword arguments
+- `tmpdir`: temporary folder to write frames (default: created with `mktempdir()`)
+- `fps`: output FPS for encoder (defaults to video's fps)
+- `radius`, `default_color`, `default_alpha`, `default_shape`
+- `frame_col`, `x_col`, `y_col`: column names in CSV/DataFrame
+- `clean_tmp`: remove temporary frames after encoding
+
+Notes
+- Annotation drawing is done in Julia by directly modifying pixel values.
+- After frame images are written, the function calls `pic2vid` (which uses ffmpeg) only to encode the frames into a video. The overlay itself is performed in Julia.
+"""
+function overlay_annotations_on_video(annotations, video_path::AbstractString, output_path::AbstractString;
+    tmpdir::AbstractString = mktempdir(), fps=nothing, radius::Int=25, default_color::AbstractString="red@0.5",
+    default_alpha::Real=0.5, default_shape::Symbol=:circle, frame_col::Symbol=:frame, x_col::Symbol=:px, y_col::Symbol=:py,
+    clean_tmp::Bool=true, flag_dryrun::Bool=false, mode::Symbol = :stream)
+
+    # Accept a single CSV path or DataFrame directly for convenience
+    if annotations isa AbstractString || annotations isa DataFrame || annotations isa Dict || annotations isa NamedTuple
+        annotations = [annotations]
+    elseif !(annotations isa AbstractVector)
+        throw(ArgumentError("annotations must be a Vector of items, a single CSV path, or a DataFrame"))
+    end
+
+    # helper: parse a simple color spec like "yellow@0.8" or "#rrggbb@a" or a 3-tuple
+    color_map = Dict(
+        "red"=> (1.0,0.0,0.0), "green"=> (0.0,1.0,0.0), "blue"=> (0.0,0.0,1.0),
+        "yellow"=> (1.0,1.0,0.0), "white"=> (1.0,1.0,1.0), "black"=> (0.0,0.0,0.0),
+        "cyan"=> (0.0,1.0,1.0), "magenta"=> (1.0,0.0,1.0), "orange"=> (1.0,0.5,0.0)
+    )
+
+    parse_color(s) = begin
+        if s isa Tuple || s isa Vector && length(s) >= 3
+            r,g,b = float(s[1]), float(s[2]), float(s[3])
+            a = length(s) >= 4 ? float(s[4]) : default_alpha
+            return (r,g,b,a)
+        elseif s isa AbstractString
+            parts = split(s, '@')
+            col = parts[1]
+            a = length(parts) == 2 ? parse(Float64, parts[2]) : default_alpha
+            if startswith(col, '#') && length(col) in (4,7)
+                # parse #rgb or #rrggbb
+                hex = col
+                if length(hex) == 4
+                    r = parse(Int, repeat(string(hex[2]),2); base=16) / 255
+                    g = parse(Int, repeat(string(hex[3]),2); base=16) / 255
+                    b = parse(Int, repeat(string(hex[4]),2); base=16) / 255
+                else
+                    r = parse(Int, hex[2:3]; base=16) / 255
+                    g = parse(Int, hex[4:5]; base=16) / 255
+                    b = parse(Int, hex[6:7]; base=16) / 255
+                end
+                return (r,g,b,a)
+            elseif haskey(color_map, lowercase(col))
+                r,g,b = color_map[lowercase(col)]
+                return (r,g,b,a)
+            else
+                # fallback: try parse numbers separated by commas
+                parts2 = split(col, ',')
+                if length(parts2) >= 3
+                    r = parse(Float64, parts2[1]); g = parse(Float64, parts2[2]); b = parse(Float64, parts2[3])
+                    return (r,g,b,a)
+                else
+                    # default red
+                    return (1.0,0.0,0.0,a)
+                end
+            end
+        else
+            return (1.0,0.0,0.0,default_alpha)
+        end
+    end
+
+    # normalize an annotation item into (frames_vec, Nx2 Int matrix of pixels, color_tuple, radius, shape_sym)
+    function normalize_item(item)
+        df = nothing
+        color = default_color
+        alpha = default_alpha
+        radius = radius
+        shape = default_shape
+        if item isa AbstractString
+            # CSV path
+            df = CSV.read(item, DataFrame)
+        elseif item isa DataFrame
+            df = item
+        elseif item isa Dict || item isa NamedTuple
+            if haskey(item, :csv) || haskey(item, :"csv")
+                p = get(item, :csv, get(item, "csv", nothing))
+                df = CSV.read(p, DataFrame)
+            elseif haskey(item, :df) || haskey(item, :"df")
+                df = get(item, :df, get(item, "df", nothing))
+            end
+            color = get(item, :color, get(item, "color", color))
+            radius = get(item, :radius, get(item, "radius", radius))
+            alpha = get(item, :alpha, get(item, "alpha", alpha))
+            shape = get(item, :shape, get(item, "shape", shape))
+        else
+            throw(ArgumentError("Unsupported annotation item type: $(typeof(item))"))
+        end
+
+        if df === nothing
+            throw(ArgumentError("Annotation contains no dataframe or csv path"))
+        end
+
+        # Extract columns
+        if !(frame_col in propertynames(df) || haskey(df, frame_col))
+            # try symbol/string variations
+        end
+        frames = round.(Int, df[!, frame_col])
+        xs = round.(Int, df[!, x_col])
+        ys = round.(Int, df[!, y_col])
+        pts = hcat(xs, ys)
+        colt = parse_color(color)
+        return (frames, pts, colt, radius, shape)
+    end
+
+    # Build normalized list
+    normalized = Vector{Any}(undef, length(annotations))
+    for (i,item) in enumerate(annotations)
+        normalized[i] = normalize_item(item)
+    end
+
+    # prepare tmpdir
+    mkpath(tmpdir)
+    @info "Writing temporary frames to $tmpdir"
+    flag_dryrun && (return)
+
+    # Open video and read frames
+    vid = VideoIO.openvideo(video_path)
+    fps_vid = isnothing(fps) || fps === missing ? get_fps(video_path) : fps
+    # Ensure an integer fps for encoders that expect it
+    fps_vid_int = try
+        Int(round(Float64(fps_vid)))
+    catch
+        25
+    end
+    num_frames = get_number_frames(video_path)
+    if num_frames === missing || num_frames === nothing
+        # fallback: estimate from duration
+        dur = get_duration(video_path)
+        num_frames = Int(ceil(dur * Float64(fps_vid)))
+    end
+
+    # read frames in sequence and draw
+    @info "Processing $num_frames frames (fps=$fps_vid)"
+    img = nothing
+    try
+        img = read(vid)
+    catch err
+        @warn "Failed to read first frame, retrying: $err"
+        seekstart(vid)
+        img = read(vid)
+    end
+
+    # Helper: clamp
+    clamp1(a, lo, hi) = max(lo, min(hi, a))
+
+    h_img, w_img = size(img,1), size(img,2)
+
+    function blend_pixel!(img, x, y, overlay_rgba)
+        # x,y are integer pixel coordinates (1-based) where indexing is img[y,x]
+        if x < 1 || x > w_img || y < 1 || y > h_img
+            return
+        end
+        base = img[y,x]
+        # get base r,g,b in 0..1 float
+        base_r = float(red(base)); base_g = float(green(base)); base_b = float(blue(base))
+        or_, og, ob, oa = overlay_rgba
+        a = oa
+        nr = a*or_ + (1-a)*base_r
+        ng = a*og + (1-a)*base_g
+        nb = a*ob + (1-a)*base_b
+        img[y,x] = typeof(img[1])(nr, ng, nb)
+    end
+
+    function draw_circle!(img, cx, cy, r, overlay_rgba)
+        x0 = Int(clamp1(round(cx - r), 1, w_img))
+        x1 = Int(clamp1(round(cx + r), 1, w_img))
+        y0 = Int(clamp1(round(cy - r), 1, h_img))
+        y1 = Int(clamp1(round(cy + r), 1, h_img))
+        rr = r*r
+        for yy in y0:y1, xx in x0:x1
+            dx = xx - cx; dy = yy - cy
+            if dx*dx + dy*dy <= rr
+                blend_pixel!(img, xx, yy, overlay_rgba)
+            end
+        end
+    end
+
+    function draw_rect!(img, cx, cy, wrect, overlay_rgba)
+        half = wrect/2
+        x0 = Int(clamp1(round(cx-half), 1, w_img))
+        x1 = Int(clamp1(round(cx+half), 1, w_img))
+        y0 = Int(clamp1(round(cy-half), 1, h_img))
+        y1 = Int(clamp1(round(cy+half), 1, h_img))
+        for yy in y0:y1, xx in x0:x1
+            blend_pixel!(img, xx, yy, overlay_rgba)
+        end
+    end
+
+    # main loop
+    seekstart(vid)
+    # If streaming mode, open a video writer. If VideoIO writer fails, fall back
+    # to streaming via an ffmpeg stdin pipe (no intermediate frames on disk).
+    writer = nothing
+    writer_type = nothing  # :videoio or :ffmpegpipe
+
+    # helper: convert image to rgb24 bytes in row-major order (ffmpeg expects rows)
+    function frame_to_rgb24_bytes(img)
+        h = size(img,1); w = size(img,2)
+        ch = channelview(convert.(RGB{N0f8}, img))  # 3 x h x w array of N0f8
+        buf = Vector{UInt8}(undef, w*h*3)
+        idx = 1
+        for y in 1:h
+            for x in 1:w
+                r = ch[1,y,x]; g = ch[2,y,x]; b = ch[3,y,x]
+                buf[idx] = UInt8(clamp(round(Int, 255*float(r)), 0, 255)); idx += 1
+                buf[idx] = UInt8(clamp(round(Int, 255*float(g)), 0, 255)); idx += 1
+                buf[idx] = UInt8(clamp(round(Int, 255*float(b)), 0, 255)); idx += 1
+            end
+        end
+        return buf
+    end
+
+    if mode == :stream
+        @info "Attempting to open VideoIO writer for $output_path (fps=$fps_vid)"
+        try
+            writer = VideoIO.openvideo(output_path; framerate=fps_vid_int)
+            writer_type = :videoio
+        catch err
+            @warn "VideoIO.openvideo failed: $err -- attempting ffmpeg stdin pipe writer"
+            # Build ffmpeg command to accept raw rgb24 stdin
+            sz = string(w_img)*"x"*string(h_img)
+            cmd = `$(FFMPEG.ffmpeg) -y -f rawvideo -pix_fmt rgb24 -s $sz -r $fps_vid_int -i - -c:v libx264 -pix_fmt yuv420p $output_path`
+            try
+                writer = open(cmd, "w")
+                writer_type = :ffmpegpipe
+            catch err2
+                @warn "ffmpeg stdin pipe failed: $err2 -- falling back to frame files mode"
+                writer = nothing
+                writer_type = nothing
+                mode = :frames
+            end
+        end
+    end
+
+    for frame_idx in 0:num_frames-1
+        try
+            read!(vid, img)
+        catch err
+            @warn "Failed to read frame $frame_idx: $err -- filling blank frame"
+            img = zeros(eltype(img), size(img))
+        end
+
+        # iterate all annotation sets
+        for (frames, pts, colt, radius, shape) in normalized
+            inds = findall(==(frame_idx), frames)
+            if isempty(inds)
+                continue
+            end
+            for i in inds
+                x = pts[i,1]; y = pts[i,2]
+                # parse color tuple -> (r,g,b,a)
+                overlay_rgba = colt
+                if shape == :circle || shape == :dot
+                    draw_circle!(img, x, y, radius, overlay_rgba)
+                else
+                    draw_rect!(img, x, y, radius, overlay_rgba)
+                end
+            end
+        end
+
+        if mode == :stream && writer !== nothing
+            try
+                if writer_type == :videoio
+                    write(writer, img)
+                elseif writer_type == :ffmpegpipe
+                    buf = frame_to_rgb24_bytes(img)
+                    write(writer, buf)
+                else
+                    error("Unknown writer_type: $writer_type")
+                end
+            catch err
+                @error "Failed to write frame $frame_idx to video writer: $err"
+                rethrow(err)
+            end
+        else
+            # Write png frame named as %d.png (matches pic2vid default counter)
+                fname = joinpath(tmpdir, @sprintf("%d.png", frame_idx))
+            try
+                save(fname, img)
+            catch err
+                @error "Failed to save frame $frame_idx -> $fname" err
+                rethrow(err)
+            end
+        end
+    end
+
+    close(vid)
+
+    # If streaming writer was used, close it and return
+    if mode == :stream && writer !== nothing
+        try
+            close(writer)
+        catch err
+            @warn "Failed to close video writer cleanly: $err"
+        end
+        # If we used an ffmpeg stdin pipe, wait for the process to finish so the
+        # output file is fully flushed and available to callers. `open(cmd, "w")`
+        # returns a `Base.Process` which we should wait on.
+        if writer_type == :ffmpegpipe
+            try
+                wait(writer)
+            catch err
+                @warn "Waiting on ffmpeg process failed: $err"
+            end
+        end
+        @info "Wrote streamed video to $output_path"
+        return output_path
+    end
+
+    # encode with helper pic2vid (uses ffmpeg under the hood to encode, but overlay done)
+    counter = "%d.png"
+    pic2vid(tmpdir, output_path; counter=counter, fps=fps_vid_int, auto_mode=false)
+
+    if flag_dryrun
+        @info "Dryrun: frames written to $tmpdir (not encoding)"
+        return tmpdir
+    end
+
+    if clean_tmp
+        try
+            rm(tmpdir; force=true, recursive=true)
+        catch err
+            @warn "Failed to remove temporary frames: $err"
+        end
+    end
+
+    return output_path
 end
 
 # """
