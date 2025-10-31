@@ -13,6 +13,7 @@ include("detector_impulsive.jl")
 include("config.jl")
 include("synchronization.jl")
 include("aspod.jl")
+include("video.jl")
 band_pass = tonal_band_pass
 threshold_tonal = -15
 
@@ -318,9 +319,10 @@ This function:
 function run_analysis_split_vidau(folname; res_dir="",
      flag_verbose=true, kwargs...)
 
-    occursin.( Ref(Regex(join(vidtypes, '|'))), readdir(folname))
-    vidlist = filter( x -> occursin(Regex(join(vidtypes, "|\\")), x|>lowercase), readdir(folname; join=true))
-    audlist = filter( x -> occursin(Regex(join(autypes, "|\\")), x|>lowercase), readdir(folname; join=true))
+    # occursin.( Ref(Regex(join(vidtypes, '|'))), readdir(folname))
+    # vidlist = filter( x -> occursin(Regex(join(vidtypes, "|\\")), x|>lowercase), readdir(folname; join=true))
+    # audlist = filter( x -> occursin(Regex(join(autypes, "|\\")), x|>lowercase), readdir(folname; join=true))
+    vidlist, audlist = split_vid_au(folname)
 
     delays, conf = find_vid_vs_audio_syncdiff_timesegment(vidlist[1], audlist[1]; flag_verbose=flag_verbose, flag_return_conf=true, kwargs...)
     # combine all video files into one file
@@ -346,11 +348,22 @@ function run_analysis_split_vidau(folname; res_dir="",
     return delays, conf, output_vidname, vidlist, audlist, res_dir
 end
 
-function run_contiguous_folders(folname; res_dir="", overlay_radius=50, kwargs...)
+function run_contiguous_folders(folname; res_dir="", overlay_radius=32, 
+    flag_overlayvideo=true, flag_overlayimages=false, kwargs...)
     @info "Processing folder: $folname ............."
     
     delays, conf, output_vidname, vidlist, audlist, res_dir2 = run_analysis_split_vidau(folname; res_dir=res_dir, auto_segment_len=250, flag_norm_rms=true)
-    results = process_detections.(audlist, Ref(vidlist[1]); res_dir=res_dir2)
+    # results = process_detections.(audlist, Ref(vidlist[1]); res_dir=res_dir2)
+    # run process_detections on each audio file in parallel, preserving order
+    results = Vector{Any}(undef, length(audlist))
+    Threads.@threads for i in eachindex(audlist)
+        try
+            results[i] = process_detections(audlist[i], vidlist[1]; res_dir=res_dir2)
+        catch err
+            @error "process_detections failed for $(audlist[i])" exception=(err, catch_backtrace())
+            results[i] = nothing
+        end
+    end
     # res[1][1] = res[1][1] .+ (delays*get_fps(vidfname))
 
     detection_pixels = joinpath(res_dir2, "detection_pixels.csv")
@@ -364,10 +377,21 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=50, kwargs..
         end
         cum_duration += get_duration(audlist[ind])
     end
-
-    overlay_boxes_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mp4"; radius=overlay_radius)
-    overlay_boxes_on_video_imageonly(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaidIMG"; radius=overlay_radius)
+    
+    
+    # flag_overlayvideo && overlay_boxes_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mp4"; radius=overlay_radius)
+    if flag_overlayvideo
+        try
+            out_vid_path = overlay_annotations_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mkv"; radius=overlay_radius, mode=:VideoIO) #mode=:stream) #
+            combine_vidau(out_vid_path, audlist; vidau_syncdiff=delays, MERGE_VID_AU_DYNAMIC_NORM=true, rx_vect=rx_vect, kwargs...)
+        catch err
+            @error "Failed to overlay boxes on video($output_vidname)" exception=(err, catch_backtrace())
+        end
+    end
+    flag_overlayimages && 
+    (overlay_boxes_on_video_imageonly(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaidIMG"; radius=overlay_radius);
     pic2vid(splitext(output_vidname)[1]*"_overlaidIMG", splitext(output_vidname)[1]*"_overlaidIMG.mp4"; auto_mode=true)
+    )
 
     # vidpath = "/media/spin/anas2/data_res/dolphin/calf/temp/delete/1/combined__1.GoPro_Clicker.MP4.mp4"
 
