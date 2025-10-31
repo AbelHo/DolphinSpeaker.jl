@@ -107,7 +107,7 @@ function convert_raven_to_audacity(raven_file::String, new_folder::String=raven_
     end
     # if length(sets) > 1
     df.Duration = df[:,"End Time (s)"] - df[:,"Begin Time (s)"]
-    "Offset_endtime" in names(df) && (df.Offset_endtime = df[:,"File Offset (s)"] + df.Duration)
+    "Offset_endtime" in names(df) || (df.Offset_endtime = df[:,"File Offset (s)"] + df.Duration)
     # end
 
     for (i, set) in enumerate(sets)
@@ -140,6 +140,14 @@ function convert_raven_to_audacity_one(df::Union{DataFrame, SubDataFrame}, audac
 
             # Write the Audacity label format: start_time, end_time, label
             println(io, "$begin_time\t$end_time\t$label")
+
+            if "Low Freq (Hz)" in names(df) && "High Freq (Hz)" in names(df)
+                low_freq = row["Low Freq (Hz)"]
+                high_freq = row["High Freq (Hz)"]
+                if !(ismissing(low_freq) || ismissing(high_freq) || isempty(low_freq) || isempty(high_freq))
+                    println(io, "\\\t$low_freq\t$high_freq")
+                end
+            end
             i += 1
         end
     end
