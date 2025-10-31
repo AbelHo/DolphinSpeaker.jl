@@ -129,6 +129,7 @@ fname2dt_date_time(aufname; skip_front=0) = DateTime(basename(aufname)[(1:15) .+
 fname2dt_soundtrap(aufname) = DateTime("20"*basename(aufname)[findfirst(".", basename(aufname))[1] .+ (1:12)], dateformat"yyyymmddHHMMSS") #DateTime("20"*basename(aufname)[6:17], dateformat"yyyymmddHHMMSS")
 fname2dt_ls1 = fname2dt_date_time
 fname2dt_zoomf6(aufname) = DateTime(get_ffmpeg_metadata(aufname)["format"]["tags"]["date"] *"T"* get_ffmpeg_metadata(aufname)["format"]["tags"]["creation_time"]) #, dateformat"yyyy-mm-ddTHH:MM:SS")
+fname2dt_goprolocal(vidfname) = DateTime(get_ffmpeg_metadata(vidfname)["format"]["tags"]["creation_time"][1:end-5])
 
 function writeWAV(data, fpath; Fs=1)
     nbits = parse(Int64, string(eltype(data))[end-1:end])
