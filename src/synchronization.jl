@@ -191,7 +191,7 @@ function check_syncthreshold(dolphin;
 end
 
 # find correlation between segment to look for sync, for HK new recording device1
-function find_vid_vs_audio_syncdiff_timesegment(vidfname, aufname; segment_inS=:auto, auto_segment_len=120, fs=500_000,
+function find_vid_vs_audio_syncdiff_timesegment(vidfname, aufname; segment_inS=:auto, auto_segment_len=250, fs=500_000,
     flag_verbose=false, flag_return_conf=false, kwargs...)
     data, fs = readAudio(aufname)
     data_v, fs_v = get_videos_audiodata(vidfname)
