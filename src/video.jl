@@ -263,24 +263,88 @@ Arguments
 Keyword arguments
 - `tmpdir`: temporary folder to write frames (default: created with `mktempdir()`)
 - `fps`: output FPS for encoder (defaults to video's fps)
-- `default_radius`, `default_color`, `default_alpha`, `default_shape`
+- `default_radius`: Can be a single Int, an array of Int (one per annotation set), or `:in_annotations` to read from "radius" column
+- `default_color`: Can be a single String/Tuple, an array (one per annotation set), or `:in_annotations` to read from "r", "g", "b" columns
+- `default_alpha`: Can be a single Real, an array (one per annotation set), or `:in_annotations` to read from "a" column
+- `default_shape`: Can be a single Symbol, an array (one per annotation set), or `:in_annotations` to read from "shape" column
 - `frame_col`, `x_col`, `y_col`: column names in CSV/DataFrame
 - `clean_tmp`: remove temporary frames after encoding
 
 Notes
 - Annotation drawing is done in Julia by directly modifying pixel values.
 - After frame images are written, the function calls `pic2vid` (which uses ffmpeg) only to encode the frames into a video. The overlay itself is performed in Julia.
+- When using arrays for default_color/alpha/radius/shape, the i-th element applies to the i-th annotation set.
+- When using `:in_annotations`, each row in the DataFrame/CSV can have its own properties.
 """
 function overlay_annotations_on_video(annotations, video_path::AbstractString, output_path::AbstractString;
-    tmpdir::AbstractString = mktempdir(), fps=nothing, radius::Int=25, default_color::AbstractString="red@0.5",
-    default_alpha::Real=OVERLAY_DEFAULT_ALPHA , default_shape::Symbol=:circle, frame_col::Symbol=:frame, x_col::Symbol=:px, y_col::Symbol=:py,
-    clean_tmp::Bool=true, flag_dryrun::Bool=false, mode::Symbol = :stream, encoder_options=(crf=23, preset="ultrafast"), max_frames::Union{Nothing,Int}=nothing)
+    tmpdir::AbstractString = mktempdir(), fps=nothing, radius=OVERLAY_RADIUS, default_color="red@0.5",
+    default_alpha=OVERLAY_DEFAULT_ALPHA, default_shape::Union{Symbol,AbstractVector}=:circle, 
+    frame_col::Symbol=:frame, x_col::Symbol=:px, y_col::Symbol=:py,
+    clean_tmp::Bool=true, flag_dryrun::Bool=false, mode::Symbol = :stream, encoder_options=(crf=23, preset="ultrafast"), max_frames::Union{Nothing,Int}=nothing,
+    kwargs...)
 
     # Accept a single CSV path or DataFrame directly for convenience
     if annotations isa AbstractString || annotations isa DataFrame || annotations isa Dict || annotations isa NamedTuple
         annotations = [annotations]
     elseif !(annotations isa AbstractVector)
         throw(ArgumentError("annotations must be a Vector of items, a single CSV path, or a DataFrame"))
+    end
+
+    # Determine if we're reading properties from annotations
+    use_in_annotations_color = (default_color === :in_annotations)
+    use_in_annotations_alpha = (default_alpha === :in_annotations)
+    use_in_annotations_radius = (radius === :in_annotations)
+    use_in_annotations_shape = (default_shape === :in_annotations)
+
+    # Convert scalar defaults to arrays for uniform handling
+    num_annotations = length(annotations)
+    
+    # Handle color array
+    if use_in_annotations_color
+        default_colors = fill("red@0.5", num_annotations)  # placeholder, will be overridden per-row
+    elseif default_color isa AbstractVector
+        default_colors = default_color
+        if length(default_colors) != num_annotations
+            throw(ArgumentError("Length of default_color array ($(length(default_colors))) must match number of annotations ($num_annotations)"))
+        end
+    else
+        default_colors = fill(default_color, num_annotations)
+    end
+
+    # Handle alpha array
+    if use_in_annotations_alpha
+        default_alphas = fill(OVERLAY_DEFAULT_ALPHA, num_annotations)  # placeholder
+    elseif default_alpha isa AbstractVector
+        default_alphas = default_alpha
+        if length(default_alphas) != num_annotations
+            throw(ArgumentError("Length of default_alpha array ($(length(default_alphas))) must match number of annotations ($num_annotations)"))
+        end
+    else
+        default_alphas = fill(default_alpha, num_annotations)
+    end
+
+    # Handle radius array
+    if use_in_annotations_radius
+        default_radii = fill(25, num_annotations)  # placeholder
+    elseif radius isa AbstractVector
+        default_radii = radius
+        if length(default_radii) != num_annotations
+            throw(ArgumentError("Length of radius array ($(length(default_radii))) must match number of annotations ($num_annotations)"))
+        end
+    else
+        default_radii = fill(radius, num_annotations)
+    end
+
+    # Handle shape array
+    if use_in_annotations_shape
+        default_shapes = fill(:circle, num_annotations)  # placeholder
+    elseif default_shape isa AbstractVector
+        default_shapes = default_shape
+        if length(default_shapes) != num_annotations
+            throw(ArgumentError("Length of default_shape array ($(length(default_shapes))) must match number of annotations ($num_annotations)"))
+        end
+    else
+        default_shapes = fill(default_shape, num_annotations)
     end
 
     # helper: parse a simple color spec like "yellow@0.8" or "#rrggbb@a" or a 3-tuple
@@ -331,13 +395,15 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
         end
     end
 
-    # normalize an annotation item into (frames_vec, Nx2 Int matrix of pixels, color_tuple, radius, shape_sym)
-    function normalize_item(item)
+    # normalize an annotation item into per-row properties or uniform properties
+    # Returns: (frames_vec, Nx2 Int matrix of pixels, per_row_properties::Bool, color_or_colors, alpha_or_alphas, radius_or_radii, shape_or_shapes)
+    function normalize_item(item, item_idx)
         df = nothing
-        color = default_color
-        alpha = default_alpha
-        radius = radius
-        shape = default_shape
+        color = default_colors[item_idx]
+        alpha = default_alphas[item_idx]
+        rad = default_radii[item_idx]
+        shape = default_shapes[item_idx]
+        
         if item isa AbstractString
             # CSV path
             df = CSV.read(item, DataFrame)
@@ -350,8 +416,9 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
             elseif haskey(item, :df) || haskey(item, :"df")
                 df = get(item, :df, get(item, "df", nothing))
             end
+            # Item-specific overrides (backward compatibility)
             color = get(item, :color, get(item, "color", color))
-            radius = get(item, :radius, get(item, "radius", radius))
+            rad = get(item, :radius, get(item, "radius", rad))
             alpha = get(item, :alpha, get(item, "alpha", alpha))
             shape = get(item, :shape, get(item, "shape", shape))
         else
@@ -370,14 +437,67 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
         xs = round.(Int, df[!, x_col])
         ys = round.(Int, df[!, y_col])
         pts = hcat(xs, ys)
-        colt = parse_color(color)
-        return (frames, pts, colt, radius, shape)
+        
+        # Check if we should read per-row properties from DataFrame
+        per_row_properties = false
+        colors_per_row = nothing
+        alphas_per_row = nothing
+        radii_per_row = nothing
+        shapes_per_row = nothing
+        
+        if use_in_annotations_color && (:r in propertynames(df) || :g in propertynames(df) || :b in propertynames(df))
+            per_row_properties = true
+            # Read r, g, b columns (and optionally 'a' if available)
+            r_vals = hasproperty(df, :r) ? df[!, :r] : fill(1.0, nrow(df))
+            g_vals = hasproperty(df, :g) ? df[!, :g] : fill(0.0, nrow(df))
+            b_vals = hasproperty(df, :b) ? df[!, :b] : fill(0.0, nrow(df))
+            a_vals = hasproperty(df, :a) ? df[!, :a] : fill(alpha, nrow(df))
+            colors_per_row = [(Float64(r_vals[i]), Float64(g_vals[i]), Float64(b_vals[i]), Float64(a_vals[i])) for i in 1:nrow(df)]
+        end
+        
+        if use_in_annotations_alpha && hasproperty(df, :a)
+            per_row_properties = true
+            alphas_per_row = Float64.(df[!, :a])
+        end
+        
+        if use_in_annotations_radius && hasproperty(df, :radius)
+            per_row_properties = true
+            radii_per_row = Int.(round.(df[!, :radius]))
+        end
+        
+        if use_in_annotations_shape && hasproperty(df, :shape)
+            per_row_properties = true
+            shapes_per_row = Symbol.(df[!, :shape])
+        end
+        
+        # If using per-row properties, return them; otherwise return uniform properties
+        if per_row_properties
+            # Fill in any missing per-row arrays with uniform values
+            if colors_per_row === nothing
+                colt = parse_color(color)
+                colors_per_row = fill(colt, nrow(df))
+            end
+            if alphas_per_row === nothing
+                alphas_per_row = fill(alpha, nrow(df))
+            end
+            if radii_per_row === nothing
+                radii_per_row = fill(rad, nrow(df))
+            end
+            if shapes_per_row === nothing
+                shapes_per_row = fill(shape, nrow(df))
+            end
+            return (frames, pts, true, colors_per_row, alphas_per_row, radii_per_row, shapes_per_row)
+        else
+            # Uniform properties for all rows
+            colt = parse_color(color)
+            return (frames, pts, false, colt, alpha, rad, shape)
+        end
     end
 
     # Build normalized list
     normalized = Vector{Any}(undef, length(annotations))
     for (i,item) in enumerate(annotations)
-        normalized[i] = normalize_item(item)
+        normalized[i] = normalize_item(item, i)
     end
 
     # prepare tmpdir
@@ -484,18 +604,33 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
                     end
 
                     # iterate all annotation sets
-                    for (frames, pts, colt, radius, shape) in normalized
+                    for norm_item in normalized
+                        frames, pts, per_row, color_data, alpha_data, radius_data, shape_data = norm_item
                         inds = findall(==(frame_idx), frames)
                         if isempty(inds)
                             continue
                         end
+                        @debug frame_idx
+                        @debug inds
+                        @debug color_data[inds]
+                        @debug per_row
                         for i in inds
                             x = pts[i,1]; y = pts[i,2]
-                            overlay_rgba = colt
-                            if shape == :circle || shape == :dot
-                                draw_circle!(img, x, y, radius, overlay_rgba)
+                            if per_row
+                                overlay_rgba = color_data[i]
+                                rad = radius_data[i]
+                                shp = shape_data[i]
                             else
-                                draw_rect!(img, x, y, radius, overlay_rgba)
+                                overlay_rgba = color_data
+                                rad = radius_data
+                                shp = shape_data
+                            end
+                            @debug rad
+                            @debug overlay_rgba
+                            if shp == :circle || shp == :dot
+                                draw_circle!(img, x, y, rad, overlay_rgba)
+                            else
+                                draw_rect!(img, x, y, rad, overlay_rgba)
                             end
                         end
                     end
@@ -568,19 +703,27 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
         end
 
         # iterate all annotation sets
-        for (frames, pts, colt, radius, shape) in normalized
+        for norm_item in normalized
+            frames, pts, per_row, color_data, alpha_data, radius_data, shape_data = norm_item
             inds = findall(==(frame_idx), frames)
             if isempty(inds)
                 continue
             end
             for i in inds
                 x = pts[i,1]; y = pts[i,2]
-                # parse color tuple -> (r,g,b,a)
-                overlay_rgba = colt
-                if shape == :circle || shape == :dot
-                    draw_circle!(img, x, y, radius, overlay_rgba)
+                if per_row
+                    overlay_rgba = color_data[i]
+                    rad = radius_data[i]
+                    shp = shape_data[i]
                 else
-                    draw_rect!(img, x, y, radius, overlay_rgba)
+                    overlay_rgba = color_data
+                    rad = radius_data
+                    shp = shape_data
+                end
+                if shp == :circle || shp == :dot
+                    draw_circle!(img, x, y, rad, overlay_rgba)
+                else
+                    draw_rect!(img, x, y, rad, overlay_rgba)
                 end
             end
         end
