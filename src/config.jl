@@ -55,8 +55,10 @@ DEFAULT_bin_channels = 4
 
 #~ video overlay parameters
 pt_config = [((1,0,0),63), ((1,1,0),58), ((0,1,0),53), ((1,0,1),48), ((1,1,1),33)]
+# rgb_bands=[[1000,30000], [30000,60000], [60000,96000]]
 DETECTION_TYPES = 1:2
 OVERLAY_DEFAULT_ALPHA = 0.5
+OVERLAY_RADIUS = 32
 # pt_config = [((1,1,0),25), ((1,0,0),30), ((0,1,0),20), ((1,0,1),15), ((1,1,1),10)]
 
 #~ audio merge parameters
@@ -154,7 +156,9 @@ function set_device__ophk_acoustic_D3_clicker()
     # global fov_angle = [fov.horizontal_angle, fov.vertical_angle, fov.diagonal_angle]
     global fov_angle = [71.54116671149038, 54.46086642417594, missing]
     global fov_angle = [80.0, 54.46086642417594, missing]
-    global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x))) 
+    global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
+    global OVERLAY_DEFAULT_ALPHA = 0.4
+    global OVERLAY_RADIUS = 20
 end
 
 function set_device__ophk_acoustic_D3()
@@ -174,12 +178,17 @@ function set_device__ophk_acoustic_D3()
 
     global threshold_tonal = nothing #-110#calf_hk -15#aspod2
     global tonal_band_pass = [2500, 24000]
+    global freq_maxbandwidth = 3000
+    global freq_width_db = 6
+    # global freq_maxbandwidth = 3000; global freq_width_db = 3 #burst pulse detector
+    global PARAM_TONALSPREAD = true
 
     global threshold_boat = Inf #1e3
     global band_pass_boat = [1 500]
 
     global OVERLAY_DEFAULT_ALPHA = 0.2
-
+    global OVERLAY_RADIUS = 20
+    global rgb_bands=[[1000,30000], [30000,60000], [60000,96000]]
 end
 
 function set_device__aspod2()
