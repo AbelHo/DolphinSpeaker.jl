@@ -305,6 +305,14 @@ end
 
 readdirjoin(x) = readdir(x; join=true)
 
+function concat_files(files::Vector{String}, out::String)
+    open(out, "w") do o
+        for f in files
+            write(o, read(f))   # read returns Vector{UInt8} for binary
+        end
+    end
+end
+
 @info "end utils.jl"
 
 # function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2)) # plot_window_inS=[-.1 .1]
