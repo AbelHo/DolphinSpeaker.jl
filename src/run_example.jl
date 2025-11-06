@@ -336,9 +336,10 @@ function run_analysis_split_vidau(folname; res_dir="",
         output_vidname = "$res_dir/combined__$(join(basename.(vidlist), '_')).mp4"
         cmd = `ffmpeg -hide_banner -loglevel error -f concat -safe 0 -i $temp_filelist -c copy $output_vidname`
         print(cmd)
-        try
+        @async try
             @ffmpeg_env run(cmd)
             rm(temp_filelist)
+            @info "Succesfully combined videos into $output_vidname !!!"
         catch e
             @error "FFmpeg command failed: $e"
             rm(temp_filelist)
@@ -348,8 +349,8 @@ function run_analysis_split_vidau(folname; res_dir="",
     return delays, conf, output_vidname, vidlist, audlist, res_dir
 end
 
-function run_contiguous_folders(folname; res_dir="", overlay_radius=32, 
-    flag_overlayvideo=true, flag_overlayimages=false, kwargs...)
+function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detection_types = 1:2,
+    flag_overlayvideo=true, flag_overlayimages=false, flag_return = false, kwargs...)
     @info "Processing folder: $folname ............."
     
     delays, conf, output_vidname, vidlist, audlist, res_dir2 = run_analysis_split_vidau(folname; res_dir=res_dir, auto_segment_len=250, flag_norm_rms=true)
@@ -358,7 +359,7 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32,
     results = Vector{Any}(undef, length(audlist))
     Threads.@threads for i in eachindex(audlist)
         try
-            results[i] = process_detections(audlist[i], vidlist[1]; res_dir=res_dir2)
+            results[i] = process_detections(audlist[i], vidlist[1]; res_dir=res_dir2, flag_return=flag_return)
         catch err
             @error "process_detections failed for $(audlist[i])" exception=(err, catch_backtrace())
             results[i] = nothing
@@ -367,22 +368,67 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32,
     # res[1][1] = res[1][1] .+ (delays*get_fps(vidfname))
 
     detection_pixels = joinpath(res_dir2, "detection_pixels.csv")
-    detection_type = 1  # 1: impulsive, 2: tonal, 3: boat
-    cum_duration = 0.0
-    for (ind, res) in enumerate(results)
-        write_mode = ind==1 ? "w" : "a"
-        open( detection_pixels, write_mode) do io
-            (write_mode == "w") && writedlm(io, ["frame" "px" "py"], ',')
-            writedlm(io, [res[detection_type][1] .+ ( (cum_duration + delays)*get_fps(vidlist[1])) res[detection_type][2]], ',') # add sync delay and cumulative duration
+    # detection_types = 1:2  # 1: impulsive, 2: tonal, 3: boat
+    # cum_duration = 0.0
+    open( detection_pixels, "w") do io
+        writedlm(io, ["frame" "px" "py" "radius" "r" "g" "b" "a" "shape"], ',')
+        for detection_type in detection_types
+            # write_mode = detection_type==1 ? "w" : "a"
+            cum_duration = 0.0
+            for (ind, res) in enumerate(results)
+                writedlm(io, [res[detection_type][1] .+ ( (cum_duration + delays)*get_fps(vidlist[1])) res[detection_type][2]], ',') # add sync delay and cumulative duration
+                # write_mode = ind==1 ? "w" : "a"
+                # open( detection_pixels, write_mode) do io
+                #     (write_mode == "w") && writedlm(io, ["frame" "px" "py" "radius" "r" "g" "b" "a" "shape"], ',')
+                #     writedlm(io, [res[detection_type][1] .+ ( (cum_duration + delays)*get_fps(vidlist[1])) res[detection_type][2]], ',') # add sync delay and cumulative duration
+                # end
+                cum_duration += get_duration(audlist[ind])
+                results[1].res.res_impulsetrain.pind_good
+            end
         end
-        cum_duration += get_duration(audlist[ind])
     end
     
-    
+    detection_pixels_df = CSV.read(detection_pixels, DataFrame)
+    # detection_pixels_df.tag_name .= map(x -> x==1 ? :impulsive : x==2 ? :tonal : :boat, detection_pixels_df.type)
+    detection_pixels_df.type = detection_pixels_df.shape
+    detection_pixels_df[:, ["r", "g", "b"]] = detection_pixels_df[:, ["r", "g", "b"]] .* 255.0 # convert to 0-255 range
+    CSV.write(splitext(detection_pixels) |> x-> x[1]*"__color255_webui"*x[2], detection_pixels_df)
+
+    dfs_impulse = CSV.read.(joinpath.(res_dir2 |> Ref, [results[i].res.res_impulsetrain.outfname * ".txt" for i in 1:length(results)]), DataFrame; header=false)
+    dfs_tonal = CSV.read.(joinpath.(res_dir2 |> Ref, [results[i].res.res_tonalsegment.outfname * ".txt" for i in 1:length(results)]), DataFrame; header=false)
+
+    cum_duration = 0.0; cum_index_impulse = 0; cum_index_tonal = 0;
+    for ind = 1:length(results)
+        dfs_impulse[ind][:, 1:2] .+= cum_duration
+        dfs_tonal[ind][:, 1:2] .+= cum_duration
+        dfs_impulse[ind][:, 3] .+= cum_index_impulse
+        dfs_tonal[ind][:, 3] .+= cum_index_tonal
+
+        cum_duration += get_duration(audlist[ind])
+        cum_index_impulse += nrow(dfs_impulse[ind])
+        cum_index_tonal += nrow(dfs_tonal[ind])
+    end
+    CSV.write(joinpath(res_dir2, "combined_impulse__audacity.txt"), vcat(dfs_impulse...); writeheader=false, delim='\t')
+    CSV.write(joinpath(res_dir2, "combined_tonal__audacity.txt"), vcat(dfs_tonal...); writeheader=false, delim='\t')
+
+    vid_ready = false
+    while !vid_ready
+        try
+            @ffmpeg_env run(`ffprobe $output_vidname`)
+            vid_ready = true
+        catch err
+            @warn "Video file not ready yet: $output_vidname. Retrying in 30 seconds..."
+            sleep(30)
+        end
+    end
+    @info "Combined video ready: $output_vidname, proceeds..."
     # flag_overlayvideo && overlay_boxes_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mp4"; radius=overlay_radius)
     if flag_overlayvideo
         try
-            out_vid_path = overlay_annotations_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mkv"; radius=overlay_radius, mode=:VideoIO) #mode=:stream) #
+            out_vid_path = overlay_annotations_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mkv"; 
+                mode=:VideoIO, radius=overlay_radius, #) #mode=:stream) #
+                kwargs...)
+                # radius=:in_annotations, default_color=:in_annotations, default_alpha=:in_annotations, default_shape=:in_annotations)
             combine_vidau(out_vid_path, audlist; vidau_syncdiff=delays, MERGE_VID_AU_DYNAMIC_NORM=true, rx_vect=rx_vect, kwargs...)
         catch err
             @error "Failed to overlay boxes on video($output_vidname)" exception=(err, catch_backtrace())
@@ -400,6 +446,9 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32,
     # wait(task_overlayvideo)
     # wait(task_overlayvideo_img)
     # pic2vid(splitext(output_vidname)[1]*"_overlaidIMG", splitext(output_vidname)[1]*"_overlaidIMG.mp4"; auto_mode=true)
+    if flag_return
+        return (;results, detection_pixels_df, delays, conf, output_vidname, vidlist, audlist, res_dir2)
+    end
 end
 
 
