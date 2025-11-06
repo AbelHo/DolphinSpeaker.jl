@@ -57,9 +57,10 @@ function readAudio(aufname::Array{String,1}; kwargs...)
 end
 
 function readAudio(aufname; fname2timestamp_func=DEFAULT_fname2timestamp_func, 
-    channels=DEFAULT_bin_channels, datatype=Float64, fs=500_000)
+    channels=DEFAULT_bin_channels, datatype=Float64, fs=500_000,
+    filetype = splitext(aufname)[2] |> lowercase)
     opt = nothing; nbits = nothing; timestamp=nothing;
-    filetype = splitext(aufname)[2] |> lowercase
+    # filetype = splitext(aufname)[2] |> lowercase
     if ".wav" == filetype 
         data, fs, nbits, opt = wavread(aufname, format="native")
         try
@@ -102,7 +103,7 @@ function readAudio(aufname; fname2timestamp_func=DEFAULT_fname2timestamp_func,
         end
     elseif filetype in [".flac", ".ogg", ".mp3"]
         @info "Reading flac/ogg/mp3 file via ffmpeg..."
-        data, fs = get_videos_audiodata_all(aufname)
+        data, fs = get_videos_audiodata_all2(aufname)
     elseif filetype in vidtypes
         @info "Reading audio from video file via ffmpeg..."
         data, fs = get_videos_audiodata(aufname)
@@ -119,7 +120,11 @@ function readAudio(aufname; fname2timestamp_func=DEFAULT_fname2timestamp_func,
             @warn err
         end
     end
-
+    # retry with ffmpeg if it's empty
+    if isempty(data)
+        @warn "No data read from file, retrying with ffmpeg..."
+        data, fs = get_videos_audiodata_all2(aufname)
+    end
     return data, Int(fs), nbits, opt, timestamp
 end
 
@@ -634,12 +639,17 @@ end
 """
 Extract audio clips sample
 """
-function extract_clips(data, t_sample, clip_length; flag_matrix=false)
-    clips = []
+function extract_clips(data, t_sample, clip_length=100; flag_matrix=false)
+    clips = []; starts=[]; stops=[];
     if ndims(t_sample)==1
-        clip_length_half = clip_length ÷ 2
-        starts = t_sample .- clip_length_half .+ 1
-        stops = t_sample .+ clip_length_half
+        if t_sample[1] isa Number
+            clip_length_half = clip_length ÷ 2
+            starts = t_sample .- clip_length_half .+ 1
+            stops = t_sample .+ clip_length_half
+        elseif t_sample[1] isa UnitRange
+            starts = map(x-> x[1], t_sample)
+            stops = map(x-> x[end], t_sample)
+        end
     else
         starts = t_sample[:,1]
         stops = t_sample[:,2]
@@ -653,44 +663,99 @@ function extract_clips(data, t_sample, clip_length; flag_matrix=false)
         push!(clips, data[start:stop,:])
     end
     if flag_matrix
-        return hcat(clips...)
+        return cat(clips...; dims= ndims(first(clips))+1)
+        # return hcat(clips...)
     else
         return clips
     end
 end
 
-function extract_clips_matrix(data, t_sample, clip_length)
-    clip_length_half = clip_length ÷ 2
-    
+function extract_clips_matrix(data, t_sample, clip_length=100)
+    """
+    Extract clips and return a preallocated tensor with clips stacked along a new last dimension.
 
-    if ndims(t_sample)==1
-        starts = t_sample .- clip_length_half .+ 1
-        stops = t_sample .+ clip_length_half
-        clip_size = clip_length
-        num_clips = length(t_sample)
+    The returned tensor shape is:
+      - (clip_size, num_clips) for 1D data
+      - (clip_size, channels, num_clips) for 2D data (samples × channels)
+
+    Clips shorter than clip_size (near boundaries) are left-zero-padded at the end.
+    """
+    # determine starts/stops and clip_size
+    if ndims(t_sample) == 1
+        if t_sample[1] isa Number
+            clip_half = clip_length ÷ 2
+            starts = t_sample .- clip_half .+ 1
+            stops = t_sample .+ clip_half
+            clip_size = clip_length
+        elseif t_sample[1] isa UnitRange
+            starts = map(x -> first(x), t_sample)
+            stops = map(x -> last(x), t_sample)
+            clip_size = length(t_sample[1])
+        else
+            throw(ArgumentError("Unsupported t_sample element type: $(typeof(t_sample[1]))"))
+        end
     else
         starts = t_sample[:,1]
         stops = t_sample[:,2]
-        clip_size = t_sample[1,2] - t_sample[1,1] + 1
-        num_clips = size(t_sample,1)
+        clip_size = stops[1] - starts[1] + 1
     end
-    clips_matrix = zeros(eltype(data), clip_size, num_clips)
-    # @debug size(clips_matrix)
-    
-    for i in 1:num_clips
-        # start = t_sample[i] - clip_length_half +1
-        # stop = t_sample[i] + clip_length_half
-        start = max(1, starts[i])
-        stop = min(size(data,1), stops[i])
-        
-        clip = data[start:stop]
-        # @debug (start, stop)
-        # @debug size(clip)
-        clips_matrix[1:length(clip), i] = clip
+
+    num_clips = length(starts)
+    # handle 1D vs 2D data
+    if ndims(data) == 1
+        result = zeros(eltype(data), clip_size, num_clips)
+        Threads.@threads for i in 1:num_clips
+            s = max(1, Int(starts[i]))
+            e = min(length(data), Int(stops[i]))
+            seg = view(data, s:e)
+            result[1:length(seg), i] .= seg
+        end
+    else
+        nch = size(data, 2)
+        result = zeros(eltype(data), clip_size, nch, num_clips)
+        Threads.@threads for i in 1:num_clips
+            s = max(1, Int(starts[i]))
+            e = min(size(data,1), Int(stops[i]))
+            seg = @view data[s:e, :]
+            result[1:size(seg,1), :, i] .= seg
+        end
     end
-    
-    return clips_matrix
+
+    return result
 end
+
+# function extract_clips_matrix(data, t_sample, clip_length)
+#     clip_length_half = clip_length ÷ 2
+    
+
+#     if ndims(t_sample)==1
+#         starts = t_sample .- clip_length_half .+ 1
+#         stops = t_sample .+ clip_length_half
+#         clip_size = clip_length
+#         num_clips = length(t_sample)
+#     else
+#         starts = t_sample[:,1]
+#         stops = t_sample[:,2]
+#         clip_size = t_sample[1,2] - t_sample[1,1] + 1
+#         num_clips = size(t_sample,1)
+#     end
+#     clips_matrix = zeros(eltype(data), clip_size, num_clips)
+#     # @debug size(clips_matrix)
+    
+#     for i in 1:num_clips
+#         # start = t_sample[i] - clip_length_half +1
+#         # stop = t_sample[i] + clip_length_half
+#         start = max(1, starts[i])
+#         stop = min(size(data,1), stops[i])
+        
+#         clip = data[start:stop]
+#         # @debug (start, stop)
+#         # @debug size(clip)
+#         clips_matrix[1:length(clip), i] = clip
+#     end
+    
+#     return clips_matrix
+# end
 
 """
 Extract audio clips sample
