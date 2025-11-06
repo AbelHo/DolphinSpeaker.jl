@@ -360,8 +360,8 @@ function detect_impulsetrain(res, res_dir=res_dir;
             @info "no click trains detected"
         else
             fs = round(Int, (res_new.pind_good[1] - 1) / res_new.pind_good_inS[1])
-            audacity_label([train_start train_end] ./ fs, joinpath(res_dir, res.outfname *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  "_train-only.txt" |> basename))
-            raven_label([train_start train_end] ./ fs, joinpath(res_dir, "raven_" * res.outfname *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  "_train-only.txt" |> basename); channel=ref_channel, prefix="ct")
+            audacity_label([train_start train_end] ./ fs, joinpath(res_dir, res_new.outfname *  "_train-only.txt" |> basename))
+            raven_label([train_start train_end] ./ fs, joinpath(res_dir, "raven_" * res_new.outfname * "_train-only.txt" |> basename); channel=ref_channel, prefix="ct")
             # audacity_label([train_start train_end] ./ fs, joinpath(res_dir, splitext(res.aufname)[1]*"_t"*string(res.threshold)*"_d"*string(res.dist) *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  "_train-only.txt" |> basename))
         end
     else
