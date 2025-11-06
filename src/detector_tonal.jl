@@ -358,10 +358,10 @@ function combine_detections_conv(data, res_new, nfft=1280, infl_len=30;
         res_new.fft_max[ (findlast( <(pind_good_inS[i]), res_new.time_index) |> x -> isnothing(x) ? 1 : x): (findfirst( >(train_end[i]/res_new.fs), res_new.time_index) |> x -> isnothing(x) ? length(res_new.fft_max) : x  )] |> median
     , eachindex(train_start))
     # @debug "ppeak: "* string(size(ppeak))
-
+    outfname = res_new.outfname *"__len"* string(nfft*infl_len) *"_sigma"*string(σ)* "_segment-thresh$threshold"*"_segment-continue$thresh_continue" * "_segment-only" |> basename
     if !isnothing(res_dir)
-        audacity_label([train_start train_end] ./ res_new.fs, joinpath(res_dir, res_new.outfname *"__len"* string(nfft*infl_len) *"_sigma"*string(σ)* "_segment-thresh$threshold"*"_segment-continue$thresh_continue" * "_segment-only.txt" |> basename))
-        raven_label([train_start train_end] ./ res_new.fs, joinpath(res_dir, "raven_" * res_new.outfname *"__len"* string(nfft*infl_len) *"_sigma"*string(σ)* "_segment-thresh$threshold"*"_segment-continue$thresh_continue" * "_segment-only.txt" |> basename); channel=ref_channel, prefix="w")
+        audacity_label([train_start train_end] ./ res_new.fs, joinpath(res_dir, outfname*".txt"))
+        raven_label([train_start train_end] ./ res_new.fs, joinpath(res_dir, "raven_" * outfname*".txt"); channel=ref_channel, prefix="w")
     end
 
     return (;pind_good_inS, 
@@ -370,6 +370,7 @@ function combine_detections_conv(data, res_new, nfft=1280, infl_len=30;
     pind = res_new.pind_good,
     train_start, train_end,
     num_detection=length(train_start), num_click_in_trains=length(res_new.pind_good),
+    outfname
     )
 
     # plot!( (1:nfft*infl_len) ./ res_new.fs, gaussian(nfft*infl_len,σ))

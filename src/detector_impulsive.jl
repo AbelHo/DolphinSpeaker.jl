@@ -346,14 +346,15 @@ function detect_impulsetrain(res, res_dir=res_dir;
         pind = res.pind_good,
         train_start, train_end,
         num_detection=train_count, num_click_in_trains=length(click_in_trains),
-        train_start_ind, click_train_check_interval, click_train_minlen, train_impulse_list)
+        train_start_ind, click_train_check_interval, click_train_minlen, train_impulse_list,
+        outfname = res.outfname *"__cps"*string((click_train_minlen+1)/click_train_check_interval) |> basename)
 
         
     if res_dir isa String
         !isdir(res_dir) || mkpath(res_dir)
 
-        audacity_label(res_new.pind_good_inS, joinpath(res_dir, res.outfname *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  ".txt" |> basename))
-        raven_label(res_new.pind_good_inS, joinpath(res_dir, "raven_" * res.outfname *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  ".txt" |> basename))
+        audacity_label(res_new.pind_good_inS, joinpath(res_dir, res_new.outfname * ".txt"))
+        raven_label(res_new.pind_good_inS, joinpath(res_dir, "raven_" * res_new.outfname * ".txt"); channel=ref_channel)
         # label train
         if isempty(click_accum)
             @info "no click trains detected"
