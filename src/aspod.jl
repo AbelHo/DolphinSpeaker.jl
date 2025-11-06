@@ -162,7 +162,7 @@ end
 # aufname = "/Users/abel/Documents/data/calf/coop/20231128/20231128_15.16.48_log.flac"
 # vidfname = splitext(aufname)[1]*".mkv"
 # res_dir = "/Users/abel/Documents/data_res/calf/coop/20231128_test-20231215_tt2"
-function process_detections(aufname, vidfname; res_dir=nothing)
+function process_detections(aufname, vidfname; res_dir=nothing, flag_color=true, default_radius=OVERLAY_RADIUS, flag_return=false, kwargs...)
     processed_skip_flag = false
     @info aufname
     data, fs, nbits, opt, timestamp = readAudio(aufname)
@@ -210,11 +210,23 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     # convert to pixel
     p_pixels2 = angle2px(ang2, fov_angle)
     pind_vidframes2 = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
-
+    
+    #~ adding colors based on frequency bands
+    if flag_color
+        clips = extract_clips(res.res_impulse.data_filt, res.res_impulsetrain.pind_good, 100)
+        coloring = sig2rgb.(clips; fs=fs, rgb_bands=[[1000,30000], [30000,60000], [60000,96000]])
+        colorings = hcat( (coloring .|> x-> x[1][1:3,argmax(x[1][end,:])])...)' #.* 255
+        pow = @pipe extrema.(clips; dims=1) .|> reduce.(-, _) .|> minimum .|> log10(-_)
+        alphas = stretch(pow, 0.4, 0.8)
+        p_pixels2 = [p_pixels2 repeat([default_radius], size(p_pixels2, 1)) colorings alphas repeat(["circle"], size(p_pixels2, 1))]
+        p_pixels = [p_pixels repeat([default_radius], size(p_pixels, 1)) colorings alphas repeat(["circle"], size(p_pixels, 1))]
+        clips=nothing; GC.gc()
+    end
+   
     pixel_related_impulsive2 = [pind_vidframes2, p_pixels2]
     if !isnothing(res_dir) && !isempty(res_dir)
         open( joinpath(res_dir, splitext(basename(aufname))[1] *"_Impulse2_t"*string(res.res_impulse.threshold)*"_d"*string(res.res_impulse.dist)*".csv"), "w") do io
-            writedlm(io, ["p_pixel" "px" "py"], ',')
+            writedlm(io, ["p_pixel" "px" "py" "radius" "r" "g" "b" "a" "type"], ',')
             writedlm(io, [pind_vidframes2 p_pixels2], ',')
         end
     end
@@ -241,9 +253,9 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     
     pixel_related_impulsive4 = localization_method(res, window_impulsive, rx_vect[:,get_relevant_channels(rx_vect)], fs, get_tdoa_raw_MaxPeakRefChannel, fov_angle, aufname, vidfname, res_dir, "Impulse4")
 
-
-    res = (;  Base.structdiff(res, NamedTuple{(:res_impulse,)})..., res_impulse=Base.structdiff(res.res_impulse, NamedTuple{(:data_filt,)}))
-
+    if !flag_return
+       res = (;  Base.structdiff(res, NamedTuple{(:res_impulse,)})..., res_impulse=Base.structdiff(res.res_impulse, NamedTuple{(:data_filt,)}))
+    end
 
 
     #~ tonal to angle to pixel
@@ -262,6 +274,17 @@ function process_detections(aufname, vidfname; res_dir=nothing)
 
     # pind_vidframes_tonal = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
 
+    #~ adding colors based on frequency bands
+    if flag_color
+        clips = extract_clips(data_filt, windows_tonal)
+        coloring = sig2rgb.(clips; fs=fs, rgb_bands=[[1000,30000], [30000,60000], [60000,96000]])
+        colorings = hcat( (coloring .|> x-> x[1][1:3,argmax(x[1][end,:])])...)' #.* 255
+        alphas = stretch(res_new.ppeak, 0.4, 0.8)
+        @debug size(p_pixels_tonal), size(colorings), size(alphas)
+        p_pixels_tonal = [p_pixels_tonal repeat([default_radius], size(p_pixels_tonal, 1)) colorings alphas repeat(["square"], size(p_pixels_tonal,1))]
+        clips=nothing; GC.gc()
+    end
+
     #~ repeat drawing between each start and end
     if  PARAM_TONALSPREAD 
     # (res_new.train_start[i] ./ fs : 1/get_fps(vidfname) : res_new.train_end[i] ./ fs) |> collect for i in eachindex(res_new.train_start)
@@ -269,7 +292,7 @@ function process_detections(aufname, vidfname; res_dir=nothing)
         t=Array{Any}(undef, length(res_new.train_start)); val=Array{Any}(undef, length(res_new.train_start));
         for i in eachindex(res_new.train_start)
             t[i] = (res_new.train_start[i] ./ fs : 1/get_fps(vidfname) : res_new.train_end[i] ./ fs) |> collect
-            val[i] = repeat(p_pixels_tonal[i,:]', length(t[i]))
+            val[i] = repeat(p_pixels_tonal[i:i,:], length(t[i]))
         end
         
         
@@ -302,6 +325,18 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     # convert to pixel
     p_pixels_tonal_short = angle2px(ang_tonal_short, fov_angle)
     pind_vidframes_tonal_short = round.(Int, res_new.pind_good_inS * get_fps(vidfname)) .+ 1
+
+    #~ adding colors based on frequency bands
+    if flag_color
+        nfft = nextfastfft(round(Int, nfft_inS*res_new.fs))
+        clips = extract_clips(data_filt, res_new.pind_good .+ [0 nfft-1])
+        coloring = sig2rgb.(clips; fs=fs, rgb_bands=[[1000,30000], [30000,60000], [60000,96000]])
+        colorings = hcat( (coloring .|> x-> x[1][1:3,argmax(x[1][end,:])])...)' #.* 255
+        alphas = stretch(res_new.ppeak, 0.4, 0.8)
+        @debug size(p_pixels_tonal), size(colorings), size(alphas)
+        p_pixels_tonal_short = [p_pixels_tonal_short repeat([default_radius], size(p_pixels_tonal_short, 1)) colorings alphas repeat(["square"], size(p_pixels_tonal_short,1))]
+        clips=nothing; GC.gc()
+    end
     
     pixel_related_tonal_short = [pind_vidframes_tonal_short, p_pixels_tonal_short]
     if !isnothing(res_dir) && !isempty(res_dir)
@@ -324,7 +359,11 @@ function process_detections(aufname, vidfname; res_dir=nothing)
     
     # return [pixel_related_tonal, pixel_related_impulsive, pixel_related_tonal_short]
     # return [pixel_related_tonal, pixel_related_tonal_short, pixel_related_impulsive2, pixel_related_impulsive3, pixel_related_impulsive4]
-    return [pixel_related_impulsive2, pixel_related_tonal, pixel_related_impulsive, pixel_related_tonal_short, pixel_related_impulsive3, pixel_related_impulsive4]
+    if flag_return
+        return (;pixel_related_impulsive, pixel_related_tonal, pixel_related_impulsive2, pixel_related_tonal_short, pixel_related_impulsive3, pixel_related_impulsive4, res)
+    else
+        return (;pixel_related_impulsive, pixel_related_tonal, pixel_related_impulsive2, pixel_related_tonal_short, pixel_related_impulsive3, pixel_related_impulsive4)
+    end
 
 end
 
