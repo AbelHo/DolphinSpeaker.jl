@@ -620,6 +620,57 @@ function compute_rfft(snip, fs=1.0; type=:amplitude, plot=plot)
 	fft_val, freqss
 end
 
+"""
+sig2rgb(sig; fs=1.0, rgb_bands=[[1000, 70_000], [70_000, 120_000], [120_000, 170_000]], kwargs...)
+
+Convert a time-domain signal into an RGBA representation by aggregating FFT magnitudes
+over three user-defined frequency bands (R, G, B) and deriving an alpha channel from
+the aggregated energy.
+
+Arguments
+- sig: Input signal. Typically a 1-D array of samples, but any shape accepted by
+    compute_rfft is allowed (compute_rfft must return magnitude data with frequency
+    bins on the first dimension and frames/columns on the second).
+- fs::Real: Sampling frequency (Hz). Passed to compute_rfft. Default: 1.0.
+- rgb_bands::AbstractVector{<:AbstractVector}: A length-3 collection of 2-element
+    ranges [low, high] (same units as fs) that define the frequency bands mapped to
+    the R, G and B channels respectively. Default is [[1000, 70000], [70000, 120000], [120000, 170000]].
+- kwargs...: Additional keyword arguments forwarded to compute_rfft (e.g., window, nfft).
+
+Returns
+- (rgb_array, rgba_view)
+    - rgb_array::Array{Float32,2}: A 4×Nframes array where rows 1..3 are the R,G,B channel
+        magnitudes (per-frame normalized to [0,1]) and row 4 is the alpha channel computed
+        as the per-frame total energy normalized by the maximum total energy across frames.
+    - rgba_view: A ColorTypes-compatible view created with colorview(RGBA, rgb_array)
+        suitable for visualization or image I/O.
+
+Behavior
+- The function calls compute_rfft(sig, fs; kwargs...) and expects two return values:
+    (fft_val, freqss). fft_val should be an array of non-negative magnitudes with
+    freq bins along the first dimension and frames along the second; freqss should
+    be a vector of frequency values corresponding to the rows of fft_val.
+- For each band in rgb_bands, the function selects frequency bins where freqss ∈ [low, high)
+    and computes the mean magnitude across those bins for each frame to produce each color channel.
+- The alpha channel is computed as the framewise sum of R+G+B, then normalized by the
+    maximum sum across all frames to lie in [0,1].
+- Each color channel R,G,B is normalized per-frame by the maximum among the three channels
+    for that frame to scale values to [0,1].
+
+Notes / Caveats
+- If a specified band contains no matching frequency bins (e.g., band outside the FFT range),
+    the mean over an empty slice will produce NaNs. Ensure rgb_bands intersect freqss.
+- If the per-frame maximum across R/G/B is zero (silent frame), per-frame normalization
+    may produce NaN or Inf; callers may wish to filter or clamp such frames.
+- Units of rgb_bands must match units of freqss (typically Hz).
+- compute_rfft must produce magnitude values (not complex spectra); if it returns complex
+    results the user should ensure magnitudes are passed (or compute_rfft should do so).
+
+Example
+- Typical call:
+    sig2rgb(signal, fs=48000, rgb_bands=[[1000,7000],[7000,12000],[12000,20000]])
+    returns a 4×N array and a corresponding color view for display.
+"""
 function sig2rgb(sig; fs=1.0, rgb_bands=[[1000, 70_000], [70_000, 120_000], [120_000, 170_000]], kwargs...)
     fft_val, freqss = compute_rfft(sig, fs; kwargs...)
 
@@ -644,6 +695,27 @@ function sig2rgb(sig; fs=1.0, rgb_bands=[[1000, 70_000], [70_000, 120_000], [120
 
     # return rgb
 end
+
+function get_color_clicks(win_anal, savefname;
+	clips=clips, res=res, fs=fs, 
+	rgb_bands=[[10_000, 60_000], [60_000, 110_000], [110_000, 160_000]],
+	rgbs_alpha_offset=0.0)
+	if dirname(savefname) |> isdir == false
+		mkpath(dirname(savefname))
+	end
+	rgbs, rgba = sig2rgb(clips[:,win_anal]; fs=fs, rgb_bands=rgb_bands)
+	rgbs[4,:] .+= rgbs_alpha_offset
+	p = plot(res.res_impulsetrain.pind_good_inS[win_anal], rgbs[4,:]; 
+		color=rgbs|> eachcol .|> x-> RGBA(x...), 
+		# color=rgba,
+		seriestype=:scatter, 
+		hover = string.(win_anal) .* ", " .* string.(round.(res.res_impulsetrain.pind_good_inS[win_anal]; digits=3)) .*"s",
+		bg=:black,markerstrokewidth = 0,
+		size=(1000,600))
+	savefig(savefname)
+	return p
+end
+
 
 function extract_clips_single_channel(clips_fixed, ref_channel=0)
     if ref_channel != 0
@@ -861,4 +933,91 @@ function analyze_clips(
     end
     # make_clip_index_html(clips_plot_dir; outname=basename(clips_plot_dir)*".html", output_types)
     return out
+end
+
+
+
+function stretch(a, newmin::Real=0.0, newmax::Real=1.0; dim::Union{Nothing,Int}=nothing)
+    """
+    Linearly stretch/rescale array `a` to the interval [newmin, newmax].
+    If `dim` is `nothing` (default) the whole array is rescaled.
+    If `dim` is an integer, rescaling is performed independently for each slice along that dimension.
+
+    Constant slices (min == max) become filled with the midpoint (newmin+newmax)/2.
+    Returned array is Float64 for numeric inputs (to avoid integer truncation).
+    """
+    if newmax == newmin
+        error("newmin and newmax must differ")
+    end
+
+    if dim === nothing
+        af = Float64.(a)
+        amin = minimum(af)
+        amax = maximum(af)
+        if amax == amin
+            return fill((newmin + newmax)/2, size(a))
+        end
+        return (af .- amin) .* ((newmax - newmin) / (amax - amin)) .+ newmin
+    else
+        f = x -> begin
+            xf = Float64.(x)
+            amin = minimum(xf); amax = maximum(xf)
+            if amax == amin
+                fill((newmin + newmax)/2, size(xf))
+            else
+                (xf .- amin) .* ((newmax - newmin) / (amax - amin)) .+ newmin
+            end
+        end
+        return mapslices(f, a; dims=dim)
+    end
+end
+
+
+
+function rgb_from_value(val, vmin, vmax; flag_clamp::Bool=true)
+    """
+    Map a scalar `val` in [vmin, vmax] to an RGB triple (each in 0..1).
+    The mapping uses an HSV hue sweep from red (0°) at vmin through green/yellow to blue (240°) at vmax.
+    If `flag_clamp` is true (default) values outside [vmin, vmax] are clamped.
+    Returns a 3-tuple (r,g,b) of Float64.
+    """
+    if vmax == vmin
+        return (0.5, 0.5, 0.5)
+    end
+
+    t = (val - vmin) / (vmax - vmin)
+    if flag_clamp
+        t = clamp(t, 0.0, 1.0)
+    end
+
+    # Map t in [0,1] to hue in [0° -> 240°] (red -> blue)
+    h = t * (240.0/360.0)  # normalized hue in [0,1]
+
+    s = 1.0
+    v = 1.0
+
+    # HSV to RGB
+    if s == 0.0
+        return (v, v, v)
+    end
+    h6 = h * 6.0
+    sector = floor(Int, h6) % 6
+    f = h6 - floor(h6)
+    p = v * (1 - s)
+    q = v * (1 - s * f)
+    tcol = v * (1 - s * (1 - f))
+
+    if sector == 0
+        return (v, tcol, p)
+    elseif sector == 1
+        return (q, v, p)
+    elseif sector == 2
+        return (p, v, tcol)
+    elseif sector == 3
+        return (p, q, v)
+    elseif sector == 4
+        return (tcol, p, v)
+    else # sector == 5
+        return (v, p, q)
+    end
 end
