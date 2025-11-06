@@ -500,9 +500,7 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
         normalized[i] = normalize_item(item, i)
     end
 
-    # prepare tmpdir
-    mkpath(tmpdir)
-    @info "Writing temporary frames to $tmpdir"
+    
     flag_dryrun && (return)
 
     # Open video and read frames
@@ -693,7 +691,11 @@ function overlay_annotations_on_video(annotations, video_path::AbstractString, o
             end
         end
     end
-
+    
+    # prepare tmpdir
+    mkpath(tmpdir)
+    @info "Created temporary directory: $tmpdir"
+    @info "Writing temporary frames to $tmpdir"
     @showprogress "Encoding video frames..." for frame_idx in 0:num_frames-1
         try
             read!(vid, img)
