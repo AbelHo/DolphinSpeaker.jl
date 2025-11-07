@@ -383,7 +383,7 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detectio
                 #     writedlm(io, [res[detection_type][1] .+ ( (cum_duration + delays)*get_fps(vidlist[1])) res[detection_type][2]], ',') # add sync delay and cumulative duration
                 # end
                 cum_duration += get_duration(audlist[ind])
-                results[1].res.res_impulsetrain.pind_good
+                # results[1].res.res_impulsetrain.pind_good
             end
         end
     end
@@ -396,20 +396,26 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detectio
 
     dfs_impulse = CSV.read.(joinpath.(res_dir2 |> Ref, [results[i].res.res_impulsetrain.outfname * ".txt" for i in 1:length(results)]), DataFrame; header=false)
     dfs_tonal = CSV.read.(joinpath.(res_dir2 |> Ref, [results[i].res.res_tonalsegment.outfname * ".txt" for i in 1:length(results)]), DataFrame; header=false)
+    dfs_impulsetrain = CSV.read.(joinpath.(res_dir2 |> Ref, [results[i].res.res_impulsetrain.outfname * "_train-only.txt" for i in 1:length(results)]), DataFrame; header=false)
 
-    cum_duration = 0.0; cum_index_impulse = 0; cum_index_tonal = 0;
+    cum_duration = 0.0; cum_index_impulse = 0; cum_index_tonal = 0; cum_index_impulsetrain = 0;
     for ind = 1:length(results)
         dfs_impulse[ind][:, 1:2] .+= cum_duration
         dfs_tonal[ind][:, 1:2] .+= cum_duration
+        dfs_impulsetrain[ind][:, 1:2] .+= cum_duration
+
         dfs_impulse[ind][:, 3] .+= cum_index_impulse
         dfs_tonal[ind][:, 3] .+= cum_index_tonal
+        dfs_impulsetrain[ind][:, 3] .+= cum_index_impulsetrain
 
         cum_duration += get_duration(audlist[ind])
         cum_index_impulse += nrow(dfs_impulse[ind])
         cum_index_tonal += nrow(dfs_tonal[ind])
+        cum_index_impulsetrain += nrow(dfs_impulsetrain[ind])
     end
     CSV.write(joinpath(res_dir2, "combined_impulse__audacity.txt"), vcat(dfs_impulse...); writeheader=false, delim='\t')
     CSV.write(joinpath(res_dir2, "combined_tonal__audacity.txt"), vcat(dfs_tonal...); writeheader=false, delim='\t')
+    CSV.write(joinpath(res_dir2, "combined_impulsetrain__audacity.txt"), vcat(dfs_impulsetrain...); writeheader=false, delim='\t')
 
     vid_ready = false
     while !vid_ready
@@ -435,7 +441,8 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detectio
         end
     end
     flag_overlayimages && 
-    (overlay_boxes_on_video_imageonly(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaidIMG"; radius=overlay_radius);
+    (overlay_boxes_on_video_imageonly(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaidIMG"; 
+        radius=(overlay_radius isa Number ? overlay_radius : OVERLAY_RADIUS));
     pic2vid(splitext(output_vidname)[1]*"_overlaidIMG", splitext(output_vidname)[1]*"_overlaidIMG.mp4"; auto_mode=true)
     )
 
