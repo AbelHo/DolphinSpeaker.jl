@@ -125,6 +125,20 @@ function extrema_and_indices(arr::Array{T, 2} where T)
     return extrema_indices
 end
 
+function mapblocks(func, arr::AbstractArray{T} where T; dims=ndims(arr), kwargs...)
+    # out_arr = Array{Any}(undef,size(arr, dims))
+    # for (i, block) in enumerate(eachslice(arr; dims=dims))
+    #     out_arr[i] = func(block)
+    # end
+    out_arr = Array{typeof(first(arr))}(undef, size(func(selectdim(arr, dims, 1)))..., size(arr, dims))
+    outdim = ndims(out_arr)
+    Threads.@threads for i in 1:size(out_arr, outdim)
+        @inbounds selectdim(out_arr, outdim, i) .= func(selectdim(arr, dims, i))
+    end
+    # cat(out_arr, dims=dims)
+    return out_arr
+end
+
 # """
 # 	funcOnWindows(data, windows = default_window ; func=x->x, kwargs...)
 
