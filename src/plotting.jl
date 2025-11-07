@@ -17,6 +17,39 @@ function vline2(xvals, previus_plot, max_y=3000)
 	# end
 	return previus_plot
 end
+"""
+	Draw vertical lines at positions in `x` with the default color changing scheme.
+	
+	# Arguments
+	- `x`: A vector of x-coordinates where vertical lines should be drawn.
+	- `kwargs...`: Additional keyword arguments to customize the appearance of the lines.
+	
+	# Returns
+	- The modified plot object with vertical lines added.
+"""
+function vlinec!(x; kwargs...)
+	for i in eachindex(x)
+		vline!([x[i]]; color=palette(:default)[i], kwargs...)
+	end
+	return plot!()
+end
+
+"""
+	Draw horizontal lines at positions in `y` with the default color changing scheme.
+	
+	# Arguments
+	- `y`: A vector of y-coordinates where horizontal lines should be drawn.
+	- `kwargs...`: Additional keyword arguments to customize the appearance of the lines.
+	
+	# Returns
+	- The modified plot object with horizontal lines added.
+"""
+function hlinec!(y; kwargs...)
+	for i in eachindex(y)
+		hline!([y[i]]; color=palette(:default)[i], kwargs...)
+	end
+	return plot!()
+end
 
 function plotTDOA(data, i, eventTimings, tdoa; window = [-5000, 10000], func=plotlyjs, func_on_data=x->x)
 	# i=selected_events[event]
