@@ -6,6 +6,62 @@ using Base.Threads
 import GLMakie
 using PlotlyBase
 
+"""
+	quiver_error_threshold(x, y, px, py; q=0.9, vid_width=nothing, vid_height=nothing, kwargs...)
+
+Compute Euclidean distances between annotated positions (`x`,`y`) and estimated
+pixel positions (`px`,`py`), compute the `q` quantile threshold of those
+distances, select points with distance <= threshold and return a quiver plot of
+the error vectors for those points.
+
+Returns a NamedTuple with fields `:plot`, `:inds`, and `:threshold`.
+"""
+function quiver_error_threshold(x::AbstractVector, y::AbstractVector,
+		px::AbstractVector, py::AbstractVector; q::Real=0.9,
+		width=nothing, height=nothing, flag_display::Bool=true, kwargs...)
+
+	# ensure vectors have same length
+	n = length(x)
+	@assert length(y) == n && length(px) == n && length(py) == n "Input vectors must have the same length"
+
+	# Euclidean distances per point
+	dist = sqrt.((x .- px).^2 .+ (y .- py).^2)
+
+	# quantile threshold
+	threshold = Statistics.quantile(dist, q)
+	@info "quiver_error_threshold: n=$(n), threshold=$(threshold)"
+
+	inds = findall(dist .<= threshold)
+
+	# build quiver plot for selected indices
+	dx = x[inds] .- px[inds]
+	dy = y[inds] .- py[inds]
+
+	p = Plots.scatter(px[inds], py[inds]; aspect_ratio=:equal)
+	Plots.scatter!(p, x[inds], y[inds])
+	
+	Plots.quiver!(p, px[inds], py[inds], quiver=(dx, dy); aspect_ratio=:equal, color=:blue,
+		label = "error vectors ($(Int(round(q*100)))% quantile)",
+		xlabel = "Pixel px", ylabel = "Pixel py",
+		title = "Annotated vs Estimated Positions ($(Int(round(q*100)))% quantile)", kwargs...)
+
+	# apply optional limits if provided
+	if width !== nothing
+		try
+			Plots.xlims!(p, 0, width)
+		catch _
+		end
+	end
+	if height !== nothing
+		try
+			Plots.ylims!(p, 0, height)
+		catch _
+		end
+	end
+	flag_display && Plots.display(p)
+	return (plot = p, inds = inds, threshold = threshold)
+end
+
 function vline2(xvals, previus_plot, max_y=3000)
 	previus_plot
 	for ind=1:length(xvals)
