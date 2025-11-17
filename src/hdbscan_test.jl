@@ -164,4 +164,95 @@ function run_hdbscan_test()
     scatter([p[1] for p in points], [p[2] for p in points], color=colors, legend=false, title=string("Clustering result (", use_model, ")"))
 end
 
-run_hdbscan_test()
+
+# Helper to convert various label containers to a Vector{Int}
+function _convert_to_int_labels(labels_raw, n)
+    if labels_raw === nothing
+        error("No labels to convert")
+    end
+    # Python-backed arrays
+    if typeof(labels_raw) <: PythonCall.Py
+        builtins = PythonCall.pyimport("builtins")
+        pylist = builtins.list(labels_raw)
+        return [parse(Int, string(x)) for x in pylist]
+    end
+    # Julia integer vector
+    if isa(labels_raw, AbstractVector) && eltype(labels_raw) <: Integer
+        return Int.(labels_raw)
+    end
+    # Categorical vector
+    if isa(labels_raw, CategoricalArrays.CategoricalVector)
+        return CategoricalArrays.levelcode.(labels_raw)
+    end
+    # Try parsing from string representation
+    try
+        return parse.(Int, string.(labels_raw))
+    catch
+    end
+    # Last resort: map unique values to indices
+    vals = collect(labels_raw)
+    uniqs = unique(vals)
+    dict = Dict(u => i for (i,u) in enumerate(uniqs))
+    return [dict[x] for x in vals]
+end
+
+## Minimal OPTICS function: loads and runs OPTICS via MLJScikitLearnInterface and returns integer labels
+function optics(X, min_samples=5; kwargs...)
+    optics_type = MLJ.@load OPTICS pkg=MLJScikitLearnInterface verbosity=0
+    model_inst = eval(:(($optics_type)(min_samples=$(min_samples))))
+    mach = machine(model_inst, X)
+    Base.invokelatest(fit!, mach)
+    fp = fitted_params(mach)
+
+    # Try common places for labels
+    labels_raw = nothing
+    if haskey(fp, :labels)
+        labels_raw = fp[:labels]
+    elseif haskey(fp, :fitresult)
+        v = fp[:fitresult]
+        try
+            labels_raw = getproperty(v, :labels_)
+        catch
+            try
+                labels_raw = PythonCall.getattr(v, "labels_")
+            catch
+            end
+        end
+    else
+        # fallback: pick any vector with same length as input
+        n = length(X.x1)
+        for (_k, v) in pairs(fp)
+            try
+                if isa(v, AbstractVector) && length(v) == n
+                    labels_raw = v
+                    break
+                end
+            catch
+            end
+        end
+    end
+
+    return _convert_to_int_labels(labels_raw, length(X.x1))
+    # return labels_raw#, length(X.x1)
+end
+
+## Minimal test for OPTICS
+function run_optics_minimal()
+    X, labels = make_moons(300, noise=0.09, rng=3)
+    y = map(labels) do label
+        label == 0 ? "cookie" : "monster"
+    end
+    clusters = optics(X, 5)
+    n = length(X.x1)
+    if length(clusters) != n
+        error("OPTICS returned incorrect labels length: $(length(clusters)) != $n")
+    end
+    compare = collect(zip(clusters, y))
+    println("OPTICS first 10 cluster vs class: ")
+    println(compare[1:10])
+    return clusters
+end
+
+## Run test
+# run_hdbscan_test()
+# a=run_optics_minimal()
