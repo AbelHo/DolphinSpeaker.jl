@@ -166,35 +166,35 @@ end
 
 
 # Helper to convert various label containers to a Vector{Int}
-function _convert_to_int_labels(labels_raw, n)
-    if labels_raw === nothing
-        error("No labels to convert")
-    end
-    # Python-backed arrays
-    if typeof(labels_raw) <: PythonCall.Py
-        builtins = PythonCall.pyimport("builtins")
-        pylist = builtins.list(labels_raw)
-        return [parse(Int, string(x)) for x in pylist]
-    end
-    # Julia integer vector
-    if isa(labels_raw, AbstractVector) && eltype(labels_raw) <: Integer
-        return Int.(labels_raw)
-    end
-    # Categorical vector
-    if isa(labels_raw, CategoricalArrays.CategoricalVector)
-        return CategoricalArrays.levelcode.(labels_raw)
-    end
-    # Try parsing from string representation
-    try
-        return parse.(Int, string.(labels_raw))
-    catch
-    end
-    # Last resort: map unique values to indices
-    vals = collect(labels_raw)
-    uniqs = unique(vals)
-    dict = Dict(u => i for (i,u) in enumerate(uniqs))
-    return [dict[x] for x in vals]
-end
+# function _convert_to_int_labels(labels_raw, n)
+#     if labels_raw === nothing
+#         error("No labels to convert")
+#     end
+#     # Python-backed arrays
+#     if typeof(labels_raw) <: PythonCall.Py
+#         builtins = PythonCall.pyimport("builtins")
+#         pylist = builtins.list(labels_raw)
+#         return [parse(Int, string(x)) for x in pylist]
+#     end
+#     # Julia integer vector
+#     if isa(labels_raw, AbstractVector) && eltype(labels_raw) <: Integer
+#         return Int.(labels_raw)
+#     end
+#     # Categorical vector
+#     if isa(labels_raw, CategoricalArrays.CategoricalVector)
+#         return CategoricalArrays.levelcode.(labels_raw)
+#     end
+#     # Try parsing from string representation
+#     try
+#         return parse.(Int, string.(labels_raw))
+#     catch
+#     end
+#     # Last resort: map unique values to indices
+#     vals = collect(labels_raw)
+#     uniqs = unique(vals)
+#     dict = Dict(u => i for (i,u) in enumerate(uniqs))
+#     return [dict[x] for x in vals]
+# end
 
 ## Minimal OPTICS function: loads and runs OPTICS via MLJScikitLearnInterface and returns integer labels
 function optics(X, min_samples=5; kwargs...)
@@ -220,7 +220,7 @@ function optics(X, min_samples=5; kwargs...)
         end
     else
         # fallback: pick any vector with same length as input
-        n = length(X.x1)
+        n = size(X,2) #length(X.x1)
         for (_k, v) in pairs(fp)
             try
                 if isa(v, AbstractVector) && length(v) == n
@@ -231,8 +231,8 @@ function optics(X, min_samples=5; kwargs...)
             end
         end
     end
-
-    return _convert_to_int_labels(labels_raw, length(X.x1))
+    labels_raw .|> levelcode
+    # return _convert_to_int_labels(labels_raw, length(X.x1))
     # return labels_raw#, length(X.x1)
 end
 
