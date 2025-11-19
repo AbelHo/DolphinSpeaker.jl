@@ -1112,7 +1112,7 @@ function plot_color_clicks(win_anal, savefname;
 		hover = string.(win_anal) .* ", " .* string.(round.(res.res_impulsetrain.pind_good_inS[win_anal]; digits=3)) .*"s",
 		bg=:black,markerstrokewidth = 0,
 		size=(1000,600))
-	savefig(savefname)
+	!isempty(savefname) && savefig(savefname)
 	return p
 end
 
