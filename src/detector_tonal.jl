@@ -209,7 +209,7 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     ref_channel = ref_channel, thresh_tonal = threshold_tonal, 
     nfft_inS = nfft_inS, band_pass = tonal_band_pass, window=window_tonal,
     freq_maxbandwidth = freq_maxbandwidth, freq_width_db=freq_width_db,
-    percent_quiet=percent_quiet,
+    percent_quiet=percent_quiet, tonal_threshold_median=tonal_threshold_median,
     stats_func=maximum)
 
     aufname, data, fs = aufname_data_fs
@@ -280,7 +280,7 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     # @debug size(fft_max)
     # @debug size(small_bands)
     if isnothing(thresh_tonal)
-        thresh_tonal = median(fft_max) + 8
+        thresh_tonal = median(fft_max) + tonal_threshold_median #8
         @info "__auto thresholding: " * string(thresh_tonal)
     end
     # @debug size(small_bands)

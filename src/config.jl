@@ -30,6 +30,7 @@ nfft_inS = 0.01
 tonal_band_pass = [5000, 24000] # [5000, 25000] # 
 tonal_segment_thresh_continue = 0.00001
 tonal_segment_threshold=0.01
+tonal_threshold_median = 8
 
 butterworth_size = 4
 percent_quiet = 0.01
@@ -264,18 +265,19 @@ function set_device__soundtrap()
     global tonal_band_pass = [2500, 40_000]
     # global tonal_band_pass = [80_000 Inf] #for porpoise click train #[500 47000]
     # global nfft_inS = 0.01
-    # global freq_maxbandwidth = 100_000
-    # global freq_width_db = 340
+    global freq_maxbandwidth = 3_000
+    global freq_width_db = 6
+    global tonal_threshold_median = 1#8
     
     global impulsive_band_pass = [80_000, Inf]
     global click_train_minlen = 3
     global click_train_check_interval = .1
     global ref_channel = 1
 
-    global impulsive_autothreshold_median_ratio = 20
-    global threshold_impulsive = 47 # nothing
+    # global impulsive_autothreshold_median_ratio = 20
+    # global threshold_impulsive = 47 # nothing
 
-    global impulsive_autothreshold_median_ratio = 1#4
+    global impulsive_autothreshold_median_ratio = 9#1#4
     global threshold_impulsive = nothing
     
     global threshold_boat = 1e3
