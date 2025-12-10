@@ -313,6 +313,25 @@ function concat_files(files::Vector{String}, out::String)
     end
 end
 
+"""
+function: returns a Vector{String} of all files (full paths) under `dir`
+"""
+function readdir_all(dir::AbstractString; follow_symlinks::Bool=true, kwargs...)
+    paths = String[]
+    for (root, _, files) in walkdir(dir, follow_symlinks=follow_symlinks)
+        for f in files
+            push!(paths, joinpath(root, f))
+        end
+    end
+    return paths
+end
+
+"""
+function: returns a lazy iterator of full file paths (use collect(...) to get a Vector)
+"""
+readdir_all_iter(dir::AbstractString; follow_symlinks::Bool=true, kwargs...) = 
+    (joinpath(root, f) for (root, _, files) in walkdir(dir, follow_symlinks=follow_symlinks) for f in files)
+
 @info "end utils.jl"
 
 # function findTrigger(data, fs; threshold_percentMAX=0.75, plot_window_inS=nothing, ref_channel=size(data,2)) # plot_window_inS=[-.1 .1]

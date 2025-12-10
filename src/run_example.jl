@@ -322,7 +322,7 @@ function run_analysis_split_vidau(folname; res_dir="",
     # occursin.( Ref(Regex(join(vidtypes, '|'))), readdir(folname))
     # vidlist = filter( x -> occursin(Regex(join(vidtypes, "|\\")), x|>lowercase), readdir(folname; join=true))
     # audlist = filter( x -> occursin(Regex(join(autypes, "|\\")), x|>lowercase), readdir(folname; join=true))
-    vidlist, audlist = split_vid_au(folname)
+    vidlist, audlist = split_vid_au(folname; readdir_func=readdir_all)
 
     delays, conf = find_vid_vs_audio_syncdiff_timesegment(vidlist[1], audlist[1]; flag_verbose=flag_verbose, flag_return_conf=true, kwargs...)
     # combine all video files into one file
@@ -353,7 +353,7 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detectio
     flag_overlayvideo=true, flag_overlayimages=false, flag_return = false, kwargs...)
     @info "Processing folder: $folname ............."
     
-    delays, conf, output_vidname, vidlist, audlist, res_dir2 = run_analysis_split_vidau(folname; res_dir=res_dir, auto_segment_len=250, flag_norm_rms=true)
+    delays, conf, output_vidname, vidlist, audlist, res_dir2 = run_analysis_split_vidau(folname; res_dir=res_dir, auto_segment_len=250, flag_norm_rms=true, kwargs...)
     # results = process_detections.(audlist, Ref(vidlist[1]); res_dir=res_dir2)
     # run process_detections on each audio file in parallel, preserving order
     results = Vector{Any}(undef, length(audlist))

@@ -109,8 +109,8 @@ function findBlip_bothVidAudio(folname; filename_only=false, vidtype=r".mkv|.MP4
     return trigger_times
 end
 
-function split_vid_au(folname; vidtype=Regex("\\"*join(vidtypes, "|\\")), autype=Regex("\\"*join(autypes, "|\\")))
-    flist = readdir(folname; join=true) |> skiphiddenfiles
+function split_vid_au(folname; vidtype=Regex("\\"*join(vidtypes, "|\\")), autype=Regex("\\"*join(autypes, "|\\")), readdir_func=readdir)
+    flist = readdir_func(folname; join=true) |> skiphiddenfiles
     filter(x -> occursin(vidtype, splitext(x)[2]|>lowercase), flist), filter(x -> occursin(autype, splitext(x)[2]|>lowercase), flist)
 end
 
