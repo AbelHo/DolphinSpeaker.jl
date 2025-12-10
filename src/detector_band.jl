@@ -36,10 +36,10 @@ function detect_boat(aufname_data_fs::Tuple, res_dir=nothing;
     detected_tonal_inS = time_index[tonal_indices]
     # mkpath(res_dir)
     # @debug "audacity label: "*joinpath(res_dir, splitext(aufname)[1]*"_tonal_t"*string(thresh_tonal)*"_bp"*string(band_pass[1])*"_"*string(band_pass[2])*".txt" |> basename)
-    @info size(detected_tonal_inS)
+    # @info size(detected_tonal_inS)
     @info joinpath(res_dir, splitext(aufname)[1]*"___noise_t"*string(thresh)*"_bp"*string(band_pass[1])*"_"*string(band_pass[2]) *"_nfftS"*string(nfft_inS) *"_refCh"*string(ref_channel)* ".txt" |> basename)
     (isnothing(res_dir) && isempty(detected_tonal_inS)) || audacity_label(detected_tonal_inS, joinpath(res_dir, splitext(aufname)[1]*"___noise_t"*string(thresh)*"_bp"*string(band_pass[1])*"_"*string(band_pass[2]) *"_nfftS"*string(nfft_inS) *"_refCh"*string(ref_channel)* ".txt" |> basename) )
-    (isnothing(res_dir) && isempty(detected_tonal_inS)) || raven_label(detected_tonal_inS, joinpath(res_dir, "raven_" * splitext(aufname)[1]*"___noise_t"*string(thresh)*"_bp"*string(band_pass[1])*"_"*string(band_pass[2]) *"_nfftS"*string(nfft_inS) *"_refCh"*string(ref_channel)* ".txt" |> basename) )
+    (isnothing(res_dir) && isempty(detected_tonal_inS)) || raven_label(detected_tonal_inS, joinpath(res_dir, "raven_" * basename(splitext(aufname)[1]*"___noise_t"*string(thresh)*"_bp"*string(band_pass[1])*"_"*string(band_pass[2]) *"_nfftS"*string(nfft_inS) *"_refCh"*string(ref_channel)* ".txt") ))
     
 
     return (;ppeak, time_index, tonal_indices, num_detection, detected_tonal_inS, thresh, band_pass, nfft_inS, ref_channel)
