@@ -5,6 +5,19 @@ using PythonCall
 using CategoricalArrays
 using MLJScikitLearnInterface
 
+using PythonCall
+
+
+function hdbscan_o(X; min_cluster_size=3, kwargs...) #
+    hdb = hdbscan2.HDBSCAN(min_cluster_size=3, kwargs...)
+    clusterer = hdb.fit(X)
+    labels = pyconvert(Array, hdb.labels_)
+    # labels |> unique
+    df_clustree = PyTable(clusterer.condensed_tree_.to_pandas()) |> DataFrame
+
+    return labels, clusterer, df_clustree
+end
+
 ## Minimal helper with no try/catch; assumes HDBSCAN is available and exposes `:labels` in fitted_params
 ## Example usage:
 ##    X, _labels = make_moons(400, noise=0.09, rng=1)
@@ -25,7 +38,7 @@ function hdbscan(X, min_cluster_size=5; kwargs...)
         labels_raw = fp[:labels]
     end
 
-    return labels_raw .|> levelcode
+    return labels_raw .|> levelcode #, model_inst, hdb_type
 end
 
 
