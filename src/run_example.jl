@@ -430,6 +430,7 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detectio
     @info "Combined video ready: $output_vidname, proceeds..."
     # flag_overlayvideo && overlay_boxes_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mp4"; radius=overlay_radius)
     if flag_overlayvideo
+        GC.gc()
         try
             out_vid_path = overlay_annotations_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mkv"; 
                 mode=:VideoIO, radius=overlay_radius, #) #mode=:stream) #

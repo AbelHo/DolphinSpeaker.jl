@@ -404,7 +404,7 @@ julia> finddelay2([1, 2, 3], [0, 0, 1, 2, 3])
 ```
 """
 function finddelay2(x_o::AbstractVector{<: Real}, y_o::AbstractVector{<: Real};
-    norm_func=x->x, flag_norm_rms=false)
+    norm_func=x->x, flag_norm_rms=false, kwargs...)
 
     x = norm_func(x_o)
     y = norm_func(y_o)
