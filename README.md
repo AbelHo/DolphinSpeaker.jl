@@ -19,7 +19,7 @@ https://julialang.org/downloads/platform
 1. Press "]" key
 1.
 ```
-add https://github.com/AbelHo/DolphinSpeaker.jl
+add https://github.com/AbelHo/DolphinSpeaker.jl#temp_commit
 ```
 
 3. to include transparency for signal strength display:
