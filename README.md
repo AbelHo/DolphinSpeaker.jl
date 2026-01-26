@@ -100,12 +100,6 @@ process_folder("/Users/abel/Documents/data/calf/Clicktest/20231129"; outfolder="
 ![process_folder](img/process_folder.jpg)
 <div style="page-break-after: always;"></div>
 
-### 5. Advance
-#### 5.1 Display conversion error results clearly
-```
-mat2flac_check(input_folderpath; outfilepath=output_folderpath)
-```
-
 ##### New Device
 Change setting for new device(D3):
 ```
@@ -115,6 +109,12 @@ set_device__ophk_acoustic_D3()
 Process data:
 ```
 run_contiguous_folders("/folder/path"; res_dir = "/result/folder/path")
+```
+
+### 5. Advance
+#### 5.1 Display conversion error results clearly
+```
+mat2flac_check(input_folderpath; outfilepath=output_folderpath)
 ```
 
 #### 5.2 Delete original input files(if conversion error is negligible)
