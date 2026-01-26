@@ -88,6 +88,7 @@ process_one_set("/Users/abel/Documents/data/calf/Clicktest/20231129/20231129_15.
 ```
 
 #### 4.5 Process entire folder automatically
+##### Old Device
 format:
 ```
 process_folder(foldername; outfolder=res_dir)
@@ -103,6 +104,17 @@ process_folder("/Users/abel/Documents/data/calf/Clicktest/20231129"; outfolder="
 #### 5.1 Display conversion error results clearly
 ```
 mat2flac_check(input_folderpath; outfilepath=output_folderpath)
+```
+
+##### New Device
+Change setting for new device(D3):
+```
+set_device__ophk_acoustic_D3()
+```
+
+Process data:
+```
+run_contiguous_folders("/folder/path"; res_dir = "/result/folder/path")
 ```
 
 #### 5.2 Delete original input files(if conversion error is negligible)
