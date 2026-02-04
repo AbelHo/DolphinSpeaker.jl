@@ -11,7 +11,7 @@ module DolphinSpeaker
     export findBlip_bothVidAudio, flac2signal, multisync
 
     include("run_example.jl")
-    export process_one_set, process_folder, process_dir
+    export process_one_set, process_folder, process_dir, run_contiguous_folders
 
     # from dsp.jl
     export extrema_in_file
