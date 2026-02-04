@@ -641,6 +641,8 @@ Extract audio clips sample
 """
 function extract_clips(data, t_sample, clip_length=100; flag_matrix=false)
     clips = []; starts=[]; stops=[];
+    # @info "extrac clips: "
+    # @info t_sample
     if ndims(t_sample)==1
         if t_sample[1] isa Number
             clip_length_half = clip_length ÷ 2

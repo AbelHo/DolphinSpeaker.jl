@@ -170,6 +170,8 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
     @debug size(pixel_estimated_set)
     @debug pixel_estimated_set
     
+    # @info "--- here ----"
+    # @info pixel_estimated_set
     pixel_estimated_set = pixel_estimated_set[DETECTION_TYPES]
     # @info "---------------- ------------------"
     # @info pixel_estimated_set
@@ -359,7 +361,7 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detectio
     results = Vector{Any}(undef, length(audlist))
     Threads.@threads for i in eachindex(audlist)
         try
-            results[i] = process_detections(audlist[i], vidlist[1]; res_dir=res_dir2, flag_return=flag_return)
+            results[i] = process_detections(audlist[i], vidlist[1]; res_dir=res_dir2, flag_return=true)#flag_return)
         catch err
             @error "process_detections failed for $(audlist[i])" exception=(err, catch_backtrace())
             results[i] = nothing
