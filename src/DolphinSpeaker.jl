@@ -19,4 +19,6 @@ module DolphinSpeaker
     include("beampattern.jl")
     export stack_audio_videos, run_func_fileauto
 
+    # from config.jl
+    export set_device__ophk_acoustic_D3, set_device__calf_hk, set_device__hk_clicker, set_device__ophk_acoustic_D3_clicker
 end
