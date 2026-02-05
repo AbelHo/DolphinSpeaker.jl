@@ -114,7 +114,7 @@ run_contiguous_folders("/folder/path"; res_dir = "/result/folder/path")
 Process data in batch:
 ```
 folder_list = ["/parent/folder/path1", "/parent/folder/path2", "/parent/folder/path3"]
-run_contiguous_folders_batch(folder_list; res_dir = "/result/parent/folder/path")
+run_contiguous_folders(folder_list; res_dir = "/result/parent/folder/path")
 ```
 
 ###### Additional Functionalities:  
