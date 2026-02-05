@@ -111,6 +111,24 @@ Process data:
 run_contiguous_folders("/folder/path"; res_dir = "/result/folder/path")
 ```
 
+Process data in batch:
+```
+folder_list = ["/parent/folder/path1", "/parent/folder/path2", "/parent/folder/path3"]
+run_contiguous_folders_batch(folder_list; res_dir = "/result/parent/folder/path")
+```
+
+###### Additional Functionalities:  
+1. Detection marker settings, eg: red and 0.5 alpha transparency -> default_color="red@0.5"  
+```
+run_contiguous_folders("/folder/path"; res_dir = "/result/folder/path", default_color="red@0.5")
+``` 
+
+2. when not set, the color will depends on the sound frequency content, it can be set by specifying rgb_bands in frequency bands(Hz):  
+```
+rgb_bands=[[1000,30000], [30000,60000], [60000,96000]]
+```
+
+
 ### 5. Advance
 #### 5.1 Display conversion error results clearly
 ```

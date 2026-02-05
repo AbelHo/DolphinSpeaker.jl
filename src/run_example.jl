@@ -351,6 +351,24 @@ function run_analysis_split_vidau(folname; res_dir="",
     return delays, conf, output_vidname, vidlist, audlist, res_dir
 end
 
+# recursively run all folder if given an array of folders
+function run_contiguous_folders(folname::AbstractVector; flag_return_results_array=false, kwargs...)
+    results = Vector{Any}(undef, length(folname))
+    for (ind, fol) in enumerate(folname)
+        try
+            if flag_return_results_array
+                results[ind] = run_contiguous_folders(fol; kwargs...)
+            else
+                run_contiguous_folders(fol; kwargs...)
+            end
+        catch err
+            @error "run_contiguous_folders failed for.........................\n$fol" exception=(err, catch_backtrace())
+        end
+    end
+    return results
+end
+
+
 function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detection_types = 1:2,
     flag_overlayvideo=true, flag_overlayimages=false, flag_return = false, kwargs...)
     @info "Processing folder: $folname ............."
