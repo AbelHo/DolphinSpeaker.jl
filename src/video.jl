@@ -277,7 +277,7 @@ Notes
 - When using `:in_annotations`, each row in the DataFrame/CSV can have its own properties.
 """
 function overlay_annotations_on_video(annotations, video_path::AbstractString, output_path::AbstractString;
-    tmpdir::AbstractString = mktempdir(), fps=nothing, radius=OVERLAY_RADIUS, default_color="red@0.5",
+    tmpdir::AbstractString = mktempdir(), fps=nothing, radius=OVERLAY_RADIUS, default_color=:in_annotations, #"red@0.5",
     default_alpha=OVERLAY_DEFAULT_ALPHA, default_shape::Union{Symbol,AbstractVector}=:circle, 
     frame_col::Symbol=:frame, x_col::Symbol=:px, y_col::Symbol=:py,
     clean_tmp::Bool=true, flag_dryrun::Bool=false, mode::Symbol = :stream, encoder_options=(crf=23, preset="ultrafast"), max_frames::Union{Nothing,Int}=nothing,
