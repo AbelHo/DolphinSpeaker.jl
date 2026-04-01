@@ -1,7 +1,7 @@
 name = "DolphinSpeaker"
 uuid = "a5340efd-1a1e-46c0-b5f5-ffa99f3394da"
-authors = ["AbelHo <21101710+AbelHo@users.noreply.github.com>"]
 version = "0.0.7"
+authors = ["AbelHo <21101710+AbelHo@users.noreply.github.com>"]
 
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
@@ -23,7 +23,6 @@ FLAC = "abae9e3b-a9a0-4778-b5c6-ca109b507d99"
 FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 GLM = "38e38edf-8417-5370-95a0-9cbb8c7f171a"
-GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 Geodesy = "0ef565a4-170c-5f04-8de2-149903a85f3d"
 Glob = "c27321d9-0574-5035-807b-f59d2c89b15c"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"

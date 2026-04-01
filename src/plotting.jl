@@ -3,7 +3,7 @@ using ProgressMeter
 using Pipe: @pipe
 # include("map.jl")
 using Base.Threads
-import GLMakie
+# import GLMakie
 using PlotlyBase
 
 """
@@ -339,98 +339,98 @@ function plot_nextVideo!(img, counter, extra_arg)
     plot_summary!(fig, indata, fs, img)
 end
 
-function get_pixel(img)
-	fig = Figure()
-	ax1 = Axis(fig[1,1])
-	image!(ax1,img)
-	pts = []
+# function get_pixel(img)
+# 	fig = Figure()
+# 	ax1 = Axis(fig[1,1])
+# 	image!(ax1,img)
+# 	pts = []
 
-	register_interaction!(ax1, :my_interaction) do event::GLMakie.MouseEvent, axis
-		if event.type === MouseEventTypes.leftclick
-			println("You clicked on the axis at datapos $(event.data)")
-			push!(pts, event.data)
-		end
-	end
-	return pts
-end
+# 	register_interaction!(ax1, :my_interaction) do event::GLMakie.MouseEvent, axis
+# 		if event.type === MouseEventTypes.leftclick
+# 			println("You clicked on the axis at datapos $(event.data)")
+# 			push!(pts, event.data)
+# 		end
+# 	end
+# 	return pts
+# end
 
-function get_pixelLoc(pts, fig, vidfname, pind_good_inS)#, data, pind_threshold_indices, tdoa, window, ang)
-    vid = VideoIO.openvideo(vidfname)
-    imsize = raw_frame_size(vid)
-    # mkpath(event_plots_dir)
+# function get_pixelLoc(pts, fig, vidfname, pind_good_inS)#, data, pind_threshold_indices, tdoa, window, ang)
+#     vid = VideoIO.openvideo(vidfname)
+#     imsize = raw_frame_size(vid)
+#     # mkpath(event_plots_dir)
 
 
-	# fig = Figure()
-	ax1 = Axis(fig[1,1])
-	image!(ax1,img)
-	# pts = []
-	i = 1
+# 	# fig = Figure()
+# 	ax1 = Axis(fig[1,1])
+# 	image!(ax1,img)
+# 	# pts = []
+# 	i = 1
 
-	register_interaction!(ax1, :my_interaction) do event::GLMakie.MouseEvent, axis
-		if event.type === MouseEventTypes.leftclick
-			println("You clicked on the axis at datapos $(event.data)")
-			push!(pts, event.data)
+# 	register_interaction!(ax1, :my_interaction) do event::GLMakie.MouseEvent, axis
+# 		if event.type === MouseEventTypes.leftclick
+# 			println("You clicked on the axis at datapos $(event.data)")
+# 			push!(pts, event.data)
 			
-			i += 1
-			@info i
-			image!(ax1, readImage(vid, pind_good_inS[i]))
-			ax1.title = string(i)
-		end
-	end
-	while i <= length(pind_good_inS)
-		sleep(1)
-		# print(int2str(i))
-	end
-	println("done checking")
+# 			i += 1
+# 			@info i
+# 			image!(ax1, readImage(vid, pind_good_inS[i]))
+# 			ax1.title = string(i)
+# 		end
+# 	end
+# 	while i <= length(pind_good_inS)
+# 		sleep(1)
+# 		# print(int2str(i))
+# 	end
+# 	println("done checking")
 
-	return pts
-end
+# 	return pts
+# end
 
-function get_pixelLoc2(vidfname, timestamps)
-    # Open the video
-    vid = VideoIO.openvideo(vidfname)
+# function get_pixelLoc2(vidfname, timestamps)
+#     # Open the video
+#     vid = VideoIO.openvideo(vidfname)
 
-    # Initialize an array to store the clicked coordinates
-    pts = []
+#     # Initialize an array to store the clicked coordinates
+#     pts = []
 
-    # Create a figure and axis
-    fig = Figure()
-    ax1 = Axis(fig[1,1])
-	image(@view(img[end:-1:1, :])')
+#     # Create a figure and axis
+#     fig = Figure()
+#     ax1 = Axis(fig[1,1])
+# 	image(@view(img[end:-1:1, :])')
 
-    # Register a mouse click interaction
-    register_interaction!(ax1, :my_interaction) do event::GLMakie.MouseEvent, axis
-        if event.type === MouseEventTypes.leftclick
-            println("You clicked on the axis at datapos $(event.data)")
-			global i
-			@info i
-			image!(ax1, readImage(vid, timestamps[i]))
-			ax1.title = string(i)
+#     # Register a mouse click interaction
+#     register_interaction!(ax1, :my_interaction) do event::GLMakie.MouseEvent, axis
+#         if event.type === MouseEventTypes.leftclick
+#             println("You clicked on the axis at datapos $(event.data)")
+# 			global i
+# 			@info i
+# 			image!(ax1, readImage(vid, timestamps[i]))
+# 			ax1.title = string(i)
 
-			i += 1
-            push!(pts, event.data)
-        end
-    end
+# 			i += 1
+#             push!(pts, event.data)
+#         end
+#     end
 
-    # Loop over the timestamp
-	i = 1; pts = [];
-    while i < length(timestamps) i in 1:length(timestamps)
-        # Read the frame at the current timestamp
-        img = readImage(vid, timestamps[i])
+#     # Loop over the timestamp
+# 	i = 1; pts = [];
+#     while i < length(timestamps) i in 1:length(timestamps)
+#         # Read the frame at the current timestamp
+#         img = readImage(vid, timestamps[i])
 
-        # Display the frame
-        # image!(ax1, img); #
-		image(ax1,@view(img[end:-1:1, :])')
-        ax1.title = string(i)
+#         # Display the frame
+#         # image!(ax1, img); #
+# 		image(ax1,@view(img[end:-1:1, :])')
+#         ax1.title = string(i)
 
-        # Wait for a click
-        # while length(pts) < i
-            sleep(0.1)
-        # end
-    end
+#         # Wait for a click
+#         # while length(pts) < i
+#             sleep(0.1)
+#         # end
+#     end
 
-    return pts
-end
+#     return pts
+# end
 
 
 function plot_ang(res_new, ang, aufname="", res_dir=nothing; type="Amplitude", ylabel="Azimuth(°)", label="clicks")
