@@ -685,17 +685,23 @@ Example
 """
 #~ combine video and audio
 function combine_vidau(newvidname, aufname_list; vidau_syncdiff=0, MERGE_VID_AU_DYNAMIC_NORM=false, rx_vect=rx_vect, 
-	flag_rm_oldfile=false, flag_rm_concataudio=false, kwargs...) #TODO: swap audio channel according to rx_vect location to correspond Left, Right, Center
+	flag_rm_oldfile=false, flag_rm_concataudio=false, spectro_vidpath=nothing, kwargs...) #TODO: swap audio channel according to rx_vect location to correspond Left, Right, Center
     if aufname_list isa Array
         if length(aufname_list)==1
             aufname = aufname_list[1]
         else
             aufname = concat_media(aufname_list, dirname(newvidname); kwargs...)
         end
+    else
+        aufname = aufname_list
     end
     
     if MERGE_VID_AU_DYNAMIC_NORM
-        cmd = `$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_DYnormalized-audio.mp4"`
+        if isnothing(spectro_vidpath)
+            cmd = `$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_DYnormalized-audio.mp4"`
+        else
+            cmd = `$ffmpeg -i "$newvidname" -i "$spectro_vidpath" -itsoffset $vidau_syncdiff -i "$aufname" -filter_complex "[0:v][1:v]vstack=inputs=2[vout]" -map "[vout]" -map 2:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_DYnormalized-audio.mp4"`
+        end
         # println(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 -f matroska "$newvidname""_DYnormalized-audio.mkv"`)
         # output = @ffmpeg_env run(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_DYnormalized-audio.mp4"`)
         # run(`ffmpeg -i "$newvidname" -i "$aufname" -map 0:v -map 1:a -vcodec copy -af loudnorm=I=-16:LRA=11:TP=-1.5 -f matroska "$newvidname""_normalized-audio.mkv"`)
@@ -715,9 +721,11 @@ function combine_vidau(newvidname, aufname_list; vidau_syncdiff=0, MERGE_VID_AU_
 
         # m = match(r"max_volume: (.*) dB", ss)
         # max_volume = m !== nothing ? parse(Float64, m.captures[1]) : nothing
-        # norm_gain = -max_volume
-        cmd = `$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$newvidname""_normalized-audio.mp4"`
-        
+        if isnothing(spectro_vidpath)
+            cmd = `$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$newvidname""_normalized-audio.mp4"`
+        else
+            cmd = `$ffmpeg -i "$newvidname" -i "$spectro_vidpath" -itsoffset $vidau_syncdiff -i "$aufname" -filter_complex "[0:v][1:v]vstack=inputs=2[vout]" -map "[vout]" -map 2:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$newvidname""_normalized-audio.mp4"`
+        end
     end
     println(cmd)
     try
@@ -733,6 +741,66 @@ function combine_vidau(newvidname, aufname_list; vidau_syncdiff=0, MERGE_VID_AU_
 
     return "$newvidname"*"_normalized-audio.mp4"
     # if aufname_old isa String; rm(aufname); end
+end
+
+"""
+    create_spectro_video(aufname_list, output_path; delays=0.0, vid_width=1280,
+                         vid_fps=30.0, spectro_height=200, channel=1)
+
+Generate a scrolling spectrogram video from one or more audio files.
+
+Prepends `delays` seconds of silence so the spectrogram is time-aligned with
+a combined video that starts before the audio (positive `delays`).
+
+Arguments
+- `aufname_list`: A single audio path or vector of audio paths; multiple files
+  are concatenated before processing.
+- `output_path`: Destination path for the output spectrogram MP4.
+- `delays`: Seconds of silence to prepend (aligns audio relative to video start).
+- `vid_width`: Width to match the main video.
+- `vid_fps`: Target frame rate (matched to main video).
+- `spectro_height`: Height of the spectrogram strip in pixels.
+- `channel`: 1-indexed audio channel to display.
+
+Returns the `output_path` string.
+"""
+function create_spectro_video(aufname_list, output_path; delays=0.0, vid_width=1280,
+                               vid_fps=30.0, spectro_height=200, channel=1)
+    # Resolve single audio path or concatenate multiple files
+    aufname = if aufname_list isa AbstractString
+        aufname_list
+    elseif length(aufname_list) == 1
+        aufname_list[1]
+    else
+        concat_media(String.(aufname_list), dirname(output_path))
+    end
+
+    # Get sample rate from the audio file so the silence generator matches
+    info = get_media_info(aufname)
+    audio_streams = filter(s -> get(s, "codec_type", "") == "audio", info["streams"])
+    samplerate = isempty(audio_streams) ? 48000 :
+        parse(Int, get(audio_streams[1], "sample_rate", "48000"))
+
+    ch_idx = channel - 1  # ffmpeg uses 0-based channel indices
+    fps_int = round(Int, vid_fps)
+	spectro_filter = "showspectrum=s=$(vid_width)x$(spectro_height):color=fiery:scale=cbrt:fscale=log:slide=scroll[_spec_raw];[_spec_raw]fps=$(fps_int)"
+
+    if delays > 0.0
+        filter_str = "[0:a][1:a]concat=n=2:v=0:a=1[aud];[aud]pan=mono|c0=c$(ch_idx)[mono];[mono]$(spectro_filter)[v]"
+        cmd = `$ffmpeg -y -f lavfi -t $delays -i anullsrc=r=$samplerate:cl=mono -i $aufname -filter_complex $filter_str -map "[v]" "$output_path"`
+    else
+        filter_str = "[0:a]pan=mono|c0=c$(ch_idx)[mono];[mono]$(spectro_filter)[v]"
+        cmd = `$ffmpeg -y -i $aufname -filter_complex $filter_str -map "[v]" "$output_path"`
+    end
+
+    @info "Creating spectrogram video: $cmd"
+    try
+        @ffmpeg_env run(cmd)
+    catch err
+        @warn "Spectrogram creation with Julia FFMPEG failed: $err — retrying with system call"
+        run(cmd)
+    end
+    return output_path
 end
 
 

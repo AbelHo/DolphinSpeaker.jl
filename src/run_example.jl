@@ -370,7 +370,8 @@ end
 
 
 function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detection_types = 1:2,
-    flag_overlayvideo=true, flag_overlayimages=false, flag_return = false, kwargs...)
+    flag_overlayvideo=true, flag_overlayimages=false, flag_return = false,
+    flag_spectro=false, spectro_height=200, kwargs...)
     @info "Processing folder: $folname ............."
     
     delays, conf, output_vidname, vidlist, audlist, res_dir2 = run_analysis_split_vidau(folname; res_dir=res_dir, auto_segment_len=250, flag_norm_rms=true, kwargs...)
@@ -396,12 +397,9 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detectio
             # write_mode = detection_type==1 ? "w" : "a"
             cum_duration = 0.0
             for (ind, res) in enumerate(results)
-                writedlm(io, [res[detection_type][1] .+ ( (cum_duration + delays)*get_fps(vidlist[1])) res[detection_type][2]], ',') # add sync delay and cumulative duration
-                # write_mode = ind==1 ? "w" : "a"
-                # open( detection_pixels, write_mode) do io
-                #     (write_mode == "w") && writedlm(io, ["frame" "px" "py" "radius" "r" "g" "b" "a" "shape"], ',')
-                #     writedlm(io, [res[detection_type][1] .+ ( (cum_duration + delays)*get_fps(vidlist[1])) res[detection_type][2]], ',') # add sync delay and cumulative duration
-                # end
+                if !isnothing(res)
+                    writedlm(io, [res[detection_type][1] .+ ( (cum_duration + delays)*get_fps(vidlist[1])) res[detection_type][2]], ',') # add sync delay and cumulative duration
+                end
                 cum_duration += get_duration(audlist[ind])
                 # results[1].res.res_impulsetrain.pind_good
             end
@@ -413,25 +411,29 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detectio
     detection_pixels_df.type = detection_pixels_df.shape
     detection_pixels_df[:, ["r", "g", "b"]] = detection_pixels_df[:, ["r", "g", "b"]] .* 255.0 # convert to 0-255 range
     CSV.write(splitext(detection_pixels) |> x-> x[1]*"__color255_webui"*x[2], detection_pixels_df)
+    # Only process valid (non-nothing) results for audacity file combination
+    valid_idx = findall(!isnothing, results)
+    all_durations = get_duration.(audlist)
+    cum_durations_before = cumsum([0.0; all_durations[1:end-1]])  # cumulative duration before each file
 
-    dfs_impulse = CSV.read.(joinpath.(res_dir2 |> Ref, [results[i].res.res_impulsetrain.outfname * ".txt" for i in 1:length(results)]), DataFrame; header=false)
-    dfs_tonal = CSV.read.(joinpath.(res_dir2 |> Ref, [results[i].res.res_tonalsegment.outfname * ".txt" for i in 1:length(results)]), DataFrame; header=false)
-    dfs_impulsetrain = CSV.read.(joinpath.(res_dir2 |> Ref, [results[i].res.res_impulsetrain.outfname * "_train-only.txt" for i in 1:length(results)]), DataFrame; header=false)
+    dfs_impulse = [CSV.read(joinpath(res_dir2, results[i].res.res_impulsetrain.outfname * ".txt"), DataFrame; header=false) for i in valid_idx]
+    dfs_tonal = [CSV.read(joinpath(res_dir2, results[i].res.res_tonalsegment.outfname * ".txt"), DataFrame; header=false) for i in valid_idx]
+    dfs_impulsetrain = [CSV.read(joinpath(res_dir2, results[i].res.res_impulsetrain.outfname * "_train-only.txt"), DataFrame; header=false) for i in valid_idx]
 
-    cum_duration = 0.0; cum_index_impulse = 0; cum_index_tonal = 0; cum_index_impulsetrain = 0;
-    for ind = 1:length(results)
-        dfs_impulse[ind][:, 1:2] .+= cum_duration
-        dfs_tonal[ind][:, 1:2] .+= cum_duration
-        dfs_impulsetrain[ind][:, 1:2] .+= cum_duration
+    cum_index_impulse = 0; cum_index_tonal = 0; cum_index_impulsetrain = 0;
+    for (j, i) in enumerate(valid_idx)
+        t_offset = cum_durations_before[i]
+        dfs_impulse[j][:, 1:2] .+= t_offset
+        dfs_tonal[j][:, 1:2] .+= t_offset
+        dfs_impulsetrain[j][:, 1:2] .+= t_offset
 
-        dfs_impulse[ind][:, 3] .+= cum_index_impulse
-        dfs_tonal[ind][:, 3] .+= cum_index_tonal
-        dfs_impulsetrain[ind][:, 3] .+= cum_index_impulsetrain
+        dfs_impulse[j][:, 3] .+= cum_index_impulse
+        dfs_tonal[j][:, 3] .+= cum_index_tonal
+        dfs_impulsetrain[j][:, 3] .+= cum_index_impulsetrain
 
-        cum_duration += get_duration(audlist[ind])
-        cum_index_impulse += nrow(dfs_impulse[ind])
-        cum_index_tonal += nrow(dfs_tonal[ind])
-        cum_index_impulsetrain += nrow(dfs_impulsetrain[ind])
+        cum_index_impulse += nrow(dfs_impulse[j])
+        cum_index_tonal += nrow(dfs_tonal[j])
+        cum_index_impulsetrain += nrow(dfs_impulsetrain[j])
     end
     CSV.write(joinpath(res_dir2, "combined_impulse__audacity.txt"), vcat(dfs_impulse...); writeheader=false, delim='\t')
     CSV.write(joinpath(res_dir2, "combined_tonal__audacity.txt"), vcat(dfs_tonal...); writeheader=false, delim='\t')
@@ -452,11 +454,36 @@ function run_contiguous_folders(folname; res_dir="", overlay_radius=32, detectio
     if flag_overlayvideo
         GC.gc()
         try
+            # If flag_spectro, launch spectrogram video creation in parallel with overlay
+            spectro_task = nothing
+            if flag_spectro
+                info = get_media_info(vidlist[1])
+                video_stream = first(filter(s -> get(s, "codec_type", "") == "video", info["streams"]))
+                vid_width = get(video_stream, "width", 1280)
+                vid_fps_val = something(get_fps(vidlist[1]), 30.0)
+                spectro_out = splitext(output_vidname)[1] * "_spectro.mp4"
+                spectro_task = @async create_spectro_video(audlist, spectro_out;
+                    delays=max(0.0, Float64(delays)), vid_width=vid_width,
+                    vid_fps=vid_fps_val, spectro_height=spectro_height)
+            end
+
             out_vid_path = overlay_annotations_on_video(detection_pixels, output_vidname, splitext(output_vidname)[1]*"_overlaid.mkv"; 
                 mode=:VideoIO, radius=overlay_radius, #) #mode=:stream) #
                 kwargs...)
                 # radius=:in_annotations, default_color=:in_annotations, default_alpha=:in_annotations, default_shape=:in_annotations)
-            combine_vidau(out_vid_path, audlist; vidau_syncdiff=delays, MERGE_VID_AU_DYNAMIC_NORM=true, rx_vect=rx_vect, kwargs...)
+
+            # Wait for spectrogram (if running) and collect its path
+            spectro_vidpath = nothing
+            if !isnothing(spectro_task)
+                try
+                    spectro_vidpath = fetch(spectro_task)
+                catch err
+                    @error "Spectrogram video creation failed" exception=(err, catch_backtrace())
+                end
+            end
+
+            combine_vidau(out_vid_path, audlist; vidau_syncdiff=delays, MERGE_VID_AU_DYNAMIC_NORM=true, rx_vect=rx_vect,
+                spectro_vidpath=spectro_vidpath, kwargs...)
         catch err
             @error "Failed to overlay boxes on video($output_vidname)" exception=(err, catch_backtrace())
         end

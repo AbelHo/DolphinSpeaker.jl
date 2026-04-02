@@ -128,6 +128,11 @@ run_contiguous_folders("/folder/path"; res_dir = "/result/folder/path", default_
 rgb_bands=[[1000,30000], [30000,60000], [60000,96000]]
 ```
 
+3. Add spectrogram visualization:
+```
+run_contiguous_folders("/path/to/data/folder"; res_dir="/path/to/results", flag_spectro=true)
+```
+
 
 ### 5. Advance
 #### 5.1 Display conversion error results clearly
@@ -176,5 +181,51 @@ eg: camera has a field of view of 80° in the x-axis and 40° in the y-axis
 ```
  DolphinSpeaker.fov_angle = [80; 40]
 ```
+
+#### 5.5 Spectrogram visualization
+
+This release adds an optional scrolling spectrogram visualization that can be generated and stacked under the annotated video output. It uses FFmpeg's `showspectrum` filter to produce a color spectrogram synchronized with the audio.
+
+Requirements
+- A working `ffmpeg`/`ffprobe` on PATH (the package uses them via FFMPEG.jl / system fallback).
+
+Simple (one-line) usage
+```
+using DolphinSpeaker
+run_contiguous_folders("/path/to/data/folder"; res_dir="/path/to/results", flag_spectro=true)
+```
+This will: 1) create the spectrogram video for the recorded audio, 2) create the overlaid video with detection boxes, and 3) combine them (main video above, spectrogram strip below) into the final muxed output saved in the results folder.
+
+Detailed / full-feature usage
+
+- Enable and configure spectrogram height (pixels):
+```
+run_contiguous_folders("/path/to/data"; res_dir="/path/to/results", flag_spectro=true, spectro_height=200)
+```
+
+- Create the spectrogram manually (useful for debugging or custom workflows):
+```
+using DolphinSpeaker
+audlist = ["/path/to/rec1.flac", "/path/to/rec2.flac"]
+spectro_out = "/path/to/results/session_spectro.mp4"
+# delays should match the video->audio sync offset (seconds)
+create_spectro_video(audlist, spectro_out; delays=0.0, vid_width=1920, vid_fps=30.0, spectro_height=200, channel=1)
+```
+
+- Combine an already-created overlaid video with an existing spectrogram video (manual combine):
+```
+# newvidname = overlaid video (video-only or with internal audio)
+# audlist is the audio(s) used for muxing
+combine_vidau("/path/to/overlaid_video.mkv", audlist; vidau_syncdiff=0.0, spectro_vidpath="/path/to/session_spectro.mp4")
+```
+
+Tips and verification
+- If you want to quickly verify the stacked output, extract a frame with ffmpeg:
+```bash
+ffmpeg -ss 00:02:00 -i /path/to/final_combined_normalized-audio.mp4 -frames:v 1 verify_frame.png
+```
+- If spectrogram frames look stretched or have the wrong width/fps, pass matching `vid_width` and `vid_fps` to `create_spectro_video` so the spectrogram matches the main video width and frame rate.
+
+If you want this documented as a short example script in the repository, tell me where you'd like it and I can add one under `examples/`.
 
 
