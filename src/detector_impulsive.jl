@@ -387,6 +387,114 @@ function tkeo(data; type=Float64)
 end
 
 using LinearAlgebra, StatsBase, Plots
+# new: core implementation that takes the specific res_impulse fields as inputs
+function detect_impulsetrain2_impl(aufname_data_fs::Tuple,
+    pind_good::AbstractVector{<:Integer};
+    res_dir=nothing, ref_channel=ref_channel,
+    bin_interval=100, time_interval = 0.1,
+    fullplot=false, plot_everytimeintervalhistogram=false, display=x->x,
+    )
+
+    aufname, data, fs = aufname_data_fs
+    data_view = @view(data[:,ref_channel])
+    times = pind_good
+    pind_good_inS = (pind_good .-1) ./ fs
+    timediff = zeros(Int,length(times),length(times))
+    timediff = UpperTriangular(timediff)
+    Threads.@threads for i in 1:length(times)
+        for j in i:length(times)
+            timediff[i,j] = times[j] - times[i]
+        end
+    end
+
+    min_t = floor(pind_good_inS[1])
+    max_t = ceil(pind_good_inS[end])
+    cum_res = zeros(max_t/time_interval |> Int, 3)
+
+    isdir(res_dir) || ( !isnothing(res_dir) && mkpath(res_dir) )
+
+    numbers=[];
+    ipi_direct=[];weights_direct=[];hs2=[];
+    tt=[];ipi=[];weights=[];hs=[];
+    @info "processing loop...: $(min_t :time_interval:max_t-time_interval)"
+    sleep(5)
+    for t in min_t :time_interval:max_t-time_interval
+        win=findall( x -> x>(t) && x<(t+time_interval), pind_good_inS)
+
+        h = fit(Histogram, filter( x -> x > 0, timediff[win, win][:]), 0:bin_interval:10000 );
+        @debug h
+        isempty(h.weights) && continue
+        @debug ((t, h.edges[1][argmax(h.weights)], maximum(h.weights)) );
+        push!(tt, t);
+        push!(ipi, h.edges[1][argmax(h.weights)]);
+        push!(weights, maximum(h.weights))
+        push!(hs, h)
+
+        h2 = fit(Histogram, filter( x -> x > 0, pind_good[win] |> diff), 0:bin_interval:10000 );
+        push!(ipi_direct, h2.edges[1][argmax(h2.weights)]);
+        push!(weights_direct, maximum(h2.weights))
+        push!(hs2, h2)
+
+        push!(numbers, length(win))
+
+        @async if plot_everytimeintervalhistogram
+            p_ipi = plot(h; title=string(t))
+            p_ipi_direct = plot(h2; title="direct-ipi "*string(t))
+            plot(p_ipi, p_ipi_direct; layout=@layout[a b], xlabel="ipi(sample)", ylable="weights(counts)");
+            isnothing(res_dir) || savefig(joinpath(res_dir, basename(aufname)*"_click-segmentipi_h" *string(t)* "s.png"))
+            plot(p_ipi, p_ipi_direct; layout=@layout[a;b], xlabel="ipi(sample)", ylable="weights(counts)");
+            isnothing(res_dir) || savefig(joinpath(res_dir, basename(aufname)*"_click-segmentipi_v" *string(t)* "s.png"))
+        end
+    end
+
+    arg_max = argmax(weights)
+    plot(hs[arg_max]; title="max-weight_"* string(tt[arg_max]) *"s", xlabel="Inter Pulse Interval(samples)", ylabel="Counts") |> display
+    @async if !isnothing(res_dir)
+        savefig(joinpath(res_dir, basename(aufname)*"_click-max-weight.html"))
+        savefig(joinpath(res_dir, basename(aufname)*"_click-max-weight.png"))
+    end
+
+    @info "max weighted ipi(weight): " * string(ipi[argmax(weights)]) *"("*string(maximum(weights))*") @ " * string(tt[argmax(weights)]) *"s"
+    a= plot(tt, weights; label="counts", title=basename(aufname), ylabel="counts");
+    b= plot(tt, ipi./fs; color=:red, label="ICI", ylabel="ICI(s)");
+    c= plot(tt, ipi; color=:red, label="ICI_sample", ylabel="ICI(sample)");
+    plot(a,b,c; layout=@layout[a;b;c], xlabel="Time(s)") |> display
+    @async if !isnothing(res_dir)
+        savefig(joinpath(res_dir, basename(aufname)*"_autoclick.html"))
+        savefig(joinpath(res_dir, basename(aufname)*"_autoclick.png"))
+
+        if fullplot
+            gr()
+            a= plot(tt, weights; label="weight", title=basename(aufname), ylabel="weight"); xlims!(0,size(data_view,1)/fs); xlabel!("Time(s)")
+            b= plot(tt, ipi./fs; color=:red, label="ICI", ylabel="ICI(s)"); xlims!(0,size(data_view,1)/fs); xlabel!("Time(s)")
+            c= plot(tt, ipi; color=:red, label="ICI_sample", ylabel="ICI(sample)"); xlims!(0,size(data_view,1)/fs); xlabel!("Time(s)")
+            d= plot(signal(data_view,fs)); xlims!(0,size(data_view,1)/fs); xlims!(0,size(data_view,1)/fs); xlabel!("Time(s)")
+            e= specgram(data_view; fs=fs,colorbar=nothing); xlabel!("Time(s)")
+            f= Plots.heatmap( tt, hs[1].edges[1][2:end], hcat(map(x->x.weights, hs)...); colorbar=nothing, ylabel="ipi_all\n(sample)"); ylims!(0,3000); xlabel!("Time(s)")
+            g= Plots.heatmap( tt, hs2[1].edges[1][2:end], hcat(map(x->x.weights, hs2)...); colorbar=nothing, ylabel="ipi\n(sample)"); ylims!(0,3000); xlabel!("Time(s)")
+            counting = plot(tt, numbers; ylabel=("pulse\ncounts")); xlims!(0,size(data_view,1)/fs); xlabel!("Time(s)")
+            histo_all = histogram(pind_good |> diff; bins=0:10:600, title=basename(aufname)*" IPI raw histogram", xlabel="Inter Pulse Interval(samples)", ylabel="Counts")
+            weights_direct_plot= plot(tt, weights_direct; label="weight_direct", title=basename(aufname), ylabel="weight_direct"); xlims!(0,size(data_view,1)/fs); xlims!(0,size(data_view,1)/fs); xlabel!("Time(s)")
+            ipi_direct_plot = c= plot(tt, ipi_direct; color=:red, label="ICI_sample", ylabel="ICI_direct\n(sample)"); xlims!(0,size(data_view,1)/fs); xlims!(0,size(data_view,1)/fs); ; ylims!(0,3000); xlabel!("Time(s)")
+
+            plot(d,e,a,f,g,weights_direct_plot,counting,ipi_direct_plot,histo_all; layout=@layout[a;b;c;d;e;f;g;h;i;j], size=(1080,1080), legend=nothing) |> display
+
+            savefig(joinpath(res_dir, basename(aufname)*"_autoclick_full.png"))
+            plotlyjs()
+        end
+    end
+
+    p1=Plots.histogram(pind_good |> diff; bins=400, title=basename(aufname)*" IPI raw histogram", xlabel="Inter Pulse Interval(samples)", ylabel="Counts")
+    p2=Plots.histogram(pind_good |> diff; bins=0:10:3000, xlabel="Inter Pulse Interval(samples)", ylabel="Counts")
+    p3=Plots.histogram(pind_good |> diff; bins=0:25:3000, xlabel="Inter Pulse Interval(samples)", ylabel="Counts")
+    plot(p1,p2,p3; layout=@layout[a b c]) |> display
+    @async if !isnothing(res_dir)
+        savefig(joinpath(res_dir, basename(aufname)*"_autoclick_raw-histogram.html"))
+        savefig(joinpath(res_dir, basename(aufname)*"_autoclick_raw-histogram.png"))
+    end
+
+    return [ipi[argmax(weights)] ipi[argmax(weights)]/fs maximum(weights) tt[argmax(weights)] ], hs, timediff, times, ipi_direct, weights_direct
+end
 
 function detect_impulsetrain2(aufname::String; kwargs...)
     data, fs, nbits, opt, timestamp = readAudio(aufname);
