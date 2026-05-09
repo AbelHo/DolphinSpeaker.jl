@@ -24,6 +24,10 @@ res_dir = "/media/spin/anas2/data_res/dolphin/marecet/datai/test_2025-06-05/h4"
 clip_len = 40
 min_freq = 80_000
 
+aufname="/media/spin/anas2/data/marecet/Acoustics-Abel_TestDataBenchmark/SoundTrap - PAM & towed/Irrawaddy - towed/8745.240814100510.wav"
+aufname = "/media/spin/anas2/data/marecet/Acoustics-Abel/SoundTrap - PAM & towed/Indo-Pacific humpback dolphins/14052024 - Sc6/7003.240514151859.wav"
+res_dir="/media/spin/anas2/data_res/dolphin/marecet/temp/test3_ST_SC"
+threshold_tonal = 5
 #others
 min_freq = 10_000
 
