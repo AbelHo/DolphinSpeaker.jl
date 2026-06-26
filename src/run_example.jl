@@ -172,7 +172,9 @@ function process_one_set(vidfname, aufname, res_dir; skiplist=[], no_overwrite_f
     
     # @info "--- here ----"
     # @info pixel_estimated_set
-    pixel_estimated_set = pixel_estimated_set[DETECTION_TYPES]
+    # Convert NamedTuple to vector for indexing compatibility
+    pixel_estimated_set_vec = [pixel_estimated_set.pixel_related_impulsive, pixel_estimated_set.pixel_related_tonal, pixel_estimated_set.pixel_related_impulsive2, pixel_estimated_set.pixel_related_tonal_short, pixel_estimated_set.pixel_related_impulsive3, pixel_estimated_set.pixel_related_impulsive4]
+    pixel_estimated_set = pixel_estimated_set_vec[DETECTION_TYPES]
     # @info "---------------- ------------------"
     # @info pixel_estimated_set
     pt_config = pt_config[1:length(pixel_estimated_set)]
