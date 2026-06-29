@@ -101,9 +101,9 @@ function get_tdoa_raw_MaxPeakRefChannel(data, peaks; window = default_window , r
 		ref_channel = argmax(extrema(data[win,:], dims=1)[:] .|> x->maximum(abs.(x)))
 		ref_signal = data[win_ref, ref_channel]
 		ref_signals[:,i] = ref_signal
-		@debug size(ref_signal)
+		# @debug size(ref_signal)
 		for ch in 1:size(data,2)
-			@debug (i,ch)
+			# @debug (i,ch)
 			# if ch==ref_channel
 			# 	tdoa[i,ch]=0
 			# 	continue
