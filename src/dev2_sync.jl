@@ -146,14 +146,31 @@ res_dir = "/media/spin/anas2/data_res/dolphin/calf/calibration/D2/localization13
 vidfname = joinpath(res_dir, "combined__1.GoPro_Clicker.MP4.mp4")
 dur = get_duration(vidfname)
 fps = get_fps(vidfname)
+vid_info = get_media_info(vidfname); vid_height = get(vid_info["streams"][1], "height", ""); vid_width = get(vid_info["streams"][1], "width", "")
 d = load("/media/spin/anas2/data_res/dolphin/calf/calibration/D2/localization13_fovH-80_small2/1/1.F6_Clicker_t466.4552869078375_d15000__cps0.375_angles.jld2")
-d["ang_impulsive"]
-dp = CSV.read("/media/spin/anas2/data_res/dolphin/calf/calibration/D2/localization13_fovH-80_small2/1/detection_pixels.csv", DataFrame)
+# d["ang_impulsive"][1][1]
+px_direct = angle2px(d["ang_impulsive"][1][1], fov_angle)
+dp.pxd = px_direct[:,1]; dp.pyd = px_direct[:,2]
+dp.px = px_direct[:,1]; dp.py = px_direct[:,2]
+# Plots.scatter(dp.px,dp.py); Plots.scatter!(dp.pxd, dp.pyd); Plots.quiver!(dp.px, dp.py, quiver=(dp.pxd .- dp.px, dp.pyd .- dp.py); arrow=:arrow, color=:black, xlims=(0,vid_width), ylims=(0,vid_height))
+quiver_error_threshold(dp.pxd,dp.pyd, dp.px,dp.py; q=0.5, width=vid_width, height=vid_height)
+
+dp = CSV.read(joinpath(res_dir, "detection_pixels.csv"), DataFrame)
+    # "/media/spin/anas2/data_res/dolphin/calf/calibration/D2/localization13_fovH-80_small2/1/detection_pixels.csv", DataFrame)
+# optional use direct angle estimation
+# dp[:,[:px, :py]] = d["ang_impulsive"][1][1]
+
 dp = dp[ 0 .<= dp.frame .<= dur*fps, :]
 dp.frame_index = 0:length(dp.frame)-1
 
-d_annotated = CSV.read("/media/spin/anas2/data_res/dolphin/calf/calibration/D2/localization13_fovH-80_small2/1/combined__1.GoPro_Clicker.MP4_overlaidIMG_20251018_122735.csv", DataFrame)
+
+annotated_csv = "/media/spin/anas2/data_res/dolphin/calf/calibration/D2/localization13_fovH-80_small2/1/combined__1.GoPro_Clicker.MP4_overlaidIMG_20251018_122735.csv"
+d_annotated = CSV.read(annotated_csv, DataFrame)
 rename!(d_annotated, Dict("frame" => "frame_index"))
+
+#~ if manualy outlier have been annotated as "o" in the tag column, remove them
+select!(d_annotated, Not([:r, :g, :b, :a, :radius]))  # remove extra columns if exist
+filter!(row -> ismissing(row.tag) || row.tag != "o", d_annotated)
 
 dd = leftjoin(dp, d_annotated, on=:frame_index)
 sort!(dd, :frame_index)
@@ -178,6 +195,28 @@ model_y_r = rlm(form, dd, MEstimator{TukeyLoss}(); initial_scale=:L1, ridgeλ=1.
 Plots.scatter(dd.py, dd.y; alpha=0.3, markerstrokewidth=0, label="y vs py", xlabel="Pixel position", ylabel="Annotated position")
 Plots.plot!(dd.py, predict(model_y); label="linear fit line")
 Plots.plot!(dd.py, predict(model_y_r); label="robust fit line")
+
+include("cam_calib.jl")
+# a= calibrate_from_annotations(res_dir, vidfname, "/media/spin/anas2/data_res/dolphin/calf/calibration/D2/localization13_fovH-80_small2/1/combined__1.GoPro_Clicker.MP4_overlaidIMG_20251018_122735.csv")
+
+###### with function call
+
+annotated_csv = "/media/spin/anas2/data_res/dolphin/calf/calibration/D2/localization13_fovH-80_small2/1/combined__1.GoPro_Clicker.MP4_overlaidIMG_20251018_122735.csv"
+res_dir = "/media/spin/anas2/data_res/dolphin/calf/calibration/D2/localization13_fovH-80_small2/1"
+vidfname = joinpath(res_dir, "combined__1.GoPro_Clicker.MP4.mp4")
+a = calibrate_from_annotations(res_dir, vidfname, annotated_csv)
+
+annotated_csv = "/media/spin/anas2/data_res/dolphin/calf/calibration/D3/clicker/Calibration_05_11_2025/combined__GH011401.MP4_overlaidIMG_20251109_235724.csv"
+res_dir = "/media/spin/anas2/data_res/dolphin/calf/calibration/D3/clicker/Calibration_05_11_2025"
+vidfname = "/media/spin/anas2/data_res/dolphin/calf/calibration/D3/clicker/Calibration_05_11_2025/combined__GH011401.MP4_overlaid.mkv_DYnormalized-audio.mp4" #"/media/spin/anas2/data_res/dolphin/calf/calibration/D3/clicker/Calibration_05_11_2025/combined__GH011401.MP4_overlaidIMG.mp4"
+b = calibrate_from_annotations(res_dir, vidfname, annotated_csv)
+
+
+# detection_pixels="detection_pixels.csv",
+#     annotated_csv="combined__1.GoPro_Clicker.MP4_overlaidIMG_20251018_122735.csv",
+#     annotated_frame_col=:frame_index,
+#     out_prefix="combined__1.GoPro_Clicker.MP4",
+#     write_csv=false)
 
 # use camera calibration matrix parameters to get the correction function instead to predict the new data points
 using Optim
@@ -512,28 +551,39 @@ res = run_contiguous_folders("/media/spin/anas2/data/calf/upload/Two-way/Two-way
 
 folder = "/media/spin/anas2/data/calf/upload/Two-way/Two-way_3males_19_09_2025"
 folder = "/media/spin/anas2/data/calf/upload/Two-way/Two-way_2males_06_10_2025"
+folder = "/media/spin/anas2/data/calf/upload/Two-way/Two-way_2males_30_09_2025/New device"
 res = run_contiguous_folders(folder;
     res_dir = "/media/spin/anas2/data/calf/upload/results/results7_$(Dates.format(now(), "yyyymmdd_HHMMSS"))", flag_rm_oldfile=false,
     overlay_radius=:in_annotations, default_color=:in_annotations, default_alpha=:in_annotations, default_shape=:in_annotations,
     flag_return=true, flag_overlayvideo=false, force_extension_type=".flac"
     )
 res = run_contiguous_folders(folder;
-    res_dir = "/media/spin/anas2/data/calf/upload/results/results7_$(Dates.format(now(), "yyyymmdd_HHMMSS"))", flag_rm_oldfile=false,
+    res_dir = "/media/spin/anas2/data/calf/upload/results/results_$(Dates.format(now(), "yyyymmdd_HHMMSS"))", flag_rm_oldfile=false,
     overlay_radius=:in_annotations, default_color=:in_annotations, default_alpha=:in_annotations, default_shape=:in_annotations, detection_types = [1,4],
     flag_return=true, flag_overlayvideo=true, force_extension_type=".flac"
     )
+
+res=nothing; GC.gc()
+res = run_contiguous_folders(folder; res_dir = "/media/spin/anas2/data/calf/upload/results/results2_$(Dates.format(now(), "yyyymmdd_HHMMSS"))")
 
 
 
 # clicker calibration
 set_device__ophk_acoustic_D3_clicker()
-run_contiguous_folders("/media/spin/anas2/data/calf/Calibration/device3_calibration/Calibration_19_09_2025";
-    res_dir = "/media/spin/anas2/data_res/dolphin/calf/calibration/D3/clicker", flag_rm_oldfile=true, flag_overlayimages=true)
+folder = "/media/spin/anas2/data/calf/Calibration/device3_calibration/Calibration_19_09_2025"
+folder = "/media/spin/anas2/data/calf/upload/Calibration_05_11_2025"
+res = run_contiguous_folders(folder; res_dir = "/media/spin/anas2/data_res/dolphin/calf/calibration/D3/clicker",
+    overlay_radius=:in_annotations, default_color=:in_annotations, default_alpha=:in_annotations, default_shape=:in_annotations,
+    flag_rm_oldfile=false, flag_overlayimages=true, force_extension_type=".flac",
+    flag_return=true)
 
 
-## get clips
-res_dir = "/media/spin/anas2/data/calf/upload/results/results7_20251105_132919/Two-way_2males_06_10_2025"
+#~ get clips
+include("run_example.jl")
+set_device__ophk_acoustic_D3()
+res_dir = "/media/spin/anas2/data/calf/upload/results/results0_20251105_132919/Two-way_2males_06_10_2025"
 auda_file = "/media/spin/anas2/data/calf/upload/results/results7_20251105_132919/Two-way_2males_06_10_2025/combined_impulse__audacity.txt"
+auda_ct_file = "/media/spin/anas2/data/calf/upload/results/results7_20251106_150600/Two-way_2males_06_10_2025/combined_impulsetrain__audacity.txt"
 aufname = "/media/spin/anas2/data/calf/upload/results/results7_20251105_132919/Two-way_2males_06_10_2025/combined__251006_001_0001.WAV_251006_001_0002.WAV_251006_001_0003.WAV.flac"
 detection_px_file = "/media/spin/anas2/data/calf/upload/results/results7_20251105_132919/Two-way_2males_06_10_2025/detection_pixels.csv"
 delay_file = "/media/spin/anas2/data/calf/upload/results/results7_20251105_132919/Two-way_2males_06_10_2025/sync_delay.csv"
@@ -543,13 +593,141 @@ data, fs = readAudio(aufname)
 data = data[:, get_relevant_channels(rx_vect)]
 
 df = CSV.read(auda_file, DataFrame; header=false)
-t = round.(Int, df[!, 1] .* fs)
-windows = t .+ [window_impulsive[1] window_impulsive[end]] .+ 1
+t_inS = df[!, 1] .+ delays
+t = round.(Int, df[!, 1] .* fs) .+ 1
+windows = t .+ [window_impulsive[1] window_impulsive[end]]
+df_ct = CSV.read(auda_ct_file, DataFrame; header=false)
+t_ct = round.(Int, df_ct[!, 1:2] .* fs)
+windows_ct = t_ct |> Array
+@info "clicks in ct: $(sum(c_in_ct .|> length))"
+c_in_ct = Array{Array{Int}}(undef, size(windows_ct, 1))
+Threads.@threads for i in 1:size(windows_ct, 1)
+    c_in_ct[i] = findall(x -> x .>= windows_ct[i, 1] .&& x .<= windows_ct[i, 2], t)
+end
 
 data_filt = filter_simple(data, impulsive_band_pass; fs=fs); data=nothing;
 clips = extract_clips(data_filt, windows)
 clipsm = extract_clips_matrix(data_filt, windows)
 
+#~ cluster with fft
+# clipsm
+clips_max = mapblocks(clipsm; dims=3) do x
+    # @info size(x)
+    chan = mapslices(energy, x; dims=1) |> vec |> argmax
+    x[:, chan]
+end
+ffts, freqss = compute_rfft(clips_max, fs)#; type=:log)
+
+include("hdbscan.jl")
+this_window=nothing; ct_ind=nothing
+clusttering_method = :HDBSCAN # :OPTICS
+rgbs_alpha_offset = 0.2 # for color clicks plot
+
+# import PythonCall
+# sklearn = PythonCall.pyimport("sklearn.cluster")
+# hdbscan2 = sklearn.HDBSCAN(min_cluster_size=10)
+# hdbscan2.fit(R')
+# labels = hdbscan2.labels_
+# labels2 = pyconvert(Array, labels)
+# hdbscan2.probabilities_ #|> pyconvert(Array)
+# hdbscan2.__dict__
+hdbscan2.condensed_tree_
+hdbscan2.leaf_size
+hdbscan2.c
+
+labels = hdbscan(R', 3)#; labels .-= minimum(labels)
+
+ct_ind = 295
+this_window = c_in_ct[ct_ind]
+
+using PythonCall
+hdbscan2 = pyimport("hdbscan")
+
+hdb = hdbscan2.HDBSCAN(min_cluster_size=3)
+clusterer = hdb.fit(R')
+labels = pyconvert(Array, hdb.labels_)
+labels |> unique
+df_clustree = PyTable(clusterer.condensed_tree_.to_pandas()) |> DataFrame
+
+df_clus_singlelink = clusterer.single_linkage_tree_.to_pandas() |> PyTable |> DataFrame
+
+
+plt = pyimport("matplotlib.pyplot")
+hdb.condensed_tree_.plot()
+plt.show()
+clusterer.condensed_tree_.plot(select_clusters=true) #    selection_palette=sns.color_palette("deep", 8))
+
+clusterer.single_linkage_tree_.plot(cmap="viridis", colorbar=true)
+
+
+clusterer.single_linkage_tree_.plot()
+plt.show()
+Rs = R[:,1:52] + R[:,1:52]'
+hc = hclust(Rs, linkage=:single)
+plot(hc)
+
+D = rand(10, 10)
+D += D'
+hc = hclust(D, linkage=:single)
+plot(hc)
+
+using Clustering
+using Distances
+using StatsPlots
+using Random
+n = 40
+mat = zeros(Int, n, n)
+# create banded matrix
+for i in 1:n
+    last = minimum([i+Int(floor(n/5)), n])
+    for j in i:last
+        mat[i,j] = 1
+    end
+end
+# randomize order
+mat = mat[:, randperm(n)]
+dm = pairwise(Euclidean(), mat, dims=2)
+# normal ordering
+hcl1 = hclust(dm, linkage=:average)
+plot(
+    plot(hcl1, xticks=false),
+    Plots.heatmap(mat[:, hcl1.order], colorbar=false, xticks=(1:n, ["$i" for i in hcl1.order])),
+    layout=grid(2,1, heights=[0.2,0.8])
+    )
+
+
+
+outdir = "temp/$(clusttering_method)_ct2_minClus3_FFTnTime_colorclicks_88"
+mkpath(outdir)
+open( joinpath(outdir, "$(clusttering_method)_clusters.csv"), "w") do io
+    writedlm(io, ["c_ind" "time_inS" "ct_ind" "cluster_label"], ',')
+end
+for (ct_idx,now_window) in enumerate(c_in_ct)
+    ct_ind = ct_idx
+    this_window = now_window
+    include("cluster_plot.jl")
+    CSV.write(joinpath(outdir, "$(clusttering_method)_clusters.csv")),
+        DataFrame(c_ind=this_window, time_inS=t_inS[this_window], ct_ind=ct_ind, cluster_label=labels;
+        append=true)
+    open( joinpath(outdir, "$(clusttering_method)_clusters.csv"), "a") do io
+        writedlm(io, [this_window t_inS[this_window] (ones(size(this_window)) .* ct_idx) labels], ',')
+    end
+    # ct_ind==2 && break
+end
+
+#~ cluster all at once
+this_window = 1:size(ffts,2)
+
+#~ cluster results
+df_cluster = CSV.read("/media/spin/anas2/data/calf/upload/results/good_stuff/Two-way_2males_06_10_2025/hdbscan_clusters.csv", DataFrame)
+df_manual_behavior = CSV.read("/media/spin/anas2/data/calf/upload/results/good_stuff/Two-way_2males_06_10_2025/GG_06102025_lastcoop.csv", DataFrame)
+df_cluster[:, "Start (s)"] = df_cluster.time_inS
+
+df_cluster_manual = outerjoin(df_manual_behavior, df_cluster, on="Start (s)")
+sort!(df_cluster_manual, :"Start (s)")
+CSV.write("/media/spin/anas2/data/calf/upload/results/good_stuff/Two-way_2males_06_10_2025/df_cluster_manual.csv", df_cluster_manual)
+
+#~ get angles for different tdoa methods
 angs = detection2angle(data_filt, t, rx_vect[:,get_relevant_channels(rx_vect)]; fs=fs, window=window_impulsive, return_residual=true,
     getTDOA_func=default_getTDOA_func)
 angs_xcorr = detection2angle(data_filt, t, rx_vect[:,get_relevant_channels(rx_vect)]; fs=fs, window=window_impulsive, return_residual=true,
@@ -557,8 +735,8 @@ angs_xcorr = detection2angle(data_filt, t, rx_vect[:,get_relevant_channels(rx_ve
 p_pixels = angle2px(angs[1][1], fov_angle)
 p_pixels_xcorr = angle2px(angs_xcorr[1][1], fov_angle)
 
-Plots.scatter(angs[1][2]; alpha=0.01, markerstrokewidth=0)
-ylims!(0, 2e-8)
+# Plots.scatter(angs[1][2]; alpha=0.01, markerstrokewidth=0)
+# ylims!(0, 2e-8)
 
 df_px = CSV.read(detection_px_file, DataFrame)
 df_px[:, :frame] = round.(Int, df_px[:, :frame])
@@ -611,17 +789,36 @@ CSV.write(joinpath(res_dir, "impulse_best-residuals_tdoa_method.csv"), df_best_r
 df_best.radius .= 50; df_best.tag .= "m"; df_best.tag_name .= "mode"; df_best.type .= "square"
 CSV.write(joinpath(res_dir, "impulse_best-mode_pixel_position.csv"), df_best)
 
-i=63382 #40341;#39947; #39895; #106355 #106344 #40800
+# this_window = c_in_ct[295]
+i=98942 #76532 #63382 #40341;#39947; #39895; #106355 #106344 #40800
 # angs[1][1] # angles, angs[2][1] # residuals, angs[2] #tdoa
-
+i+=2
 plot(clips[i])
 tdoa = angs[2][i, :]
+vlinec!(tdoa .- 1)
 angs[1][1][i, :]
 angs[1][2][i] # residual
 p_pixels[i, :]
 
 # plot(data_filt[121789310 .+ (-1000:1000),:]) # buzz
 # plot(data_filt[256399551:256600000,:])
+
+tdoa_diff = maximum(tdoa) .- tdoa
+p=plot();
+for j in 1:length(tdoa)
+    plot!(p,[zeros(tdoa_diff[j],); clips[i][:,j]])
+end
+display(p)
+
+# upsampled
+resampling_factor = 4
+c2 = resample(clips[i], resampling_factor; dims=1)
+plot(c2)
+p=plot();
+for j in 1:length(tdoa)
+    plot!(p,[zeros(tdoa_diff[j]*resampling_factor,); c2[:,j]])
+end
+display(p)
 
 tdoa_diff = maximum(tdoa) .- tdoa
 p=plot();
@@ -676,7 +873,55 @@ CSV.write("temp/impulse_rawMaxEnergy.csv", Tables.table([df_px_im[!, :frame] p_p
     header=["frame", "x", "y", "radius", "tag", "tag_name", "type"]
 )
 
+#~ cluster with ff
+clipsm
+clips_max = mapblocks(clipsm; dims=3) do x
+    # @info size(x)
+    chan = mapslices(energy, x; dims=1) |> vec |> argmax
+    x[:, chan]
+end
 
+ffts, freqss = compute_rfft(clips_max)#; type=:log)
+win = 1:1_00
+plot(freqss, @view ffts[:,win .+ 100_000])
+plot(freqss, mapslices(norm_max, @view ffts[:,win .+ 100_000]; dims=2))
+
+function mapblocks_o(func, arr::AbstractArray{T} where T; dims=ndims(arr), kwargs...)
+    
+    out_arr = Array{Any}(undef,size(arr, dims))
+    # for (i, block) in enumerate(eachslice(arr; dims=dims))
+    #     out_arr[i] = func(block)
+    # end
+    Threads.@threads for i in 1:size(arr, dims)
+        @inbounds out_arr[i] = func(selectdim(arr, dims, i))
+    end
+
+    # cat(out_arr, dims=dims)
+    return out_arr
+end
+
+function mapblocks(func, arr::AbstractArray{T} where T; dims=ndims(arr), kwargs...)
+    
+    # out_arr = Array{Any}(undef,size(arr, dims))
+    # for (i, block) in enumerate(eachslice(arr; dims=dims))
+    #     out_arr[i] = func(block)
+    # end
+    out_arr = Array{typeof(first(arr))}(undef, size(func(selectdim(arr, dims, 1)))..., size(arr, dims))
+    outdim = ndims(out_arr)
+    Threads.@threads for i in 1:size(out_arr, outdim)
+        @inbounds selectdim(out_arr, outdim, i) .= func(selectdim(arr, dims, i))
+    end
+    # cat(out_arr, dims=dims)
+    return out_arr
+end
+
+a = mapblocks(copy, clipsm; dims=3)
+# a = mapblocks_o(copy, clipsm; dims=3);
+
+
+size(a), size(first(a))
+
+mapslices2
 ###########################################################################
 #~ run analysis on split video and audio files
 
@@ -780,3 +1025,43 @@ d_z=resample(data[:,1], fs2/fs)
 
 (data2[:,1] - data2[:,2]) .|> abs |> mean # both channels of video audio are identical
 ( norm_max(sum(data[:,3:5]; dims=2)) - norm_max(data[:,1])) .|> abs |> mean # sum of last 3 channels of audio are identical to the first two channels
+
+
+
+#~ burst pulse detection
+df_fname = "/media/spin/anas2/data/calf/upload/results/results8_20251128_190134/New device/combined_impulse__audacity.txt"
+df_clicks = CSV.read(df_fname, DataFrame; header=false)
+ct = df_clicks[!, 1]
+diff_ct = diff(ct)
+
+Plots.histogram(diff_ct; bins=0.0:0.001:0.1, xlabel="Inter-click interval (s)", ylabel="Counts", title="Inter-click interval histogram")
+
+# get indices of diff_ct between 0.001s and 0.003s
+burst_clicks_idx = findall(x -> x >= 0.001 && x <= 0.003, diff_ct) 
+burst_clicks_times = ct[burst_clicks_idx .+ 1] # +1
+Plots.scatter(burst_clicks_times; xlabel="Time (s)", ylabel="Burst pulse clicks", title="Burst pulse clicks over time", markerstrokewidth=0, alpha=0.5)
+# get burst pulse clicks grouped by bursts
+burst_pulses = Array{Array{Float64}}(undef, length(burst_clicks_idx))
+burst_pulses_trange = Array{Tuple{Float64, Float64}}(undef, 0)
+i = 1
+while i < length(burst_clicks_idx)
+    idx = burst_clicks_idx[i]
+    start_idx = idx
+    end_idx = start_idx
+    while end_idx < length(diff_ct) && diff_ct[end_idx + 1] <= 0.003
+        end_idx += 1
+    end
+    burst_pulses[i] = ct[start_idx:end_idx .+ 1] # +1
+    append!(burst_pulses_trange, (ct[start_idx], ct[end_idx + 1]))
+
+    i = end_idx + 1
+end
+@info "Detected $(length(burst_pulses)) burst pulses"
+@info "Number of burst pulses: $(length(burst_pulses_trange))"
+
+# export to audacity label file
+open( joinpath(dirname(df_fname), "burst_pulses__audacity.txt"), "w") do io
+    for (i, (start_t, end_t)) in enumerate(burst_pulses_trange)
+        writedlm(io, [start_t end_t "bp_$(i)"], '\t')
+    end
+end

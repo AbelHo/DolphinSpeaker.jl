@@ -34,24 +34,35 @@ end
 # rx = 0.5/sqrt(3) .* exp.(im.* deg2rad.([-30 90 -150]) )
 # rx_vect = [real(rx); imag(rx); zeros(1,3)]
 
-function detect_impulseNtonal_dir(aufname, res_dir; processed_skip_flag=false)
+# function skippable_func(fname, res_dir, processed_skip_flag, processed_skip_strict)
+#     @debug "processed_skip_flag: ", processed_skip_flag
+#     @debug "processed_skip_strict: ", processed_skip_strict
+#     @debug "skip_strick: ", any(fname2 -> startswith(fname2, splitext(aufname)[1]*"_"), readdir(res_dir))
+#     @debug "startswith: ", splitext(aufname)[1]*"_"
+#     return processed_skip_flag && isfile(joinpath(res_dir, fname)) && (@info("___skipped!..."); return true) ||
+#            processed_skip_flag && !processed_skip_strict && any(fname2 -> startswith(fname2, splitext(fname)[1]*"_"), readdir(res_dir)) && (@info("___skipped!..."); return true)
+# end
+
+function detect_impulseNtonal_dir(aufname, res_dir; processed_skip_flag=false, kwargs...)
     if isdir(aufname)
         _,files = split_vid_au(aufname)
-        return process_one_file.(files, Ref(res_dir); magnetic_declination_deg=9, overlay_flag=false, processed_skip_flag=processed_skip_flag)
+        return process_one_file.(files, Ref(res_dir); magnetic_declination_deg=9, overlay_flag=false, processed_skip_flag=processed_skip_flag, kwargs...)
     else
-        return detect_impulseNtonal(aufname, res_dir; processed_skip_flag=processed_skip_flag)
+        return detect_impulseNtonal(aufname, res_dir; processed_skip_flag=processed_skip_flag, kwargs...)
     end
 end
 
-function detect_impulseNtonal(aufname::String, res_dir; kwargs...)
+function detect_impulseNtonal(aufname::String, res_dir; processed_skip_flag=false, processed_skip_strict=true, kwargs...)
+    # check if already processed
+    processed_skip_flag && !processed_skip_strict && any(fname2 -> startswith(fname2, splitext(aufname|>basename)[1]*"_"), readdir(res_dir)) && (@info("___skipped!..."); return nothing)
     data, fs, _, opt, timestamp = readAudio(aufname)
-    detect_impulseNtonal((aufname, data, fs, timestamp), res_dir; opt=opt, kwargs...)
+    detect_impulseNtonal((aufname, data, fs, timestamp), res_dir; opt=opt, processed_skip_flag=processed_skip_flag, processed_skip_strict=processed_skip_strict, kwargs...)
 end
 function detect_impulseNtonal(aufname_data_fs_timestamp::Tuple, res_dir=nothing;
     threshold_tonal = threshold_tonal, freq_maxbandwidth = freq_maxbandwidth, freq_width_db=freq_width_db,
     percent_quiet = percent_quiet, tonal_band_pass=tonal_band_pass,
     impulsive_band_pass=impulsive_band_pass,
-    processed_skip_flag = false, opt=nothing,
+    processed_skip_flag = false, processed_skip_strict=true, opt=nothing,
     rx_vect=rx_vect, ref_channel=ref_channel,
     detect_impulse=detect_impulse, detect_tonal=detect_tonal, detect_boat=detect_boat, detect_impulsetrain=detect_impulsetrain,
     kwargs...
@@ -61,8 +72,20 @@ function detect_impulseNtonal(aufname_data_fs_timestamp::Tuple, res_dir=nothing;
     fname = splitext(aufname)[1]*"_t"*string(threshold_impulsive)*"_d"*string(dist_impulsive) *"__cps"*string((click_train_minlen+1)/click_train_check_interval)*  ".jld2" |> basename
     @debug fname
     @debug "res_dir: ", res_dir
+
+    # # check if already processed
+    # skippable_func(fname, res_dir, processed_skip_flag, processed_skip_strict) && return nothing
+    
+    @debug "processed_skip_flag: ", processed_skip_flag
+    @debug "processed_skip_strict: ", processed_skip_strict
+    @debug "skip_strict: ", any(fname2 -> startswith(fname2, splitext(aufname)[1]*"_"), readdir(res_dir))
+    @debug "startswith: ", splitext(aufname)[1]*"_"
+
+
     isnothing(res_dir) || mkpath(res_dir)
     processed_skip_flag && isfile(joinpath(res_dir, fname)) && (@info("___skipped!..."); return nothing)
+    processed_skip_flag && !processed_skip_strict && any(fname2 -> startswith(fname2, splitext(aufname|>basename)[1]*"_"), readdir(res_dir)) && (@info("___skipped!..."); return nothing)
+    
     
     # data, fs, _, opt, timestamp = readAudio(aufname)
     isempty(data) && (@warn("___skipped!^^^^^^^Empty Data..........."); return nothing)
@@ -94,6 +117,7 @@ function detect_impulseNtonal(aufname_data_fs_timestamp::Tuple, res_dir=nothing;
         end
         # tdoas = get_tdoa_raw(data_filt, res.pind_good ; window=window_impulsive, ref_channel=ref_channel)
         res_impulsetrain = detect_impulsetrain(res_filt, res_dir)
+        GC.gc()
     end
 
 
@@ -117,6 +141,7 @@ function detect_impulseNtonal(aufname_data_fs_timestamp::Tuple, res_dir=nothing;
                     percent_quiet=percent_quiet)
 
         res_tonalsegment = combine_detections_conv(data, res_tonal; res_dir=res_dir)
+        GC.gc()
     end
 
     res_boat = detect_boat((aufname,data,fs), res_dir)
