@@ -113,6 +113,7 @@ function set_device__calf_hk()
     global tonal_band_pass = [2500, 24000]
 
     global rx = 0.4/sqrt(3) .* exp.(im.* deg2rad.([150 -90 30]) ) # calf_hk
+    global rx_vect = [real(rx); imag(rx); zeros(1,3)]
     global imsize=(2160, 3840)
     global fov_angle=[54,34,0]
 
