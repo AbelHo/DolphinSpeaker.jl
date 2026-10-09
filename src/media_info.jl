@@ -660,6 +660,8 @@ Return
 Side effects and cleanup
 - Creates a temporary file when analyzing audio with FFmpeg's `astats`, and
   removes it after parsing.
+- Stages the muxed MP4 in a temporary file and promotes it to the final path
+  only after FFmpeg completes successfully.
 - May create a concatenated temporary audio file when multiple audio inputs are
   provided; that temporary file is removed after muxing.
 - May delete the original video file if `flag_rm_oldfile` is true and the new
@@ -695,12 +697,21 @@ function combine_vidau(newvidname, aufname_list; vidau_syncdiff=0, MERGE_VID_AU_
     else
         aufname = aufname_list
     end
-    
+
+    output_suffix = MERGE_VID_AU_DYNAMIC_NORM ? "_DYnormalized-audio.mp4" : "_normalized-audio.mp4"
+    output_path = string(newvidname, output_suffix)
+    # Preserve yuv420p output; the overlay video may use yuv444p.
+    # Limit filter workers to avoid the observed FFmpeg filter-thread segmentation fault.
+    # Keep incomplete MP4s out of the final output path if FFmpeg fails.
+    temp_output_path = tempname(dirname(output_path); cleanup=false) * ".mp4"
+
     if MERGE_VID_AU_DYNAMIC_NORM
         if isnothing(spectro_vidpath)
-            cmd = `$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_DYnormalized-audio.mp4"`
+            cmd = `$ffmpeg -filter_threads 1 -filter_complex_threads 1 -y -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$temp_output_path"`
+			cmd = `$ffmpeg -y -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$temp_output_path"`
         else
-            cmd = `$ffmpeg -i "$newvidname" -i "$spectro_vidpath" -itsoffset $vidau_syncdiff -i "$aufname" -filter_complex "[0:v][1:v]vstack=inputs=2[vout]" -map "[vout]" -map 2:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_DYnormalized-audio.mp4"`
+            cmd = `$ffmpeg -filter_threads 1 -filter_complex_threads 1 -y -i "$newvidname" -i "$spectro_vidpath" -itsoffset $vidau_syncdiff -i "$aufname" -filter_complex "[0:v][1:v]vstack=inputs=2[vout]" -map "[vout]" -map 2:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$temp_output_path"`
+			cmd = `$ffmpeg -y -i "$newvidname" -i "$spectro_vidpath" -itsoffset $vidau_syncdiff -i "$aufname" -filter_complex "[0:v][1:v]vstack=inputs=2[vout]" -map "[vout]" -map 2:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$temp_output_path"`
         end
         # println(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 -f matroska "$newvidname""_DYnormalized-audio.mkv"`)
         # output = @ffmpeg_env run(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_DYnormalized-audio.mp4"`)
@@ -722,24 +733,32 @@ function combine_vidau(newvidname, aufname_list; vidau_syncdiff=0, MERGE_VID_AU_
         # m = match(r"max_volume: (.*) dB", ss)
         # max_volume = m !== nothing ? parse(Float64, m.captures[1]) : nothing
         if isnothing(spectro_vidpath)
-            cmd = `$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$newvidname""_normalized-audio.mp4"`
+            cmd = `$ffmpeg -filter_threads 1 -filter_complex_threads 1 -y -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$temp_output_path"`
+			cmd = `$ffmpeg -y -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$temp_output_path"`
         else
-            cmd = `$ffmpeg -i "$newvidname" -i "$spectro_vidpath" -itsoffset $vidau_syncdiff -i "$aufname" -filter_complex "[0:v][1:v]vstack=inputs=2[vout]" -map "[vout]" -map 2:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$newvidname""_normalized-audio.mp4"`
+            cmd = `$ffmpeg -filter_threads 1 -filter_complex_threads 1 -y -i "$newvidname" -i "$spectro_vidpath" -itsoffset $vidau_syncdiff -i "$aufname" -filter_complex "[0:v][1:v]vstack=inputs=2[vout]" -map "[vout]" -map 2:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$temp_output_path"`
+			cmd = `$ffmpeg -y -i "$newvidname" -i "$spectro_vidpath" -itsoffset $vidau_syncdiff -i "$aufname" -filter_complex "[0:v][1:v]vstack=inputs=2[vout]" -map "[vout]" -map 2:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$temp_output_path"`
         end
     end
     println(cmd)
     try
-        output = @ffmpeg_env run(cmd)
-    catch err
-        @warn "Combining video and audio failed with Julia's FFMPEG, trying again with system call"
-        output = run(`$cmd -y`)
+        try
+            @ffmpeg_env run(cmd)
+        catch err
+            @warn "Combining video and audio failed with Julia's FFMPEG, trying again with system call" exception=(err, catch_backtrace())
+            run(cmd)
+        end
+        mv(temp_output_path, output_path; force=true)
+    catch
+        rm(temp_output_path; force=true)
+        rethrow()
     end
 
-    isfile("$newvidname"*"_normalized-audio.mp4") && flag_rm_oldfile && rm(newvidname) # delete video without audio
-    
+    isfile(output_path) && flag_rm_oldfile && rm(newvidname) # delete video without audio
+
     flag_rm_concataudio && aufname_list isa Array && length(aufname_list) >1 && rm(aufname) # delete concatenated audio file
 
-    return "$newvidname"*"_normalized-audio.mp4"
+    return output_path
     # if aufname_old isa String; rm(aufname); end
 end
 
