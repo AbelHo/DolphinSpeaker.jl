@@ -560,7 +560,7 @@ function concat_media(filelist::Vector{String}, outputfile_dir::String;
 	# use the concat demuxer as input 0 and add the first file as input 1,
 	# then copy streams from input 0 and copy metadata from input 1
 	firstfile = filelist[1]
-	cmd = `ffmpeg -hide_banner -loglevel error -f concat -safe 0 -i $tmpfile -i $firstfile -c copy -map 0 -map_metadata 1 $outputfile`
+	cmd = `ffmpeg -hide_banner -loglevel error -f concat -safe 0 -i $tmpfile -i $firstfile -c copy -map 0 -map_metadata 1 -rf64 auto $outputfile`
 	# _cmd = `ffmpeg -hide_banner -loglevel error -f concat -safe 0 -i $tmpfile -i $firstfile -c copy -map 0 -map_metadata 1 -map_chapters 1 -movflags use_metadata_tags $outputfile`
 	# remux if requested extension differs from input
 	if !isnothing(force_extension_type)
@@ -569,7 +569,7 @@ function concat_media(filelist::Vector{String}, outputfile_dir::String;
 		# startswith(newext, ".") || (newext = "." * newext)
 		if force_extension_type != ext
 			outputfile = splitext(outputfile)[1] * force_extension_type
-			cmd = `ffmpeg -hide_banner -loglevel error -f concat -safe 0 -i $tmpfile -i $firstfile -map 0 -map_metadata 1 $outputfile`
+			cmd = `ffmpeg -hide_banner -loglevel error -f concat -safe 0 -i $tmpfile -i $firstfile -map 0 -map_metadata 1 -rf64 auto $outputfile`
 			@info "Forced Ext: $cmd"
 			# `ffmpeg -hide_banner -loglevel error -f concat -safe 0 -i $tmpfile -i $firstfile -c copy -map 0 -map_metadata 1 $new_outputfile`
 			# outputfile = new_outputfile
@@ -726,6 +726,8 @@ function combine_vidau(newvidname, aufname_list; vidau_syncdiff=0, MERGE_VID_AU_
         run(cmd)
         mv(temp_output_path, output_path; force=true)
     catch
+		warning("Trying again after failure......................")
+		run(cmd)
         rm(temp_output_path; force=true)
         rethrow()
     end
