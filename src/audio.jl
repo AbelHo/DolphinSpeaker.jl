@@ -93,8 +93,8 @@ function readAudio(aufname; fname2timestamp_func=DEFAULT_fname2timestamp_func,
             if isfile( splitext(aufname)[1][1:end-1]*"2.mat" )
                 try
                     @debug("Loading 2nd File: "*splitext(aufname)[1][1:end-1]*"2.mat")
-                    d = load(splitext(aufname)[1][1:end-1]*"2.mat")
-                    data = vcat(data, d["data"])
+                    d, _, _, _, _ = readAudio(splitext(aufname)[1][1:end-1]*"2.mat") # d = load(splitext(aufname)[1][1:end-1]*"2.mat")
+                    data = vcat(data, d)
                 catch err
                     @warn "Failed to open 2nd File.............."
                     @warn err
