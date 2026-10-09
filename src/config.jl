@@ -165,6 +165,7 @@ end
 
 function set_device__ophk_acoustic_D3()
     set_device__ophk_acoustic_D3_clicker()
+    global FILE_device_ID = "ophk_acoustic_D3.0.0"
     global ref_channel = 3
 
     global impulsive_band_pass = [5000, Inf] #fs/2*.98]
