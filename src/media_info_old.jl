@@ -625,9 +625,8 @@ Behavior
   4. Produces an output file appended with `_normalized-audio.mp4`.
 - The muxing command includes `-itsoffset vidau_syncdiff` to shift the audio
   start relative to the video by `vidau_syncdiff` seconds.
-- Runs one video render/mux with the bundled FFmpeg executable and its library
-  environment. Filter workers are limited to one to mitigate the observed
-  filter-thread crash; a failed render is not automatically repeated.
+- The function attempts to run FFmpeg via the `@ffmpeg_env` wrapper and falls
+  back to a system call if that invocation fails.
 
 Arguments
 - newvidname::AbstractString
@@ -640,8 +639,8 @@ Keyword arguments
 	Time offset (in seconds) to apply to the audio stream relative to the
 	video when muxing (`-itsoffset`).
 - MERGE_VID_AU_DYNAMIC_NORM::Bool=false
-	If true, use FFmpeg's loudnorm filter in single-pass dynamic mode
-	instead of a simple peak-based volume adjustment.
+	If true, use FFmpeg's loudnorm filter (two-pass style loudness
+	normalization) instead of a simple peak-based volume adjustment.
 - rx_vect
 	Receiver/channel selection vector used by `get_relevant_channels` to pick
 	which channels' peaks are considered when computing normalization gain.
@@ -661,19 +660,18 @@ Return
 Side effects and cleanup
 - Creates a temporary file when analyzing audio with FFmpeg's `astats`, and
   removes it after parsing.
-- Stages the muxed MP4 in a temporary file and promotes it to the final path
-  only after FFmpeg completes successfully.
 - May create a concatenated temporary audio file when multiple audio inputs are
   provided; that temporary file is removed after muxing.
 - May delete the original video file if `flag_rm_oldfile` is true and the new
   output file exists.
 - Prints the FFmpeg command to stdout before running it.
-- Relies on external functions: `ffmpeg()` (bundled executable and environment),
-  `concat_media`, and `get_relevant_channels`. These must be
+- Relies on external functions/variables: `ffmpeg` (binary or command wrapper),
+  `@ffmpeg_env`, `concat_media`, and `get_relevant_channels`. These must be
   available in the calling scope.
 
 Errors
-- Propagates FFmpeg errors after removing the incomplete temporary MP4.
+- Propagates errors from FFmpeg if both the primary (`@ffmpeg_env`) and the
+  fallback system invocation fail.
 - If `aufname_list` is not a string or array of strings, behavior is undefined.
 
 Example
@@ -688,53 +686,61 @@ Example
 #~ combine video and audio
 function combine_vidau(newvidname, aufname_list; vidau_syncdiff=0, MERGE_VID_AU_DYNAMIC_NORM=false, rx_vect=rx_vect, 
 	flag_rm_oldfile=false, flag_rm_concataudio=false, spectro_vidpath=nothing, kwargs...) #TODO: swap audio channel according to rx_vect location to correspond Left, Right, Center
-    aufname = aufname_list isa Array ?
-        (length(aufname_list) == 1 ? aufname_list[1] : concat_media(aufname_list, dirname(newvidname); kwargs...)) : aufname_list
-
-    output_suffix = MERGE_VID_AU_DYNAMIC_NORM ? "_DYnormalized-audio.mp4" : "_normalized-audio.mp4"
-    output_path = string(newvidname, output_suffix)
-    # Keep incomplete MP4s out of the final output path if FFmpeg fails.
-    temp_output_path = tempname(dirname(output_path); cleanup=false) * ".mp4"
-    # Select the bundled executable explicitly, with its matching library environment.
-    ffmpeg_cmd = ffmpeg()
-
-    if MERGE_VID_AU_DYNAMIC_NORM
-        audio_filter = "loudnorm=I=-16:LRA=11:TP=-1.5"
-    else
-        # Analyze only the audio for peak normalization; the video is rendered once.
-        tempfile = tempname()
-        ss = try
-            read(pipeline(`$ffmpeg_cmd -i $aufname -vn -af astats=metadata=1 -f null /dev/null`; stderr = tempfile))
-            read(tempfile, String)
-        finally
-            rm(tempfile; force=true)
+    if aufname_list isa Array
+        if length(aufname_list)==1
+            aufname = aufname_list[1]
+        else
+            aufname = concat_media(aufname_list, dirname(newvidname); kwargs...)
         end
-        peak_db_list = [parse(Float64, m.captures[1]) for m in eachmatch(r"Peak level dB: (.*)", ss)]
+    else
+        aufname = aufname_list
+    end
+    
+    if MERGE_VID_AU_DYNAMIC_NORM
+        if isnothing(spectro_vidpath)
+            cmd = `$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_DYnormalized-audio.mp4"`
+        else
+            cmd = `$ffmpeg -i "$newvidname" -i "$spectro_vidpath" -itsoffset $vidau_syncdiff -i "$aufname" -filter_complex "[0:v][1:v]vstack=inputs=2[vout]" -map "[vout]" -map 2:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_DYnormalized-audio.mp4"`
+        end
+        # println(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 -f matroska "$newvidname""_DYnormalized-audio.mkv"`)
+        # output = @ffmpeg_env run(`$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af loudnorm=I=-16:LRA=11:TP=-1.5 "$newvidname""_DYnormalized-audio.mp4"`)
+        # run(`ffmpeg -i "$newvidname" -i "$aufname" -map 0:v -map 1:a -vcodec copy -af loudnorm=I=-16:LRA=11:TP=-1.5 -f matroska "$newvidname""_normalized-audio.mkv"`)
+    else
+        # Get max volume and normalize
+        tempfile = tempname()
+        # read(pipeline(`ffmpeg -i $aufname -filter:a volumedetect -f null /dev/null`; stderr = tempfile))
+        @ffmpeg_env read(pipeline(`ffmpeg -i $aufname -af astats=metadata=1 -f null /dev/null`; stderr = tempfile))
+
+        ss = read(tempfile, String)
+        rm(tempfile)
+        m = eachmatch(r"Channel: (\d+)", ss)
+        channel_list = [parse(Int, m.captures[1]) for m in m]
+        m = eachmatch(r"Peak level dB: (.*)", ss)
+        peak_db_list = [parse(Float64, m.captures[1]) for m in m]
         norm_gain = -maximum(peak_db_list[get_relevant_channels(rx_vect)])
 
-        audio_filter = "volume=$(norm_gain)dB"
+        # m = match(r"max_volume: (.*) dB", ss)
+        # max_volume = m !== nothing ? parse(Float64, m.captures[1]) : nothing
+        if isnothing(spectro_vidpath)
+            cmd = `$ffmpeg -i "$newvidname" -itsoffset $vidau_syncdiff -i "$aufname" -map 0:v -map 1:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$newvidname""_normalized-audio.mp4"`
+        else
+            cmd = `$ffmpeg -i "$newvidname" -i "$spectro_vidpath" -itsoffset $vidau_syncdiff -i "$aufname" -filter_complex "[0:v][1:v]vstack=inputs=2[vout]" -map "[vout]" -map 2:a -pix_fmt yuv420p -af "volume=$(norm_gain)dB" "$newvidname""_normalized-audio.mp4"`
+        end
     end
-
-    # Preserve yuv420p output; the overlay video may use yuv444p.
-    # Limit both simple and complex filter workers to mitigate the prior crash.
-    video_inputs = isnothing(spectro_vidpath) ? `-i $newvidname` : `-i $newvidname -i $spectro_vidpath`
-    stream_maps = isnothing(spectro_vidpath) ? `-map 0:v -map 1:a` :
-        `-filter_complex "[0:v][1:v]vstack=inputs=2[vout]" -map "[vout]" -map 2:a`
-    cmd = `$ffmpeg_cmd -filter_threads 1 -filter_complex_threads 1 -y $video_inputs -itsoffset $vidau_syncdiff -i $aufname $stream_maps -pix_fmt yuv420p -af $audio_filter $temp_output_path`
-    println(Cmd(cmd.exec)) # Print the command without its environment variables.
+    println(cmd)
     try
-        run(cmd)
-        mv(temp_output_path, output_path; force=true)
-    catch
-        rm(temp_output_path; force=true)
-        rethrow()
+        output = @ffmpeg_env run(cmd)
+    catch err
+        @warn "Combining video and audio failed with Julia's FFMPEG, trying again with system call"
+        output = run(`$cmd -y`)
     end
 
-    isfile(output_path) && flag_rm_oldfile && rm(newvidname) # delete video without audio
-
+    isfile("$newvidname"*"_normalized-audio.mp4") && flag_rm_oldfile && rm(newvidname) # delete video without audio
+    
     flag_rm_concataudio && aufname_list isa Array && length(aufname_list) >1 && rm(aufname) # delete concatenated audio file
 
-    return output_path
+    return "$newvidname"*"_normalized-audio.mp4"
+    # if aufname_old isa String; rm(aufname); end
 end
 
 """
