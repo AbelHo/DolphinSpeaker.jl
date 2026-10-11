@@ -564,9 +564,32 @@ res = run_contiguous_folders(folder;
     )
 
 res=nothing; GC.gc()
+folder = "/media/spin/anas2/data/calf/upload/Two-way/Two-way_2males_30_09_2025/New device"
 res = run_contiguous_folders(folder; res_dir = "/media/spin/anas2/data/calf/upload/results/results2_$(Dates.format(now(), "yyyymmdd_HHMMSS"))")
 
+folder = "/media/spin/anas2/data/calf/upload/Ball-Ball/5females_07102026"
+res_dir = "/media/spin/anas2/data/calf/upload/results/tmp_20261007/$(Dates.format(now(), "yyyymmdd_HHMMSS"))"
+res = run_contiguous_folders(folder; res_dir = res_dir)
 
+folder = "/media/spin/anas2/data/calf/upload/TT-shape/TDA_06022026/B"
+# res_dir = res_dir * "TT-shape_TDA_06022026"
+res = run_contiguous_folders(folder; res_dir = res_dir)
+
+folder = "/media/spin/anas2/data/calf/upload/TT-shape/TDA_06022026/A"
+res_dir = "/media/spin/anas2/data/calf/upload/results/tmp_20261007/20261007_161928/TT-shape_TDA_06022026"
+res = run_contiguous_folders(folder; res_dir = res_dir, flag_overlayvideo=false)
+
+#~ old device
+set_device__calf_hk()
+mat2flac_check("/media/spin/anas2/data/calf/upload/TT-shape/TDA_06022026/Old"; outfilepath=:inplace)
+process_folder("/media/spin/anas2/data/calf/upload/TT-shape/TDA_06022026/Old"; outfolder="/media/spin/anas2/data/calf/upload/results/tmp_20261007/20261007_161928/TT-shape_TDA_06022026/Old", skipdone=true)
+
+#####################
+folder = "/media/spin/anas2/data/calf/upload/Two-way/Two-way_2males_06_10_2025/New_device"
+res_dir = "/media/spin/anas2/data/calf/upload/results/tmp_20261007/Two-way_2males_06_10_2025"
+res = run_contiguous_folders(folder; res_dir = res_dir)   #, flag_overlayvideo=false)
+
+#################################
 
 # clicker calibration
 set_device__ophk_acoustic_D3_clicker()
