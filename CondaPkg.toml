@@ -1,0 +1,6 @@
+channels = ["rapidsai", "nvidia", "conda-forge"]
+
+[deps]
+pandas = ""
+matplotlib = ""
+hdbscan = ""
