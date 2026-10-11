@@ -6,10 +6,12 @@ using CategoricalArrays
 using MLJScikitLearnInterface
 
 using PythonCall
+using DataFrames
+hdbscan2 = pyimport("hdbscan")
 
 
 function hdbscan_o(X; min_cluster_size=3, kwargs...) #
-    hdb = hdbscan2.HDBSCAN(min_cluster_size=3, kwargs...)
+    hdb = hdbscan2.HDBSCAN(;min_cluster_size=3, kwargs...)
     clusterer = hdb.fit(X)
     labels = pyconvert(Array, hdb.labels_)
     # labels |> unique
