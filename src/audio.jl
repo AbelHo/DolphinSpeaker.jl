@@ -128,9 +128,11 @@ function readAudio(aufname; fname2timestamp_func=DEFAULT_fname2timestamp_func,
     return data, Int(fs), nbits, opt, timestamp
 end
 
+FNAME2DT_DATE__TIME_SKIP_FRONT = 0
+
 simple_fname2dt(aufname) = DateTime(basename(aufname)[1:17], dateformat"yyyymmdd_H.M.S")
 fname2dt_dashdot(aufname) = DateTime(basename(aufname)[1:19], dateformat"yyyy-mm-dd_H.M.S")
-fname2dt_date_time(aufname; skip_front=0) = DateTime(basename(aufname)[(1:15) .+ skip_front], dateformat"yyyymmdd_HHMMSS")
+fname2dt_date_time(aufname; skip_front=FNAME2DT_DATE__TIME_SKIP_FRONT) = DateTime(basename(aufname)[(1:15) .+ skip_front], dateformat"yyyymmdd_HHMMSS")
 fname2dt_soundtrap(aufname) = DateTime("20"*basename(aufname)[findfirst(".", basename(aufname))[1] .+ (1:12)], dateformat"yyyymmddHHMMSS") #DateTime("20"*basename(aufname)[6:17], dateformat"yyyymmddHHMMSS")
 fname2dt_ls1 = fname2dt_date_time
 fname2dt_zoomf6(aufname) = DateTime(get_ffmpeg_metadata(aufname)["format"]["tags"]["date"] *"T"* get_ffmpeg_metadata(aufname)["format"]["tags"]["creation_time"]) #, dateformat"yyyy-mm-ddTHH:MM:SS")
