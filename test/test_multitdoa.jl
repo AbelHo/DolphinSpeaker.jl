@@ -49,4 +49,52 @@ true_tdoa(az, el) = (sv = [sind(az)*cosd(el) sind(el) cosd(az)*cosd(el)]; dt = v
 		@test flagged == Bool[0, 0, 0, 0, 1]
 		@test flag_clicks(T, [0.0, NaN, 0.0, 0.0], RX, FS)[1] == Bool[0, 1, 0, 0]
 	end
+
+	# simulated machine: `total` units of RAM, `base` held by the idle process, `other` by other programs;
+	# a running item holds its weight. Capacity = total - other - base - margin, whatever is running
+	function simulate(weights; total=20.0, base=1.0, other=3.0, margin=1.0, kwargs...)
+		lk = ReentrantLock()
+		held, peak, running, maxrunning, maxheld = Ref(0.0), Ref(base), Ref(0), Ref(0), Ref(0.0)
+		done = Int[]
+		rss() = base + held[]
+		probes = (; available=() -> total - other - rss(), rss=rss, peak=() -> peak[],
+			reset_peak=() -> (peak[] = rss(); true), release=() -> nothing)
+		function f(i)
+			lock(lk) do
+				held[] += weights[i]; running[] += 1
+				peak[] = max(peak[], rss()); maxrunning[] = max(maxrunning[], running[]); maxheld[] = max(maxheld[], held[])
+			end
+			sleep(0.05)
+			lock(lk) do
+				held[] -= weights[i]; running[] -= 1; push!(done, i)
+			end
+		end
+		out = run_memory_adaptive(f, length(weights); weights=weights, margin_bytes=margin, safety=1.0, poll_s=0.01, probes=probes, kwargs...)
+		return (; out..., maxrunning=maxrunning[], maxheld=maxheld[], done=sort(done))
+	end
+
+	@testset "run_memory_adaptive" begin
+		w = [5.0, 4, 4, 3, 3, 2]
+		# capacity 15: the largest runs alone first, then 4+4+3+3 = 14 together, and the last (2) would exceed 15 and waits
+		r = simulate(w)
+		@test r.done == 1:6
+		@test r.per_weight ≈ 1.0
+		@test r.maxheld == 14
+		@test r.maxrunning == 4
+		# other programs hold more RAM: capacity 4 -> one item at a time, all still processed
+		r = simulate(w; other=14.0)
+		@test r.done == 1:6
+		@test r.maxrunning == 1
+		# a cap on the items in flight (Inf = no cap)
+		@test simulate(w; max_parallel=2).maxrunning == 2
+		@test simulate(w; max_parallel=Inf, other=0.0).maxrunning >= 4
+		@test simulate(w; max_parallel=1).maxrunning == 1
+		# no measurement: everything starts at once
+		r = simulate(w; adaptive=false)
+		@test r.done == 1:6 && r.maxrunning == 6
+		@test simulate(w; adaptive=false, max_parallel=3).maxrunning == 3
+		# one item, and no items
+		@test simulate([2.0]).done == [1]
+		@test run_memory_adaptive(identity, 0).max_concurrent == 0
+	end
 end

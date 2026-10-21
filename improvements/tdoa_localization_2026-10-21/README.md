@@ -202,6 +202,22 @@ julia --project=. improvements/tdoa_localization_2026-10-21/scripts/check_multit
 julia --project=. -t auto test/test_multitdoa.jl
 ```
 
+**Parallel files and memory.** Processing a 2 GB WAV (745 s) peaked at 11 GB when it ran alone. With all three files at once, the first full run was killed by the kernel's out-of-memory killer (`Out of memory: Killed process … julia … 47.5 GB`) while other programs held about 40 GB. `run_contiguous_folders_multitdoa` therefore schedules the files with `run_memory_adaptive` (src/run_multitdoa.jl):
+1. The longest file runs alone first, and its peak resident memory is measured (the kernel's `VmHWM`, reset just before). That, times `memory_safety` (1.25) and scaled by audio duration, is the estimate for each file.
+2. Another file starts only while `sum(estimates of running files) + estimate(new) <= capacity`, where `capacity = (RSS − idle RSS) + MemAvailable − margin`. Capacity does not move while a running file ramps up its memory, and it follows other programs using or freeing RAM. One file always runs, whatever the estimate says.
+3. After each file, a full GC and `malloc_trim` return the memory to the OS.
+
+| keyword | default | meaning |
+|---|---|---|
+| `max_parallel_files` | `nothing` | cap on files in flight; `nothing` or `Inf` = no cap (RAM decides) |
+| `adaptive_memory` | `true` | `false` = start up to `max_parallel_files` files at once, no measurement (the old behaviour, risks OOM) |
+| `memory_margin_gb` | `nothing` | RAM to leave free; default is the larger of 4 GiB and 10% of total RAM |
+| `memory_safety` | `1.25` | multiplier on the measured per-file peak |
+
+Measured on `New_device` with the defaults: file 0001 alone peaked at 11.0 GB (estimate 13.7 GB for each 745 s file); files 0002 and 0003 then ran together, Julia reached 28.5 GB in total, system `MemAvailable` never fell below 36.8 GB (margin 9.4 GB), and the run took about 6 minutes. The outputs are byte-identical to the sequential run.
+
+Limits: `MemAvailable` does not know about container (cgroup) limits, and the estimate assumes memory grows in proportion to audio duration. The scheduler is unit-tested against a simulated machine (`test/test_multitdoa.jl`).
+
 **Results**, `New_device` 0001–0003 (135,200 clicks; share of points inside the 2740 × 1520 frame):
 
 | file | flagged | inside frame |
