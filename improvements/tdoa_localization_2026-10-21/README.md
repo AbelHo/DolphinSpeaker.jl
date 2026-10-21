@@ -168,3 +168,62 @@ The full table (18 methods) is in `results/report_251006_001_0001.txt`. The figu
 8. **Front/back ambiguity** can only be resolved with a fourth, out-of-plane hydrophone.
 9. **Run the comparison on files 0002 and 0003** (and other sessions); these conclusions are based on one file.
 10. **Test infrastructure.** `test/runtests.jl` is still the PkgTemplates suite (see `reviews/repository_audit.md`). Replace it with a DolphinSpeaker runner that includes `test/test_*.jl`, so `test_tdoa.jl` runs under `Pkg.test()`.
+
+## Follow-up 2026-10-22: one webui overlay CSV per TDOA method from the real pipeline
+
+Plan: `reviews/plans/multitdoa-webui-csvs_2026-10-22.md` (first draft: `..._v0.md`). The aim is to compare the TDOA methods in the real-time overlay viewer, without rendering video.
+
+**What was added** (no existing function was changed)
+- `src/run_multitdoa.jl`:
+  - `run_contiguous_folders_multitdoa(folder; res_dir, closure_max=1.0)` has the same flow as `run_contiguous_folders` (A/V sync, combined video, threaded detection, audacity labels) but writes one webui CSV per method and no overlay video.
+  - `process_detections_multitdoa` calls the unchanged `process_detections` for Impulse1–4 and computes Impulse5/6 from the same filtered data.
+  - `impulse_variant_rows` and `flag_clicks` are the pure helpers.
+- `src/run_syncVid.jl` now includes it and calls the new runner on `New_device` (files 0001–0003 as one set). `res_dir` ends in `_multitdoa`, so the earlier results are not overwritten.
+- `test/test_multitdoa.jl` (14 tests, synthetic only) and `scripts/check_multitdoa_outputs.jl`.
+
+**Output files** in `<res_dir>/<folder name>/`. Each one is a drop-in replacement for `detection_pixels__color255_webui.csv` (that method's impulse rows plus the tonal rows):
+
+| file suffix | method | notes |
+|---|---|---|
+| `Impulse1_minmax` | `get_tdoa_minmax` (current overlay) | NelderMead |
+| `Impulse2_xcorrMaxEnergy` | `get_tdoa_raw_MaxEnergyRefChannel` | window -130:130 |
+| `Impulse3_envelopeFiltered` | `get_tdoa_envelope_filtered` | |
+| `Impulse4_xcorrMaxPeak` | `get_tdoa_raw_MaxPeakRefChannel` | |
+| `Impulse5_gccPhatGuided` | `get_tdoa_gcc`, PHAT, `guide=:envelope` | `tdoa2dir_ls` |
+| `Impulse6_srpPhat` | `get_tdoa_srp` | `tdoa2dir_ls` |
+| `Impulse5g_…-gated`, `Impulse6g_…-gated` | same clicks as 5 and 6, flagged ones dropped | |
+
+In the ungated Impulse5/6 files a click flagged as probably wrong has `shape = type = "triangle"`. A click is flagged when its GCC closure |τ12+τ23+τ31| exceeds `closure_max` (1 sample), or when its TDOAs are infeasible (u² + v² > 1), or when either is NaN. Impulse6 takes the closure from the Impulse5 GCC pass, because SRP's own TDOAs are consistent by construction. `multitdoa_summary.csv` lists clicks, flagged and inside-frame counts per file.
+
+**Run it**
+```bash
+julia --project=. -t 12 src/run_syncVid.jl          # edit folder / res_dir / closure_max in the script
+julia --project=. improvements/tdoa_localization_2026-10-21/scripts/check_multitdoa_outputs.jl <res_dir>/New_device [<earlier run>/detection_pixels__color255_webui.csv]
+julia --project=. -t auto test/test_multitdoa.jl
+```
+
+**Results**, `New_device` 0001–0003 (135,200 clicks; share of points inside the 2740 × 1520 frame):
+
+| file | flagged | inside frame |
+|---|---|---|
+| Impulse1 minmax | – | 21.9% |
+| Impulse2 xcorrMaxEnergy | – | 22.1% |
+| Impulse3 envelopeFiltered | – | 74.1% |
+| Impulse4 xcorrMaxPeak | – | 24.9% |
+| Impulse5 gccPhatGuided | 82,162 (61%) | 55.6% |
+| Impulse6 srpPhat | 80,160 (59%) | 57.4% |
+| Impulse5g gated | 0 (53,038 clicks left) | 51.8% |
+| Impulse6g gated | 0 (55,040 clicks left) | 52.1% |
+
+- **Checks passed.** The standard `detection_pixels__color255_webui.csv` is identical to the earlier pipeline run (0 difference in every column). The Impulse1 file equals the standard file, with colours within 7.6e-6 out of 255. All six ungated files have the same number of impulse rows.
+- **"Inside frame" is not accuracy.** The 80% off-frame share of Impulse1 reproduces the first session's finding. Impulse3 is mostly inside the frame because its low-pass envelope TDOAs stay small (points cluster near the centre), not because they are right. Dolphins can also be outside the camera's field of view. Use the viewer, and later the clicker data, to judge accuracy.
+- **The gate is strict.** About 60% of clicks have a closure above 1 sample, in line with the first session (64% of the strongest quarter pass, 23% of the weakest). The flagged clicks are not more often off-frame than the others (about 58% vs 52% inside), so the flag is not an off-frame detector. `closure_max` is a keyword; tune it on the clicker data.
+- **Quick test on `Calibration_05_11_2025`** (see `results/multitdoa/`): the same checks pass. Note that `split_vid_au` reads sub-folders, so this run also took `not_so_good/251105_001.WAV` and `GH011400.MP4` (17,922 clicks from two recordings). For the ground-truth study (next item), use a folder with only `251105_002.WAV` and `GH011401.MP4`.
+
+**Not verified here:** how the viewer draws `"triangle"`. If it ignores or renders it as a circle, change `flag_shape` (a keyword of `run_contiguous_folders_multitdoa`).
+
+**Next** (from the recommendation list):
+1. The D3 clicker calibration data already exists (`Calibration_05_11_2025`: 165 usable annotated pixels, 123 outliers tagged `o`). Use it for per-method angular error and the offset fit (recommendation 5); `src/cam_calib.jl` is the starting point.
+2. Tune `closure_max` and choose the default overlay method from that error.
+3. Multi-arrival handling and closure-based false-detection rejection (recommendations 6 and 7).
+4. Housekeeping: other sessions, the `runtests.jl` runner (add `test/test_multitdoa.jl` to it as well), and the decision on the old functions (recommendations 9, 10 and 4).

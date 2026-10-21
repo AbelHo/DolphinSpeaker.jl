@@ -1,0 +1,9 @@
+variant,clicks,flagged,inside_frame,inside_frame_pct
+Impulse1_minmax,17922,0,1624,9.06148867313916
+Impulse2_xcorrMaxEnergy,17922,0,2716,15.154558643008594
+Impulse3_envelopeFiltered,17922,0,16289,90.88829371721906
+Impulse4_xcorrMaxPeak,17922,0,2856,15.93572145965852
+Impulse5_gccPhatGuided,17922,13463,10172,56.75705836402187
+Impulse6_srpPhat,17922,13372,10310,57.527061711862515
+Impulse5g_gccPhatGuided-gated,4459,0,1748,39.20161471181879
+Impulse6g_srpPhat-gated,4550,0,1893,41.604395604395606
