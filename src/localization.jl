@@ -423,6 +423,264 @@ function beamform_output(s, sd; fs=framerate(s), output_func=p2p_db)
 
 
 
+#~ sub-sample TDOA: GCC / SRP-PHAT and a closed-form direction solver
+# plan: reviews/plans/trace-the-function-run-contiguous-folder-eager-puppy.md
+# TDOA convention as finddelay(data[:,ch], data[:,ref]): positive = channel arrives later than ref
+using FFTW, LinearAlgebra, Statistics
+
+_clip_window(win, n) = max(first(win), 1):min(last(win), n)
+
+# largest physically possible lag (samples) for each sensor pair, plus a margin
+tau_max_samples(rx_vect, fs; c=default_c, margin=2) = distance_pairwise(rx_vect) ./ c .* fs .+ margin
+
+# geometry of the channels in `data` (rx_vect may still hold the NaN columns of unused channels)
+_rx_for(data, rx_vect) = size(rx_vect, 2) == size(data, 2) ? rx_vect : rx_vect[:, get_relevant_channels(rx_vect)]
+
+# band for the GCC mask, top capped below Nyquist
+default_gcc_band(band, fs) = (b = something(band, impulsive_band_pass); [b[1], min(b[2], 0.98 * fs / 2)])
+
+# parabolic interpolation around index k; returns (fractional index, interpolated peak value)
+function subsample_peak(s, k)
+	(k <= firstindex(s) || k >= lastindex(s)) && return float(k), s[k]
+	y0, y1, y2 = s[k-1], s[k], s[k+1]
+	den = y0 - 2y1 + y2
+	iszero(den) && return float(k), y1
+	δ = clamp(0.5 * (y0 - y2) / den, -0.5, 0.5)
+	return k + δ, y1 - 0.25 * (y0 - y2) * δ
+end
+
+# mean |rfft|^2 of consecutive length-L segments of n, zero-padded to N (same scaling as the click snippet)
+function noise_psd(n, L, N; taper=nothing)
+	nseg = length(n) ÷ L
+	P = zeros(N ÷ 2 + 1)
+	for s in 1:nseg
+		seg = Float64.(n[(s-1)*L+1:s*L])
+		isnothing(taper) || (seg .*= taper)
+		P .+= abs2.(rfft([seg; zeros(N - L)]))
+	end
+	return P ./ max(nseg, 1)
+end
+
+# frequency weighting of the cross-spectrum R = X conj(Y)
+# :scot uses auto-spectra smoothed over `smooth_bins` bins (unsmoothed, it equals :phat for a single click)
+# :ml weights each bin by its coherence from a noise spectrum (falls back to :phat without noise)
+function gcc_weight(weighting, X, Y, R; L, N, noise_x=nothing, noise_y=nothing, taper=nothing, smooth_bins=5)
+	ε = 1e-12 * maximum(abs, R) + floatmin(Float64)
+	weighting == :none && return 1.0
+	weighting == :phat && return 1 ./ (abs.(R) .+ ε)
+	if weighting == :scot
+		smooth(P) = (h = smooth_bins ÷ 2; [mean(P[max(1, i - h):min(end, i + h)]) for i in eachindex(P)])
+		return 1 ./ (sqrt.(smooth(abs2.(X)) .* smooth(abs2.(Y))) .+ ε)
+	end
+	if weighting == :ml
+		(isnothing(noise_x) || isnothing(noise_y)) && return 1 ./ (abs.(R) .+ ε)
+		Nx = noise_psd(noise_x, L, N; taper=taper)
+		Ny = noise_psd(noise_y, L, N; taper=taper)
+		Sx = max.(abs2.(X) .- Nx, 0.0)
+		Sy = max.(abs2.(Y) .- Ny, 0.0)
+		γ2 = min.(Sx .* Sy ./ ((Sx .+ Nx) .* (Sy .+ Ny) .+ ε^2), 0.99)
+		return γ2 ./ ((1 .- γ2) .* (abs.(R) .+ ε))
+	end
+	error("unknown weighting: $weighting")
+end
+
+# weighted cross-correlation of x against y over lags |τ| <= maxlag (samples), upsampled by `interp`
+# returns (lags, r); r is normalized so that 1 = all weighted bins in phase; peak at τ > 0: x later than y
+function gcc_curve(x, y; fs, maxlag, weighting=:phat, band=nothing, interp=8, noise_x=nothing, noise_y=nothing, taper=nothing)
+	L = length(x)
+	N = nextfastfft(2L)
+	X = rfft([Float64.(x); zeros(N - L)])
+	Y = rfft([Float64.(y); zeros(N - L)])
+	R = X .* conj.(Y)
+	R = R .* gcc_weight(weighting, X, Y, R; L=L, N=N, noise_x=noise_x, noise_y=noise_y, taper=taper)
+	if !isnothing(band)
+		f = rfftfreq(N, fs)
+		R[(f .< band[1]) .| (f .> band[2])] .= 0
+	end
+	Nup = N * interp
+	Rup = zeros(ComplexF64, Nup ÷ 2 + 1)
+	Rup[1:length(R)] .= R
+	r = irfft(Rup, Nup) ./ max(2 * sum(abs, R) / Nup, floatmin(Float64))
+	M = min(ceil(Int, maxlag * interp), Nup ÷ 2 - 1)
+	return (-M:M) ./ interp, r[mod.(-M:M, Nup) .+ 1]
+end
+
+# linear interpolation of a gcc_curve result at lag τ (clamped to its lag range)
+function curve_at((lags, r), τ)
+	x = clamp((τ - first(lags)) / step(lags) + 1, 1, length(r))
+	k = min(floor(Int, x), length(r) - 1)
+	return r[k] + (x - k) * (r[k+1] - r[k])
+end
+
+# delay (samples) of x relative to y and its normalized peak height; with `guide` (samples), take the
+# local maximum nearest to it among those reaching guide_ratio of the highest one
+function gcc_delay(x, y; guide=nothing, guide_ratio=0.7, kwargs...)
+	lags, r = gcc_curve(x, y; kwargs...)
+	k = argmax(r)
+	if !isnothing(guide)
+		cand = [i for i in 2:length(r)-1 if r[i] >= r[i-1] && r[i] >= r[i+1] && r[i] >= guide_ratio * r[k]]
+		isempty(cand) || (k = cand[argmin(abs.(lags[cand] .- guide))])
+	end
+	kf, peak = subsample_peak(r, k)
+	return first(lags) + (kf - 1) * step(lags), peak
+end
+
+# per-channel delays (sum zero) from pairwise delays τ[p] = t[j] - t[k] of pairs[p] = (j, k):
+# least squares when all pairs are given, else reference pairs (j, ref) with t[ref] = 0
+# also returns the rms pair misfit (for 3 sensors the closure |τ12+τ23+τ31| is 3x this)
+function pairs_to_delays(τ, pairs, m)
+	t = zeros(m)
+	if length(pairs) == m * (m - 1) ÷ 2
+		for (p, (j, k)) in enumerate(pairs)
+			t[j] += τ[p]
+			t[k] -= τ[p]
+		end
+		t ./= m
+	else
+		for (p, (j, _)) in enumerate(pairs)
+			t[j] = τ[p]
+		end
+	end
+	return t, sqrt(sum(p -> abs2(t[pairs[p][1]] - t[pairs[p][2]] - τ[p]), eachindex(pairs)) / length(pairs))
+end
+
+# GCC TDOA: frequency weighting (:phat, :scot, :ml or :none), band mask, physical lag limit and sub-sample peak
+# all_pairs: estimate every pair and reconcile them by least squares; guide=:envelope: on near-equal peaks,
+# take the one nearest the envelope-correlation delay; noise for :ml is taken noise_len windows before the click
+function get_tdoa_gcc(data, peaks; window=default_window, ref_channel=ref_channel, fs, rx_vect=rx_vect, c=default_c,
+	weighting=:phat, band=nothing, interp=8, all_pairs=true, guide=nothing, taper=0.0, noise_len=4, return_quality=false)
+
+	m = size(data, 2)
+	τmax = tau_max_samples(_rx_for(data, rx_vect), fs; c=c)
+	band = default_gcc_band(band, fs)
+	pairs = all_pairs ? [(j, k) for j in 1:m for k in j+1:m] : [(j, ref_channel) for j in 1:m if j != ref_channel]
+	tdoa = zeros(length(peaks), m)
+	peak = zeros(length(peaks), length(pairs))
+	pair_rms = zeros(length(peaks))
+	Threads.@threads for i in eachindex(peaks)
+		win = _clip_window(window .+ peaks[i], size(data, 1))
+		L = length(win)
+		w = taper > 0 ? tukey(L, taper) : nothing
+		snip = Float64.(data[win, :])
+		isnothing(w) || (snip .*= w)
+		noise = nothing
+		if weighting == :ml
+			nwin = _clip_window((first(win) - noise_len * L):(first(win) - 1), size(data, 1))
+			length(nwin) >= L && (noise = data[nwin, :])
+		end
+		env = guide == :envelope ? reduce(hcat, [abs.(hilbert(snip[:, j])) for j in 1:m]) : nothing
+		τ = zeros(length(pairs))
+		for (p, (j, k)) in enumerate(pairs)
+			g = isnothing(env) ? nothing :
+				gcc_delay(env[:, j] .- mean(env[:, j]), env[:, k] .- mean(env[:, k]); fs=fs, maxlag=τmax[j, k], weighting=:none, interp=interp)[1]
+			τ[p], peak[i, p] = gcc_delay(snip[:, j], snip[:, k]; fs=fs, maxlag=τmax[j, k], weighting=weighting, band=band, interp=interp,
+				guide=g, taper=w, noise_x=isnothing(noise) ? nothing : noise[:, j], noise_y=isnothing(noise) ? nothing : noise[:, k])
+		end
+		t, pair_rms[i] = pairs_to_delays(τ, pairs, m)
+		tdoa[i, :] = t .- t[ref_channel]
+	end
+	return return_quality ? (tdoa, (; peak, pair_rms, pairs)) : tdoa
+end
+
+# SRP-PHAT: the direction (u, v) = (sin(az)cos(el), sin(el)) maximizing the summed pairwise GCC curves,
+# grid_deg coarse grid then a local grid `refine` times finer; returns the TDOAs predicted at that direction
+function get_tdoa_srp(data, peaks; window=default_window, ref_channel=ref_channel, fs, rx_vect=rx_vect, c=default_c,
+	weighting=:phat, band=nothing, interp=8, grid_deg=1.0, refine=10, taper=0.0, return_quality=false)
+
+	m = size(data, 2)
+	rx = _rx_for(data, rx_vect)
+	τmax = tau_max_samples(rx, fs; c=c)
+	band = default_gcc_band(band, fs)
+	pairs = [(j, k) for j in 1:m for k in j+1:m]
+	arrival(u, v) = -(rx' * [u, v, sqrt(max(1 - u^2 - v^2, 0.0))]) ./ c .* fs   # as in cost_tdoa2ang
+	pairdelays(u, v) = (t = arrival(u, v); [t[j] - t[k] for (j, k) in pairs])
+	h = sind(grid_deg)
+	grid = [(u, v) for u in -1:h:1 for v in -1:h:1 if u^2 + v^2 <= 1]
+	D = reduce(hcat, [pairdelays(u, v) for (u, v) in grid])
+	fine = range(-h, h; length=2refine + 1)
+
+	tdoa = zeros(length(peaks), m)
+	srp = zeros(length(peaks))
+	uv = zeros(length(peaks), 2)
+	Threads.@threads for i in eachindex(peaks)
+		win = _clip_window(window .+ peaks[i], size(data, 1))
+		snip = Float64.(data[win, :])
+		taper > 0 && (snip .*= tukey(length(win), taper))
+		curves = [gcc_curve(snip[:, j], snip[:, k]; fs=fs, maxlag=τmax[j, k], weighting=weighting, band=band, interp=interp) for (j, k) in pairs]
+		score(d) = sum(p -> curve_at(curves[p], d[p]), eachindex(pairs))
+		g = argmax(gi -> score(view(D, :, gi)), eachindex(grid))
+		best, (bu, bv) = score(view(D, :, g)), grid[g]
+		u0, v0 = bu, bv
+		for du in fine, dv in fine
+			u, v = u0 + du, v0 + dv
+			u^2 + v^2 <= 1 || continue
+			s = score(pairdelays(u, v))
+			s > best && ((best, bu, bv) = (s, u, v))
+		end
+		t = arrival(bu, bv)
+		tdoa[i, :] = t .- t[ref_channel]
+		srp[i] = best / length(pairs)
+		uv[i, :] = [bu, bv]
+	end
+	return return_quality ? (tdoa, (; srp, uv)) : tdoa
+end
+
+# unclamped direction cosines (u, v) = (sin(az)cos(el), sin(el)) solving the TDOAs of a planar array
+# (TDOAs are linear in u, v, see cost_tdoa2ang); exact for 3 sensors, least squares for more
+function tdoa2uv(tdoas, rx_vect, fs; c=default_c, ref_channel=ref_channel)
+	others = setdiff(axes(rx_vect, 2), ref_channel)
+	A = -(rx_vect[1:2, others] .- rx_vect[1:2, ref_channel])' ./ c .* fs
+	return reduce(vcat, [(A \ (tdoas[i, others] .- tdoas[i, ref_channel]))' for i in axes(tdoas, 1)])
+end
+
+# closed-form tdoa2dir for planar arrays (same call and output); infeasible TDOAs (u²+v² > 1) are
+# clamped to the unit circle, which shows as a non-zero residual; non-planar arrays fall back to tdoa2dir
+function tdoa2dir_ls(tdoas, rx_vect, fs; c=default_c, ref_channel=ref_channel, return_residual=false, cost_tdoa2ang=cost_tdoa2ang, kwargs...)
+	z = rx_vect[3, :]
+	all(abs.(z .- z[1]) .< 1e-9) ||
+		return tdoa2dir(tdoas, rx_vect, fs; cost_tdoa2ang=cost_tdoa2ang, return_residual=return_residual, kwargs...)
+	uv = tdoa2uv(tdoas, rx_vect, fs; c=c, ref_channel=ref_channel)
+	angs = zeros(size(tdoas, 1), 2)
+	for i in axes(uv, 1)
+		u, v = uv[i, 1], uv[i, 2]
+		r = hypot(u, v)
+		r > 1 && (u /= r; v /= r)
+		el = asin(clamp(v, -1, 1))
+		angs[i, :] = [cos(el) > 1e-12 ? asin(clamp(u / cos(el), -1, 1)) : 0.0, el]
+	end
+	angs = mod_sign.(angs, 2 * pi)
+	return_residual || return angs
+	return angs, cost_tdoa2ang.([tdoas[i, :] for i in axes(tdoas, 1)], collect(eachrow(angs)), Ref(rx_vect), Ref(fs))
+end
+
+#~ fixed copies of existing TDOA functions (the originals are left untouched)
+# get_tdoa_minmax with the intended polarity vote, |max| vs |min| (get_tdoa_minmax compares max with min,
+# which is always true, so it is plain argmax), and window clipping at the file edges
+function get_tdoa_minmax2(data, peaks; window=default_window, ref_channel=ref_channel)
+	tdoa = Array{Int}(undef, length(peaks), size(data, 2))
+	for i in eachindex(peaks)
+		ex = extrema_and_indices(data[_clip_window(window .+ peaks[i], size(data, 1)), :])
+		use_max = count(x -> x[2] > -x[1], ex) > length(ex) / 2
+		tdoa[i, :] = ex .|> x -> use_max ? x[4] : x[3]
+	end
+	return tdoa
+end
+
+# get_tdoa_envelope_filtered with the real fs passed to envelope_lpfiltered (whose default assumes 500 kHz)
+# and window clipping at the file edges
+function get_tdoa_envelope_filtered2(data, peaks; window=default_window, ref_channel=ref_channel, fs, lpf_maxFreq=10_000)
+	tdoa = Array{Int}(undef, length(peaks), size(data, 2))
+	for i in eachindex(peaks)
+		win = _clip_window(window .+ peaks[i], size(data, 1))
+		env_ref = envelope_lpfiltered(data[win, ref_channel]; lpf_maxFreq=lpf_maxFreq, fs=fs)
+		for ch in 1:size(data, 2)
+			tdoa[i, ch] = ch == ref_channel ? 0 : finddelay(envelope_lpfiltered(data[win, ch]; lpf_maxFreq=lpf_maxFreq, fs=fs), env_ref)
+		end
+	end
+	return tdoa
+end
+
+
 default_getTDOA_func = get_tdoa_minmax #get_tdoa_raw_MaxEnergyRefChannel #get_tdoa_raw #get_tdoa_envelope#get_tdoa_raw_MaxEnergyRefChannel
 include("config.jl")
 

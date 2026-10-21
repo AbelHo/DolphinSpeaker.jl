@@ -1,0 +1,73 @@
+TDOA method comparison: 251006_001_0001
+fs 192000 Hz | 56447 clicks in trains (56447 analysed) | window -50:50 | ref_channel 3
+real-click window SNR (dB): p10 14.9 | median 19.1 | p90 28.8
+
+Real clicks (no ground truth):
+  jitter = median angle between consecutive clicks of a train; spread = the same for random click pairs;
+  ratio = jitter / spread (lower is better; 1 = consecutive clicks agree no better than random ones;
+  a method that barely moves gets a low jitter, the ratio does not reward that);
+  feasible = TDOAs a plane wave can produce; closure = |τ12+τ23+τ31| before reconciling (gcc only, samples);
+  NM≠LS = NelderMead az/el differ from the closed-form solver (mirror or infeasible).
+method                           group      feasible%  inFOV%  jitter°  spread°  ratio closure med/p90   clo>3%  NM≠LS% ms/click
+minmax [Impulse, overlay]        existing        52.0    20.0     66.0     79.0   0.84       -/-              -    51.1    0.019
+xcorr MaxEnergyRef [Impulse2]    existing        52.6    20.9     57.8     77.8   0.74       -/-              -    50.3    0.129
+envelope_filtered [Impulse3]     existing        93.2    70.2     19.6     33.7   0.58       -/-              -     8.1    0.228
+xcorr MaxPeakRef [Impulse4]      existing        64.4    22.9     59.5     73.2   0.81       -/-              -    39.8    0.100
+xcorr MaxEnergyRef resample x10  existing        65.3    25.7     58.5     72.3   0.81       -/-              -    38.0    0.211
+minmax2 (vote fixed)             fixed copy      56.4    21.2     63.5     77.1   0.82       -/-              -    46.7    0.014
+envelope_filtered2 (fs fixed)    fixed copy      90.6    53.4     33.5     49.3   0.68       -/-              -    11.9    0.188
+gcc none (ablation)              new             90.7    40.5     43.7     55.8   0.78    0.73/26.60       43.7    13.8    0.206
+gcc phat                         new             96.1    58.8     34.8     44.9   0.78    4.15/22.15       53.4     7.3    0.203
+gcc phat +guide                  new             95.2    52.0     36.3     48.8   0.74    2.17/19.44       45.8     9.1    0.503
+gcc phat 20kHz+                  new             95.8    61.0     34.5     43.4   0.80    5.73/22.86       60.3     7.3    0.204
+gcc scot                         new             96.4    60.2     33.8     43.5   0.78    3.92/21.67       52.8     7.0    0.218
+gcc scot +guide                  new             95.4    52.4     35.8     48.3   0.74    2.10/19.13       45.4     8.9    0.510
+gcc ml                           new             86.9    47.1     42.9     54.0   0.79    6.37/28.75       58.7    16.1    0.557
+gcc ml +guide                    new             92.6    45.7     40.5     52.8   0.77    2.44/22.14       47.4    11.4    0.855
+srp phat                         new            100.0    53.5     37.1     47.9   0.78       -/-              -     6.5    0.209
+gcc phat [window -30:30]         new             96.2    57.7     35.7     45.4   0.79    3.63/21.60       52.0     7.6    0.226
+srp phat [window -30:30]         new            100.0    52.3     37.9     48.7   0.78       -/-              -     6.8    0.240
+
+Probable true clicks: the strongest detections by ppeak (this selection does not depend on any TDOA method).
+  ratio = jitter / spread as above; integer-TDOA methods can show jitter 0 on strong clicks because consecutive
+  integer TDOAs repeat: that is quantization, not accuracy (see the semi-synthetic table).
+method                           ratio all    top50%    top25%    top10%  jitter°@min  feasible%@min
+minmax [Impulse, overlay]             0.84      0.69      0.42      0.06         3.66           77.4
+xcorr MaxEnergyRef [Impulse2]         0.74      0.59      0.25      0.00         0.00           79.7
+envelope_filtered [Impulse3]          0.58      0.48      0.30      0.08         3.96           84.8
+xcorr MaxPeakRef [Impulse4]           0.81      0.67      0.37      0.00         0.00           85.7
+xcorr MaxEnergyRef resample x10       0.81      0.66      0.35      0.01         0.52           86.3
+minmax2 (vote fixed)                  0.82      0.68      0.37      0.06         3.38           83.0
+envelope_filtered2 (fs fixed)         0.68      0.54      0.23      0.05         2.98           84.6
+gcc none (ablation)                   0.78      0.64      0.35      0.01         0.39           93.9
+gcc phat                              0.78      0.64      0.40      0.01         0.65           95.6
+gcc phat +guide                       0.74      0.60      0.29      0.01         0.63           96.0
+gcc phat 20kHz+                       0.80      0.67      0.42      0.01         0.74           95.2
+gcc scot                              0.78      0.64      0.40      0.01         0.61           95.5
+gcc scot +guide                       0.74      0.60      0.29      0.01         0.60           96.3
+gcc ml                                0.79      0.69      0.46      0.01         0.61           93.5
+gcc ml +guide                         0.77      0.63      0.34      0.01         0.59           95.5
+srp phat                              0.78      0.62      0.28      0.01         0.71          100.0
+gcc phat [window -30:30]              0.79      0.65      0.38      0.01         0.65           96.2
+srp phat [window -30:30]              0.78      0.61      0.27      0.01         0.70          100.0
+
+Semi-synthetic (known truth): median angle error (deg) by window SNR; outliers = error > 5°
+method                               0dB     5dB    10dB    15dB    20dB    30dB   outl%@10dB
+minmax [Impulse, overlay]           1.48    1.43    1.37    1.36    1.37    1.36          0.3
+xcorr MaxEnergyRef [Impulse2]       1.77    1.24    1.21    1.20    1.19    1.19          3.0
+envelope_filtered [Impulse3]       15.99    6.06    3.35    2.02    1.49    1.26         26.3
+xcorr MaxPeakRef [Impulse4]         1.29    1.21    1.21    1.19    1.19    1.19          1.0
+xcorr MaxEnergyRef resample x10     0.29    0.17    0.12    0.11    0.11    0.11          2.0
+minmax2 (vote fixed)                1.46    1.37    1.35    1.37    1.37    1.37          0.0
+envelope_filtered2 (fs fixed)       3.73    2.00    1.49    1.26    1.23    1.20          2.7
+gcc none (ablation)                 0.23    0.12    0.07    0.04    0.02    0.01          0.0
+gcc phat                            0.35    0.22    0.16    0.12    0.10    0.08          0.0
+gcc phat +guide                     0.34    0.22    0.16    0.12    0.10    0.08          0.0
+gcc phat 20kHz+                     0.34    0.22    0.15    0.12    0.10    0.08          0.0
+gcc scot                            0.35    0.23    0.16    0.12    0.10    0.07          0.0
+gcc scot +guide                     0.35    0.23    0.16    0.12    0.10    0.07          0.0
+gcc ml                              0.23    0.12    0.06    0.03    0.02    0.01          0.0
+gcc ml +guide                       0.23    0.12    0.06    0.03    0.02    0.01          0.0
+srp phat                            0.37    0.24    0.18    0.15    0.14    0.12          0.0
+gcc phat [window -30:30]            0.38    0.25    0.19    0.15    0.13    0.14          0.0
+srp phat [window -30:30]            0.41    0.25    0.21    0.19    0.17    0.16          0.0
