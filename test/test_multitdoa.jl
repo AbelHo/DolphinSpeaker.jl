@@ -52,13 +52,14 @@ true_tdoa(az, el) = (sv = [sind(az)*cosd(el) sind(el) cosd(az)*cosd(el)]; dt = v
 
 	# simulated machine: `total` units of RAM, `base` held by the idle process, `other` by other programs;
 	# a running item holds its weight. Capacity = total - other - base - margin, whatever is running
-	function simulate(weights; total=20.0, base=1.0, other=3.0, margin=1.0, kwargs...)
+	# stale_peak > 0: the peak cannot be reset (macOS/Windows), so it reports the process-lifetime maximum
+	function simulate(weights; total=20.0, base=1.0, other=3.0, margin=1.0, stale_peak=0.0, kwargs...)
 		lk = ReentrantLock()
 		held, peak, running, maxrunning, maxheld = Ref(0.0), Ref(base), Ref(0), Ref(0), Ref(0.0)
 		done = Int[]
 		rss() = base + held[]
-		probes = (; available=() -> total - other - rss(), rss=rss, peak=() -> peak[],
-			reset_peak=() -> (peak[] = rss(); true), release=() -> nothing)
+		probes = (; available=() -> total - other - rss(), rss=rss, peak=() -> max(peak[], stale_peak),
+			reset_peak=() -> stale_peak > 0 ? false : (peak[] = rss(); true), release=() -> nothing)
 		function f(i)
 			lock(lk) do
 				held[] += weights[i]; running[] += 1
@@ -93,8 +94,27 @@ true_tdoa(az, el) = (sv = [sind(az)*cosd(el) sind(el) cosd(az)*cosd(el)]; dt = v
 		r = simulate(w; adaptive=false)
 		@test r.done == 1:6 && r.maxrunning == 6
 		@test simulate(w; adaptive=false, max_parallel=3).maxrunning == 3
+		# peak cannot be reset: the estimate is an upper bound, so it is cautious (never more parallel than exact) and complete
+		r_exact, r_stale = simulate(w), simulate(w; stale_peak=9.0)
+		@test r_stale.done == 1:6
+		@test r_stale.per_weight >= r_exact.per_weight
+		@test r_stale.maxheld <= r_exact.maxheld
+		@test simulate(w; stale_peak=1e6).maxrunning == 1   # a huge stale peak degrades to one at a time, not to all at once
 		# one item, and no items
 		@test simulate([2.0]).done == [1]
 		@test run_memory_adaptive(identity, 0).max_concurrent == 0
+	end
+
+	@testset "real memory probes" begin
+		rss, avail, peak = rss_bytes(), available_memory_bytes(), peak_rss_bytes()
+		@test 0 < rss < Sys.total_memory()
+		@test 0 < avail <= Sys.total_memory()
+		@test peak >= 0.9 * rss
+		@test memory_limit_bytes() > 0
+		x = zeros(UInt8, 256 * 2^20); x .= 1   # 256 MB touched: rss rises, available falls
+		@test rss_bytes() - rss > 200 * 2^20
+		@test avail - available_memory_bytes() > 100 * 2^20
+		x = nothing
+		@test release_memory!() === nothing
 	end
 end

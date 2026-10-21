@@ -175,11 +175,13 @@ Plan: `reviews/plans/multitdoa-webui-csvs_2026-10-22.md` (first draft: `..._v0.m
 
 **What was added** (no existing function was changed)
 - `src/run_multitdoa.jl`:
-  - `run_contiguous_folders_multitdoa(folder; res_dir, closure_max=1.0)` has the same flow as `run_contiguous_folders` (A/V sync, combined video, threaded detection, audacity labels) but writes one webui CSV per method and no overlay video.
+  - `run_contiguous_folders_multitdoa(folder; res_dir, closure_max=1.0)` has the same flow as `run_contiguous_folders` (A/V sync, combined video, detection, audacity labels) but writes one webui CSV per method and no overlay video. Audio files are scheduled in parallel by available RAM (see below).
   - `process_detections_multitdoa` calls the unchanged `process_detections` for Impulse1–4 and computes Impulse5/6 from the same filtered data.
   - `impulse_variant_rows` and `flag_clicks` are the pure helpers.
+  - `run_memory_adaptive` and the memory probes (`rss_bytes`, `available_memory_bytes`, `peak_rss_bytes`, …) implement the memory-adaptive scheduling.
 - `src/run_syncVid.jl` now includes it and calls the new runner on `New_device` (files 0001–0003 as one set). `res_dir` ends in `_multitdoa`, so the earlier results are not overwritten.
-- `test/test_multitdoa.jl` (14 tests, synthetic only) and `scripts/check_multitdoa_outputs.jl`.
+- `test/test_multitdoa.jl` (38 tests, synthetic data and a simulated machine) and `scripts/check_multitdoa_outputs.jl`.
+- Plan: `reviews/plans/multitdoa-webui-csvs_2026-10-22.md` and `_v0`.
 
 **Output files** in `<res_dir>/<folder name>/`. Each one is a drop-in replacement for `detection_pixels__color255_webui.csv` (that method's impulse rows plus the tonal rows):
 
@@ -197,15 +199,17 @@ In the ungated Impulse5/6 files a click flagged as probably wrong has `shape = t
 
 **Run it**
 ```bash
-julia --project=. -t 12 src/run_syncVid.jl          # edit folder / res_dir / closure_max in the script
+julia --project=. -t 12 src/run_syncVid.jl          # edit folder / res_dir / closure_max in the script; use a new res_dir for each run (ffmpeg does not overwrite the combined video)
 julia --project=. improvements/tdoa_localization_2026-10-21/scripts/check_multitdoa_outputs.jl <res_dir>/New_device [<earlier run>/detection_pixels__color255_webui.csv]
 julia --project=. -t auto test/test_multitdoa.jl
 ```
 
 **Parallel files and memory.** Processing a 2 GB WAV (745 s) peaked at 11 GB when it ran alone. With all three files at once, the first full run was killed by the kernel's out-of-memory killer (`Out of memory: Killed process … julia … 47.5 GB`) while other programs held about 40 GB. `run_contiguous_folders_multitdoa` therefore schedules the files with `run_memory_adaptive` (src/run_multitdoa.jl):
-1. The longest file runs alone first, and its peak resident memory is measured (the kernel's `VmHWM`, reset just before). That, times `memory_safety` (1.25) and scaled by audio duration, is the estimate for each file.
-2. Another file starts only while `sum(estimates of running files) + estimate(new) <= capacity`, where `capacity = (RSS − idle RSS) + MemAvailable − margin`. Capacity does not move while a running file ramps up its memory, and it follows other programs using or freeing RAM. One file always runs, whatever the estimate says.
-3. After each file, a full GC and `malloc_trim` return the memory to the OS.
+1. The longest file runs alone first, and its peak resident memory is measured (Linux: the kernel's `VmHWM`, reset just before; elsewhere `Sys.maxrss()`, which can only overestimate). That, times `memory_safety` (1.25) and scaled by audio duration, is the estimate for each file.
+2. Another file starts only while `sum(estimates of running files) + estimate(new) <= capacity`, where `capacity = (RSS − idle RSS) + free memory − margin`. Capacity does not move while a running file ramps up its memory, and it follows other programs using or freeing RAM. One file always runs, whatever the estimate says.
+3. After each file, a full GC (plus `malloc_trim` on Linux) returns the memory to the OS.
+
+The probes use Julia and its bundled libuv only, so they are portable: `Sys.free_memory()` (equals `MemAvailable` on Linux), libuv's resident-set call via `ccall` (matches `/proc` to 1 MB), libuv's constrained-memory call (a container limit caps the free figure), and `Sys.maxrss()`. Only the exact peak reset is Linux-specific. **Tested on Linux (glibc) only; macOS and Windows are untested.** On macOS libuv counts only free pages as free, so it will be more cautious there. A stale peak makes the estimate too high, never too low (unit-tested), so the failure mode is less parallelism, not OOM.
 
 | keyword | default | meaning |
 |---|---|---|
@@ -216,7 +220,13 @@ julia --project=. -t auto test/test_multitdoa.jl
 
 Measured on `New_device` with the defaults: file 0001 alone peaked at 11.0 GB (estimate 13.7 GB for each 745 s file); files 0002 and 0003 then ran together, Julia reached 28.5 GB in total, system `MemAvailable` never fell below 36.8 GB (margin 9.4 GB), and the run took about 6 minutes. The outputs are byte-identical to the sequential run.
 
-Limits: `MemAvailable` does not know about container (cgroup) limits, and the estimate assumes memory grows in proportion to audio duration. The scheduler is unit-tested against a simulated machine (`test/test_multitdoa.jl`).
+Limits: the estimate assumes memory grows in proportion to audio duration; the cgroup cap only subtracts this process's own RSS, not other processes in the same container; the first file runs alone, so N files are never N-way parallel from the start.
+
+**Problems met and fixed**
+- *Out of memory.* The first full run died (kernel `Out of memory: Killed process … julia`, 47.5 GB) because three 2 GB WAVs were processed at once while about 40 GB were already used. First fix: `max_parallel_files=1`; then the adaptive scheduler above. The half-written output folder had to be deleted, since `ffmpeg` has no `-y`.
+- *Race in the scheduler.* The first version of `run_memory_adaptive` spawned tasks that captured a loop variable, so a fast iteration could make a task process the wrong file (`done == [1,3,3,4,5,6]`). The simulated-machine tests exposed it (it had not shown in the real runs, which got lucky). The item index is now passed as an argument (`_spawn_item`); the tests pass repeatedly and the full run was repeated on the fixed code.
+- *Driver scripts* that `include` with relative paths resolve against the script's folder, not the working directory; use absolute paths outside `src/`.
+- `split_vid_au` reads sub-folders, so `Calibration_05_11_2025` also pulled in `not_so_good/` (see below).
 
 **Results**, `New_device` 0001–0003 (135,200 clicks; share of points inside the 2740 × 1520 frame):
 
@@ -235,6 +245,8 @@ Limits: `MemAvailable` does not know about container (cgroup) limits, and the es
 - **"Inside frame" is not accuracy.** The 80% off-frame share of Impulse1 reproduces the first session's finding. Impulse3 is mostly inside the frame because its low-pass envelope TDOAs stay small (points cluster near the centre), not because they are right. Dolphins can also be outside the camera's field of view. Use the viewer, and later the clicker data, to judge accuracy.
 - **The gate is strict.** About 60% of clicks have a closure above 1 sample, in line with the first session (64% of the strongest quarter pass, 23% of the weakest). The flagged clicks are not more often off-frame than the others (about 58% vs 52% inside), so the flag is not an off-frame detector. `closure_max` is a keyword; tune it on the clicker data.
 - **Quick test on `Calibration_05_11_2025`** (see `results/multitdoa/`): the same checks pass. Note that `split_vid_au` reads sub-folders, so this run also took `not_so_good/251105_001.WAV` and `GH011400.MP4` (17,922 clicks from two recordings). For the ground-truth study (next item), use a folder with only `251105_002.WAV` and `GH011401.MP4`.
+
+**Verification runs** (all with outputs identical to the sequential run, byte for byte for the CSVs): sequential `New_device` run; adaptive `New_device` run (twice, the second after the race fix); `Calibration_05_11_2025` three times (non-adaptive, adaptive, portable probes). Commands: the three steps under *Run it*.
 
 **Not verified here:** how the viewer draws `"triangle"`. If it ignores or renders it as a circle, change `flag_shape` (a keyword of `run_contiguous_folders_multitdoa`).
 

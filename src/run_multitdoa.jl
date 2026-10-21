@@ -94,35 +94,41 @@ function _write_webui_csv(fname, mat)
 end
 
 # ---- memory-adaptive scheduling of the per-file work -------------------------------------------------------------
-# Linux /proc probes (elsewhere they fall back to what Base offers)
+# Probes use Julia / the libuv bundled with it, so they work on Linux, macOS and Windows. Only the exact peak
+# measurement (kernel VmHWM, resettable) is Linux-specific; elsewhere Sys.maxrss gives an upper bound (see run_memory_adaptive)
 function _proc_bytes(file, key)
     for line in eachline(file)
         startswith(line, key) && return 1024 * parse(Int, split(line)[2])
     end
     error("$key not found in $file")
 end
-function available_memory_bytes()   # what the system can still give to programs, page cache included
+function rss_bytes()                # resident memory of this process (libuv: /proc, task_info or the Windows working set)
+    r = Ref{Csize_t}(0)
+    ccall(:uv_resident_set_memory, Cint, (Ptr{Csize_t},), r) == 0 || return Int(Sys.maxrss())
+    return Int(r[])
+end
+function memory_limit_bytes()       # container (cgroup) limit, or typemax(Int) if there is none
     try
-        return _proc_bytes("/proc/meminfo", "MemAvailable:")
+        lim = ccall(:uv_get_constrained_memory, UInt64, ())
+        return 0 < lim < Sys.total_memory() ? Int(lim) : typemax(Int)
     catch
-        return Int(Sys.free_memory())
+        return typemax(Int)
     end
 end
-function rss_bytes()                # resident memory of this process
-    try
-        return _proc_bytes("/proc/self/status", "VmRSS:")
-    catch
-        return Int(Sys.maxrss())
-    end
+function available_memory_bytes()   # what the system can still give to programs (libuv: MemAvailable on Linux)
+    free = Int(Sys.free_memory())
+    lim = memory_limit_bytes()
+    return lim == typemax(Int) ? free : min(free, lim - rss_bytes())
 end
-function peak_rss_bytes()           # kernel high-water mark of the resident memory (VmHWM)
+function peak_rss_bytes()           # peak resident memory: Linux VmHWM (resettable), else Sys.maxrss (since process start)
     try
-        return _proc_bytes("/proc/self/status", "VmHWM:")
+        Sys.islinux() && return _proc_bytes("/proc/self/status", "VmHWM:")
     catch
-        return Int(Sys.maxrss())
     end
+    return Int(Sys.maxrss())
 end
-function reset_peak_rss!()          # VmHWM := current RSS; false if the kernel does not allow it
+function reset_peak_rss!()          # VmHWM := current RSS; false if not Linux or not allowed
+    Sys.islinux() || return false
     try
         write("/proc/self/clear_refs", "5")
         return true
@@ -152,8 +158,9 @@ const MEMORY_PROBES = (; available=available_memory_bytes, rss=rss_bytes, peak=p
 Call `f(i)` for `i in 1:n` (it stores its own result) with as many items in flight as the memory allows.
 `weights[i]` is the relative size of item i (here the audio duration); memory use is assumed proportional to it.
 
-- `adaptive=true`: the largest item runs alone first and its peak resident memory is measured (kernel VmHWM, reset
-  before it starts). Per unit of weight that, times `safety`, is the estimate. Another item then starts only if
+- `adaptive=true`: the largest item runs alone first and its peak resident memory is measured (Linux: kernel VmHWM,
+  reset before it starts; elsewhere Sys.maxrss, which can only overestimate it, so the result stays safe but may be
+  too cautious). Per unit of weight that, times `safety`, is the estimate. Another item then starts only if
   `sum(estimates of the running items) + estimate(new) <= capacity`, with
   `capacity = (rss - rss_idle) + available - margin_bytes`: what this process already holds beyond its idle size plus
   what the system can still give, less the margin. Capacity does not change while a running item ramps up its memory
