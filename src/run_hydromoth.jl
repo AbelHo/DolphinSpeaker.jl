@@ -12,10 +12,11 @@ set_device__hydromoth()
 data_folders = 
 [
 # "/media/spin/anas2/data/marecet/Acoustics-Abel/Hydromoth - PAM/Feb 2023 - LGK/H1",
-"/media/spin/anas2/data/marecet/Acoustics-Abel/Hydromoth - PAM/Oct 2021 - LGK/H5 - Teluk Apau/23102021 - 26102021"
+# "/media/spin/anas2/data/marecet/Acoustics-Abel/Hydromoth - PAM/Oct 2021 - LGK/H5 - Teluk Apau/23102021 - 26102021",
+"/media/spin/anas2/data/marecet/Acoustics-Abel/Hydromoth - PAM/Hydromoth 2025-LGK/H5"
 ]
 ftype = ".WAV"
-result_directory = "/media/spin/anas2/data_res/dolphin/marecet/langkawi_hydromoth/20261020_1900_nbhf"
+result_directory = "/media/spin/anas2/data_res/dolphin/marecet/langkawi_hydromoth/20261022_0500"
 
 # simple check of file name to configure NAME2DT_DATE__TIME_SKIP_FRONT automatically
 files = readdir(data_folders[1]; join=true) |> filter(endswith(ftype))
@@ -46,12 +47,14 @@ for aufol in data_folders
     files = vcat(files, readdir(aufol; join=true) |> filter(endswith("wav")))
     res_dir = joinpath(result_directory, Dates.format(DEFAULT_fname2timestamp_func(files[1]), "yyyymmdd_HHMMSS"))
     isnothing(res_dir) || mkpath(res_dir); isfile(joinpath(res_dir, "index.html")) || cp("web/index.html", joinpath(res_dir, "index.html"))
+    isnothing(res_dir*"_nbhf") || mkpath(res_dir*"_nbhf"); isfile(joinpath(res_dir*"_nbhf", "index.html")) || cp("web/index.html", joinpath(res_dir*"_nbhf", "index.html"))
     @showprogress for file in files
         fname, ext = splitext(basename(file))
         @info "Processing file: $(dirname(file))/\033[32m$fname\033[0m$ext"
         try
-            detect_impulseNtonal(file, res_dir; detect_impulse=detect_impulseNarrowBand, processed_skip_flag=true, processed_skip_strict=false)
-            # detect_impulseNtonal(file, res_dir; processed_skip_flag=true, processed_skip_strict=false)
+            detect_impulseNtonal(file, res_dir*"_nbhf"; detect_impulse=detect_impulseNarrowBand, processed_skip_flag=true, processed_skip_strict=false)
+            GC.gc()
+            detect_impulseNtonal(file, res_dir; processed_skip_flag=true, processed_skip_strict=false)
         catch e
             @error "Error processing file $file: $e"
         end
