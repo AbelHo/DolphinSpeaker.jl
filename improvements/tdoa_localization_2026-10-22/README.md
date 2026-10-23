@@ -4,6 +4,10 @@ Item 4 of `reviews/plans/multitdoa-webui-csvs_2026-10-22.md`. This round's plan 
 
 Data: `Two-way_2males_06_10_2025/New_device`, 3 WAVs, 135,200 in-train clicks. The input is the multitdoa run in `/media/spin/anas2/data/calf/upload/results/tmp_20261007/Two-way_2males_06_10_2025_multitdoa/New_device`.
 
+**Start here:**
+- `reports/final_scientific_report.md` — everything learned in this session (2026-10-21 to 2026-10-24).
+- `reports/how_to_run_on_recordings.md` — how to produce all viewer CSVs (`Impulse7`–`Impulse11`) and optional Audacity labels for any recording, with one command: `scripts/run_on_recording.sh <res_folder> [--audacity] [--n N]`.
+
 ## Summary
 - **Half the detections are later arrivals.** 51% of detections come 0.4–1.6 ms after another one. Their direction is unrelated to it: a median of 43–55° apart, the same as random pairs. 30% of them share its bearing but differ in elevation, which is the surface/bottom echo pattern.
 - **Overlap inside the TDOA window causes most closure failures.** 93% of windows have two or more envelope peaks. Single-arrival windows are flagged 21% of the time, the others 61%.

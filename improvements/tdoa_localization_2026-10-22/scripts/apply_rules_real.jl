@@ -13,7 +13,8 @@ res_folder = length(ARGS) >= 4 ? ARGS[4] : "/media/spin/anas2/data/calf/upload/r
 const TRACKERS = Dict("default" => (;), "gate 4" => (; gate_deg=4.0), "gate 9" => (; gate_deg=9.0), "birth 0.1" => (; birth_min_score=0.1),
     "birth 0.3" => (; birth_min_score=0.3), "delete 0.5 s" => (; t_delete=0.5), "q 10" => (; sigma_q_deg=10.0), "q 40" => (; sigma_q_deg=40.0))
 res = joinpath(@__DIR__, "..", "results")
-f = CSV.read(joinpath(res, "data", "click_features_$(tag)_New_device.csv"), DataFrame)
+folder = basename(rstrip(res_folder, '/')); sfx = folder == "New_device" ? "" : "_$folder"   # output names for other recordings get the folder suffix
+f = CSV.read(joinpath(res, "data", "click_features_$(tag)_$folder.csv"), DataFrame)
 N = nrow(f); K = 3
 vec3(az, el) = (sind(az) * cosd(el), sind(el), cosd(az) * cosd(el))
 angd(a, b) = acosd(clamp(sum(a .* b), -1, 1))
@@ -53,7 +54,7 @@ function proxy(az, el, lo, hi)
 end
 inframe(az, el) = 100mean((abs.(az) .<= 40) .& (abs.(el) .<= 27.23))
 io = IOBuffer()
-@printf(io, "real New_device candidates (%s), tracker \"%s\"; proxies: median direction change of consecutive isolated clicks; share inside the frame\n", tag, tracker)
+@printf(io, "real %s candidates (%s), tracker \"%s\"; proxies: median direction change of consecutive isolated clicks; share inside the frame\n", folder, tag, tracker)
 @printf(io, "%-36s %8s %8s %8s %7s\n", "rule", "burst", "2-10 ms", "10-30 ms", "frame")
 out = DataFrame(rule=String[], burst=Float64[], p2_10=Float64[], p10_30=Float64[], in_frame=Float64[])
 for r in sort(collect(keys(rules)))
@@ -62,9 +63,9 @@ for r in sort(collect(keys(rules)))
     @printf(io, "%-36s %7.1f° %7.1f° %7.1f° %6.1f%%\n", r, out.burst[end], out.p2_10[end], out.p10_30[end], out.in_frame[end])
 end
 slug = replace(tracker, " " => "", "." => "") * "_" * replace(chosen, " + followers inherit" => "-inherit", " " => "")
-CSV.write(joinpath(res, "real_rules_$(tag)_$(slug).csv"), out)
+CSV.write(joinpath(res, "real_rules_$(tag)_$(slug)$sfx.csv"), out)
 body = String(take!(io))
-open(joinpath(res, "real_rules_$(tag)_$(slug).md"), "w") do g; println(g, "# Selection rules on real data: $tag, tracker \"$tracker\"\n\n```\n", body, "```"); end
+open(joinpath(res, "real_rules_$(tag)_$(slug)$sfx.md"), "w") do g; println(g, "# Selection rules on real data: $tag, tracker \"$tracker\"\n\n```\n", body, "```"); end
 print(body)
 
 # viewer CSV of the chosen rule: click colours / frames from Impulse6; triangle = follower or (track rule) not "direct"
@@ -77,6 +78,8 @@ tri = startswith(chosen, "track lag") ? (status .!= "direct") .| f.follower : f.
 imp = DataFrame(frame=w6.frame[1:N], px=px, py=py, radius=w6.radius[1:N], r=w6.r[1:N], g=w6.g[1:N], b=w6.b[1:N], a=w6.a[1:N],
     shape=[t ? "triangle" : "circle" for t in tri])
 imp.type = imp.shape
+# per-click directions of the chosen rule (for export_audacity.jl)
+CSV.write(joinpath(res, "data", "real_rules_$(tag)_$(slug)_$folder.csv"), DataFrame(file=f.file, t_s=f.t_s, az=az, el=el, triangle=tri))
 fname = joinpath(res_folder, "detection_pixels__color255_webui__Impulse10$(tag)_$(slug).csv")
 CSV.write(fname, vcat(imp, w6[N+1:end, names(imp)]))
 @printf("wrote %s (%.1f%% inside the frame, %.1f%% triangles)\n", fname, 100mean((0 .<= px .<= W) .& (0 .<= py .<= H)), 100mean(tri))

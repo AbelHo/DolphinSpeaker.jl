@@ -153,6 +153,9 @@ s = separate_sources(t, az, el; follower=follower, n=2, SEPARATION_PARAMS_D3...)
 - `s.role` is one of leader / own / repeat / echo / unassigned.
 - `n = nothing` estimates the number of dolphins.
 
+## Run on a real recording
+The dolphin separation (`Impulse11sicw_sources_n<n>_tuned`, `_auto_tuned`; `--n` sets the number of dolphins) is the fourth step of `scripts/run_on_recording.sh`; its Audacity labels: `combined_Impulse11sicw_sources_n<n>__audacity.txt` (`--audacity`). Runbook: [how_to_run_on_recordings.md](how_to_run_on_recordings.md).
+
 ## Next
 1. **Viewer check** of `Impulse11sicw_sources_n2_tuned`: do the two colours follow the two males, at least while they are apart?
 2. **Equalize the hydrophones.** The dominant error source is a fixed per-hydrophone response, so estimate it from many strong clicks and deconvolve before GCC/SRP. In the simulation this can be tested directly, since the true responses are known.

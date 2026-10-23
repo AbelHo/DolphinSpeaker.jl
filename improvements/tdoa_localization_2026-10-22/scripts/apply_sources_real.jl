@@ -13,7 +13,8 @@ params = length(ARGS) >= 2 ? ARGS[2] : "tuned"
 sep_kw = params == "tuned" ? SEPARATION_PARAMS_D3 : (;)
 res_folder = length(ARGS) >= 3 ? ARGS[3] : "/media/spin/anas2/data/calf/upload/results/tmp_20261007/Two-way_2males_06_10_2025_multitdoa/New_device"
 res = joinpath(@__DIR__, "..", "results")
-f = CSV.read(joinpath(res, "data", "click_features_sicw_New_device.csv"), DataFrame)
+folder = basename(rstrip(res_folder, '/')); sfx = folder == "New_device" ? "" : "_$folder"   # output names for other recordings get the folder suffix
+f = CSV.read(joinpath(res, "data", "click_features_sicw_$folder.csv"), DataFrame)
 N = nrow(f); K = 3
 vec3(az, el) = (sind(az) * cosd(el), sind(el), cosd(az) * cosd(el))
 angd(a, b) = acosd(clamp(sum(a .* b), -1, 1))
@@ -48,11 +49,11 @@ end
 det = DataFrame(file=f.file, click=f.click, t_s=f.t_s, frame=f.frame, follower=f.follower, az_own=az, el_own=el,
     label_n=out[:given].label, role_n=out[:given].role, az_out=out[:given].az, el_out=out[:given].el,
     label_auto=out[:auto].label, role_auto=out[:auto].role)
-CSV.write(joinpath(res, "data", "real_sources_sicw_$(params)_New_device.csv"), det)
+CSV.write(joinpath(res, "data", "real_sources_sicw_$(params)_$folder.csv"), det)
 
 # ---- plausibility statistics -----------------------------------------------------------------------------------------
 io = IOBuffer()
-@printf(io, "New_device, %d detections; directions: longest-track rule on SIC -110:50 candidates; separate_sources parameters: %s %s\n", N, params, string(sep_kw))
+@printf(io, "%s, %d detections; directions: longest-track rule on SIC -110:50 candidates; separate_sources parameters: %s %s\n", folder, N, params, string(sep_kw))
 for (key, nm) in ((:given, "n = $n_given"), (:auto, "n estimated"))
     o = out[key]
     @printf(io, "\n=== %s: unassigned %.1f%%; roles: %s\n", nm, 100mean(o.label .== 0),
@@ -109,7 +110,7 @@ for (key, nm) in ((:given, "n = $n_given"), (:auto, "n estimated"))
         100mean((abs.(az) .<= 40) .& (abs.(el) .<= 27.23)))
 end
 body = String(take!(io))
-open(joinpath(res, "real_sources_sicw_$params.md"), "w") do g; println(g, "# Dolphin separation on New_device ($params parameters)\n\n```\n", body, "```"); end
+open(joinpath(res, "real_sources_sicw_$params$sfx.md"), "w") do g; println(g, "# Dolphin separation on $folder ($params parameters)\n\n```\n", body, "```"); end
 print(body)
 
 # ---- viewer CSVs: colour = dolphin (n given: reference palette slots; estimated: track palette), grey = unassigned ----

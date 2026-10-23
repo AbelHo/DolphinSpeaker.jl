@@ -145,6 +145,9 @@ From the REPL: `include("src/run_example.jl"); set_device__ophk_acoustic_D3(); i
 - The feature table always stores both selections (`selected_earliest`, `selected_track`).
 - `select_rule=:track` makes the track rule the one used for `az_sel`/`el_sel` and the `Impulse9<tag>_selected` file. `write_track_selection_overlay.jl` writes the track-rule viewer file from an existing feature table.
 
+## Run on a real recording
+Round 2 is the second step of `scripts/run_on_recording.sh` (SIC with both windows, then the track-rule overlays `Impulse9sict/sicwt_trackSelected`); Audacity labels of the track rule: `export_audacity.jl` (`combined_Impulse9sicwt__audacity.txt`). Runbook: [how_to_run_on_recordings.md](how_to_run_on_recordings.md).
+
 ## Next
 1. **Viewer check:** is `Impulse9sicwt_trackSelected` on the animals more often than Impulse6? Compare with `Impulse7sicw_tracks` to see which tracks the rule keeps.
 2. **A benchmark with reverberation.** Take the "noise" from inside click trains (between detections) instead of quiet stretches, or add delayed copies of the previous click, and retune `min_rel` and the selection on it. The current benchmark overstates per-click selection.

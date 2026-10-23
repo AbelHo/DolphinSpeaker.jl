@@ -106,6 +106,9 @@ data_eq = apply_hydrophone_eq(data, eq)
 ```
 With calibration delays `d` (samples per hydrophone): `apply_hydrophone_eq(data, with_delays(eq, d))`.
 
+## Run on a real recording
+Equalization is not part of `scripts/run_on_recording.sh` (no effect on New_device; no viewer files). To check another recording, see the "Optional diagnostics" table of [how_to_run_on_recordings.md](how_to_run_on_recordings.md).
+
 ## Next
 1. **Re-calibrate the simulator with click-varying clutter** instead of strong fixed responses: denser and stronger diffuse reverberation, random per-arrival scattering, and fixed responses limited to the measured mild level. Match the window statistics and the mild fixed response together, then revisit round 4's absolute numbers and the separation tuning.
 2. **Multi-hypothesis click-train separation** (ICI continuity) for dolphins in similar directions.

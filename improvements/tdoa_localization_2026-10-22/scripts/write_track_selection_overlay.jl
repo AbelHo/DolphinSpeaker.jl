@@ -7,7 +7,8 @@ tag = length(ARGS) >= 1 ? ARGS[1] : "sicw"
 res_folder = length(ARGS) >= 2 ? ARGS[2] :
     "/media/spin/anas2/data/calf/upload/results/tmp_20261007/Two-way_2males_06_10_2025_multitdoa/New_device"
 res = joinpath(@__DIR__, "..", "results")
-f = CSV.read(joinpath(res, "data", "click_features_$(tag)_New_device.csv"), DataFrame)
+folder = basename(rstrip(res_folder, '/')); sfx = folder == "New_device" ? "" : "_$folder"   # output names for other recordings get the folder suffix
+f = CSV.read(joinpath(res, "data", "click_features_$(tag)_$folder.csv"), DataFrame)
 w6 = CSV.read(joinpath(res_folder, "detection_pixels__color255_webui__Impulse6_srpPhat.csv"), DataFrame)
 N = nrow(f)
 W, H = 2740, 1520; fovh, fovv = 80.0, 54.46086642417594      # set_device__ophk_acoustic_D3: imsize (1520, 2740), fov_angle

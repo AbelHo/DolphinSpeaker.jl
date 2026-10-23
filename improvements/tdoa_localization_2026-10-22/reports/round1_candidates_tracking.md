@@ -121,6 +121,9 @@ julia --project=. $D/scripts/report_figures.jl
 From the REPL: `include("src/run_example.jl"); set_device__ophk_acoustic_D3(); include("src/multiarrival.jl"); run_multiarrival(R; out_dir="...")`.
 Keyword arguments: `K`, `echo_window_ms`, `candidate_kwargs=(; min_rel, min_sep_deg, grid_deg)`, `tracker_kwargs=(; gate_deg, sigma_meas_deg, sigma_q_deg, n_confirm, t_confirm, t_delete, birth_min_score, merge_deg)`.
 
+## Run on a real recording
+Round 1 is the first step of `scripts/run_on_recording.sh` (writes `Impulse7_srpTracks` and `Impulse8_srpCandidates`); the runbook with all steps, outputs and Audacity labels is [how_to_run_on_recordings.md](how_to_run_on_recordings.md).
+
 ## Next (round 2)
 1. **Sidelobe suppression:** CLEAN the GCC curves. With PHAT, a single arrival's GCC is the band-mask kernel shifted to its lag, so the kernel of each accepted candidate can be subtracted before searching for the next. Measure false candidates on echo-free synthetic clicks.
 2. **Selection:** one direction per click, using track continuity and (on cleaned candidates) the beam arrival order. Re-benchmark.

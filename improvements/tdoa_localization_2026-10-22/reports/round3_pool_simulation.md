@@ -106,6 +106,9 @@ julia --project=. $D/scripts/report_figures_round3.jl                           
 ```
 Per-detection outputs: `results/data/bench_sequences_detections.csv` and `bench_sequences_rules.csv` (167 MB; git-ignored).
 
+## Run on a real recording
+The recommended rule (longest track + followers inherit, `Impulse10sicw_default_longesttrack-inherit`) is the third step of `scripts/run_on_recording.sh`; its Audacity labels: `combined_Impulse10sicw_longesttrack-inherit__audacity.txt` (`--audacity`). Runbook: [how_to_run_on_recordings.md](how_to_run_on_recordings.md).
+
 ## Next
 1. **Viewer check** of `Impulse10sicw_default_longesttrack-inherit` against Impulse6.
 2. **A more realistic simulation**: hydrophone-specific waveform distortion (e.g. a random short impulse response per hydrophone and arrival), diffuse late reverberation, and off-axis low-pass of the click. Target: about 78% of clicks with a second SIC candidate, as in the real data. Then validate the proxies.

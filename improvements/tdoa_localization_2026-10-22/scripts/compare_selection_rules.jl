@@ -1,11 +1,12 @@
 # Offline comparison of per-click selection rules on a round-2 feature table (no recomputation).
 # Proxy for "same source, same path": consecutive isolated clicks should keep their direction (burst pulses 1.6-2.2 ms
 # apart come from one animal within milliseconds). Also the share of points inside the video frame.
-# usage: julia --project=. improvements/tdoa_localization_2026-10-22/scripts/compare_selection_rules.jl sic|sicw
+# usage: julia --project=. improvements/tdoa_localization_2026-10-22/scripts/compare_selection_rules.jl sic|sicw [folder name]
 using CSV, DataFrames, Statistics, Printf
 tag = length(ARGS) >= 1 ? ARGS[1] : "sicw"
 res = joinpath(@__DIR__, "..", "results")
-f = CSV.read(joinpath(res, "data", "click_features_$(tag)_New_device.csv"), DataFrame)
+folder = length(ARGS) >= 2 ? ARGS[2] : "New_device"; sfx = folder == "New_device" ? "" : "_$folder"
+f = CSV.read(joinpath(res, "data", "click_features_$(tag)_$folder.csv"), DataFrame)
 N = nrow(f); K = 3
 W, H = 2740, 1520; fovh, fovv = 80.0, 54.46086642417594
 vec3(az, el) = (sind(az) * cosd(el), sind(el), cosd(az) * cosd(el))
@@ -38,7 +39,7 @@ end
 inside(sel) = 100mean(i -> (az = col("az", sel[i])[i]; el = col("el", sel[i])[i]; abs(az) <= fovh / 2 && abs(el) <= fovv / 2), 1:N)
 
 io = IOBuffer()
-@printf(io, "feature table: click_features_%s_New_device.csv (%d clicks); consecutive isolated clicks (no detection 0.4-1.6 ms before either)\n", tag, N)
+@printf(io, "feature table: click_features_%s_%s.csv (%d clicks); consecutive isolated clicks (no detection 0.4-1.6 ms before either)\n", tag, folder, N)
 @printf(io, "%-48s %9s | %-16s | %-16s | %-16s | %6s\n", "rule", "≠ rank 1", "1.6-2.2 ms", "2.2-10 ms", "10-30 ms", "in")
 @printf(io, "%-48s %9s | %-16s | %-16s | %-16s | %6s\n", "", "", "median / <2°", "median / <2°", "median / <2°", "frame")
 out = DataFrame(rule=String[], changed_pct=Float64[], med_burst=Float64[], lt2_burst=Float64[], med_2_10=Float64[], lt2_2_10=Float64[],
@@ -51,7 +52,7 @@ for nm in sort(collect(keys(rules)); by=x -> x == "rank 1 (SRP maximum)" ? "" : 
     @printf(io, "%-48s %8.1f%% | %5.1f° / %5.1f%% | %5.1f° / %5.1f%% | %5.1f° / %5.1f%% | %5.1f%%\n", nm, ch, c1[1], c1[2], c2[1], c2[2], c3[1], c3[2], ins)
 end
 @printf(io, "pairs: %d (1.6-2.2 ms), %d (2.2-10 ms), %d (10-30 ms)\n", consistency(ones(Int, N), 1.6, 2.2)[3], consistency(ones(Int, N), 2.2, 10.0)[3], consistency(ones(Int, N), 10.0, 30.0)[3])
-CSV.write(joinpath(res, "selection_rules_$tag.csv"), out)
+CSV.write(joinpath(res, "selection_rules_$tag$sfx.csv"), out)
 body = String(take!(io))
-open(joinpath(res, "selection_rules_$tag.md"), "w") do g; println(g, "# Selection rules on real data ($tag)\n\n```\n", body, "```"); end
+open(joinpath(res, "selection_rules_$tag$sfx.md"), "w") do g; println(g, "# Selection rules on real data ($tag)\n\n```\n", body, "```"); end
 print(body)
