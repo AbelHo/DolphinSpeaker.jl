@@ -3,9 +3,9 @@ set_device__ophk_acoustic_D3()
 include("run_multitdoa.jl")   # run_contiguous_folders_multitdoa: one webui CSV per TDOA method (Impulse1-6), see reviews/plans/multitdoa-webui-csvs_2026-10-22.md
 
 #~ old
-# folder = "/media/spin/anas2/data/calf/upload/Two-way/Two-way_2males_06_10_2025/New_device"
-# res_dir = "/media/spin/anas2/data/calf/upload/results/tmp_20261007/Two-way_2males_06_10_2025_nooverlay2"
-# res = run_contiguous_folders(folder; res_dir = res_dir, flag_overlayvideo=false)
+folder = "/media/spin/anas2/data/calf/upload/Two-way/Two-way_2males_06_10_2025/New_device"
+res_dir = "/media/spin/anas2/data/calf/upload/results/tmp_20261007/Two-way_2males_06_10_2025_nooverlay2"
+res = run_contiguous_folders(folder; res_dir = res_dir, flag_overlayvideo=false)
 
 #~ new
 folder = "/media/spin/anas2/data/calf/upload/Two-way/Two-way_2males_06_10_2025/New_device"
