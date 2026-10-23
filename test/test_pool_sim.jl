@@ -102,6 +102,17 @@ const FS = 192_000
             d = diffuse[diffuse.click .== direct.click[c], :]
             @test all(direct.sample[c] - 25 .<= d.sample .<= direct.sample[c] + 0.03FS + 25)
         end
+        # with all options on, clicks still localize to their truth (low-pass is zero-phase; scattering is mild)
+        s3 = simulate_scenario(Xoshiro(9), [tm], zeros(300_000, 3); dur=0.5, nsrc=1, pool=dry, array_pos=[1.5, 5.0, 2.0], A0=1000.0, rx=RX, order=0,
+            offaxis_lowpass=true, hyd_scatter=0.1)
+        @test nrow(s3.arrivals) > 5
+        for i in 1:min(nrow(s3.arrivals), 10)
+            a = s3.arrivals[i, :]; p = round(Int, a.sample)
+            _, qq = get_tdoa_srp(s3.data[:, 3:5], [p]; window=-50:50, fs=FS, rx_vect=RX, return_quality=true)
+            u, v = qq.uv[1, :]; el = asind(v); az = asind(u / cosd(el))
+            @test hypot(az - a.az, el - a.el) < 1.0
+            @test maximum(abs, s3.data[p-20:p+20, 5]) > 0.2 * 1000 * maximum(abs, tm) / 30   # a real click, not garbage
+        end
         x = randn(Xoshiro(1), 400)
         lp = _sim_lowpass(x, 25e3, FS)
         P(v) = abs2.(rfft(v)); f = rfftfreq(400, FS)

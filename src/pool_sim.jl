@@ -170,7 +170,7 @@ function simulate_scenario(rng, templates, noise; fs=192000, dur=4.0, nsrc=2, po
     n = round(Int, dur * fs) + 2000
     pad = 8; pk0 = 41
     # waveform versions: [template][low-pass level][hydrophone][fraction]
-    versions(tm) = offaxis_lowpass ? [tm; [_sim_lowpass(tm, fc, fs) for fc in lowpass_cutoffs]] : [tm]
+    versions(tm) = offaxis_lowpass ? [[tm]; [_sim_lowpass(tm, fc, fs) for fc in lowpass_cutoffs]] : [tm]
     nh = hyd_scatter > 0 ? 3 : 1
     taps = [hyd_scatter > 0 ? [(rand(rng, scatter_delay[1]:scatter_delay[2]), hyd_scatter * randn(rng)) for _ in 1:scatter_taps] : Tuple{Int,Float64}[] for _ in 1:nh]
     function scatter(x, h)
