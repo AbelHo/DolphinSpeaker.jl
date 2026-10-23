@@ -83,3 +83,32 @@ end
         @test norm(dd .- d0) / norm(d0) < 0.1
     end
 end
+
+@testset "blind estimate under strong distortion" begin
+    # a scattered copy stronger than the direct arrival on hydrophone 1, and a distorted reference
+    resp = [[(7, 1.3), (19, -0.4)], [(5, -0.5), (23, 0.3)], [(11, 0.6)]]
+    data, peaks, dirs = synth(Xoshiro(3), 600, resp)
+    f(eq) = eq.f; inband(eq) = (eq.f .>= eq.band[1]) .& (eq.f .<= eq.band[2])
+    H(k, fk) = 1 + sum(a * cis(-2π * fk * d / FS) for (d, a) in resp[k]; init=0.0im)
+    eqb = estimate_hydrophone_eq_blind(data, peaks; fs=FS, rx_vect=RX, ref=3)
+    ib = inband(eqb)
+    for k in 1:2
+        Gt = [H(k, fk) / H(3, fk) for fk in eqb.f]
+        r = eqb.G[ib, k] ./ Gt[ib]                                    # equal up to a pure delay and a scale
+        φ = unwrap(angle.(r)); X = [ones(count(ib)) eqb.f[ib]]; ab = X \ φ
+        @test median(abs.(φ .- X * ab)) < 0.2                          # dispersive phase recovered
+        @test abs(rem(ab[1], 2π, RoundNearest)) < 0.3                    # constant phase recovered (no polarity error)
+        @test median(abs.(log.(abs.(r) ./ median(abs.(r))))) < 0.2       # relative magnitude recovered
+    end
+    # with the true pure delays (from calibration data) the directions are restored
+    dtrue = zeros(3)
+    for k in 1:2
+        Gt = [H(k, fk) / H(3, fk) for fk in eqb.f]
+        φ = unwrap(angle.(Gt[ib] ./ eqb.G[ib, k])); X = [ones(count(ib)) eqb.f[ib]]
+        dtrue[k] = -(X \ φ)[2] * FS / 2π
+    end
+    e_raw = median(direction_errors(data, peaks, dirs))
+    e_cal = median(direction_errors(apply_hydrophone_eq(data, with_delays(eqb, dtrue)), peaks, dirs))
+    @test e_cal < 0.5
+    @test e_cal < e_raw
+end
