@@ -185,14 +185,14 @@ function simulate_scenario(rng, templates, noise; fs=192000, dur=4.0, nsrc=2, po
 end
 
 """
-    random_pool_setup(rng; L=(15, 30), W=(8, 15), D=(3, 7)) -> (pool, array_pos)
+    random_pool_setup(rng; L=(15, 30), W=(8, 15), D=(3, 7), refl_wall=(0.5, 0.8), refl_bottom=(0.5, 0.8)) -> (pool, array_pos)
 
-A random rectangular pool and an array position near the x = 0 wall, facing into the pool (the real array is
-portable, so geometry varies between recordings).
+A random rectangular pool (concrete walls and bottom: water-concrete reflection about 0.7) and an array position near
+the x = 0 wall, facing into the pool (the real array is portable, so geometry varies between recordings).
 """
-function random_pool_setup(rng; L=(15.0, 30.0), W=(8.0, 15.0), D=(3.0, 7.0))
+function random_pool_setup(rng; L=(15.0, 30.0), W=(8.0, 15.0), D=(3.0, 7.0), refl_wall=(0.5, 0.8), refl_bottom=(0.5, 0.8))
     U(a, b) = a + (b - a) * rand(rng)
-    pool = Pool(L=U(L...), W=U(W...), D=U(D...))
+    pool = Pool(L=U(L...), W=U(W...), D=U(D...), refl_wall=U(refl_wall...), refl_bottom=U(refl_bottom...))
     array_pos = [U(0.5, 3.0), U(0.3, 0.7) * pool.W, U(0.5, min(3.0, pool.D - 0.5))]
     return pool, array_pos
 end
