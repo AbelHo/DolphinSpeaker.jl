@@ -7,6 +7,11 @@ using Statistics, LinearAlgebra, DataFrames, Clustering, Random
 _uv(az, el) = [sind(az) * cosd(el), sind(el)]
 _angle2(a, b) = (w(x) = sqrt(max(1 - x[1]^2 - x[2]^2, 0.0)); acosd(clamp(a[1] * b[1] + a[2] * b[2] + w(a) * w(b), -1, 1)))
 
+# separate_sources parameters for D3-like directions (selected-direction noise of about 15°), tuned on the calibrated
+# realistic pool simulation (improvements/tdoa_localization_2026-10-22/scripts/tune_sources.jl, round 4): pairwise F1
+# 0.84 with 2 dolphins and 0.83 with 3 (held out) vs 0.78 / 0.77 with the defaults, which suit low-noise directions
+const SEPARATION_PARAMS_D3 = (; sigma_meas_deg=8.0, gate_deg=25.0, force_gate_deg=40.0, t_drop=1.0, follow_gate_deg=12.0, merge_deg=8.0)
+
 mutable struct _Source
     id::Int
     slot::Int
