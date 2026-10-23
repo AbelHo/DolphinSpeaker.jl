@@ -569,17 +569,22 @@ function select_candidates(track, tarr, score, confirmed, hits; lags=track_lags(
 end
 
 """
-    run_multiarrival2(res_folder; out_dir, viewer_dir=res_folder, K=3, block_s=10.0, pad_s=0.05, echo_window_ms=1.6,
-        candidate_kwargs=(;), tracker_kwargs=(;), select_kwargs=(;), tag="clean")
+    run_multiarrival2(res_folder; out_dir, viewer_dir=res_folder, candidate_func=get_srp_candidates_sic,
+        window=window_impulsive, min_rel=0.7, K=3, select_rule=:earliest, block_s=10.0, pad_s=0.05, echo_window_ms=1.6,
+        candidate_kwargs=(;), tracker_kwargs=(;), select_kwargs=(;), tag="sic")
 
-Round-2 version of `run_multiarrival`: CLEAN candidates (get_srp_candidates_clean), parallel over audio blocks,
-tracks labelled by their arrival lag (track_lags) and one selected candidate per click (select_candidates).
+Round-2 version of `run_multiarrival`, parallel over audio blocks. Candidates from `candidate_func`
+(`get_srp_candidates_sic` by default; `get_srp_candidates_clean` also works) with `window` and `min_rel`. One
+direction per click: `select_rule=:earliest` takes the accepted candidate with the earliest beam arrival (the
+round-2 benchmark winner); `:track` uses `select_candidates` (the track-level arrival lag). Both are stored.
 Writes `out_dir/data/click_features_<tag>_<folder>.csv`, `out_dir/data/tracks_<tag>_<folder>.csv`,
-`out_dir/multiarrival_summary_<tag>_<folder>.md/.csv`, and in `viewer_dir` the webui files Impulse7c_srpCleanTracks,
-Impulse8c_srpCleanCandidates and Impulse9_selected (selected direction, click colours; echo / untracked as triangles).
+`out_dir/multiarrival_summary_<tag>_<folder>.md/.csv`, and in `viewer_dir` the webui files
+`Impulse7<tag>_tracks` (confirmed tracks, track colours), `Impulse8<tag>_candidates` (all accepted candidates; rank > 1
+as triangles) and `Impulse9<tag>_selected` (the selected direction with the click colours; followers as triangles).
 """
-function run_multiarrival2(res_folder; out_dir, viewer_dir=res_folder, K=3, block_s=10.0, pad_s=0.05, echo_window_ms=1.6,
-    candidate_kwargs=(;), tracker_kwargs=(;), select_kwargs=(;), tag="clean")
+function run_multiarrival2(res_folder; out_dir, viewer_dir=res_folder, candidate_func=get_srp_candidates_sic,
+    window=window_impulsive, min_rel=0.7, K=3, select_rule=:earliest, block_s=10.0, pad_s=0.05, echo_window_ms=1.6,
+    candidate_kwargs=(;), tracker_kwargs=(;), select_kwargs=(;), tag="sic")
 
     folder = basename(rstrip(res_folder, '/'))
     mkpath(joinpath(out_dir, "data"))
@@ -589,10 +594,11 @@ function run_multiarrival2(res_folder; out_dir, viewer_dir=res_folder, K=3, bloc
     rx = rx_vect[:, get_relevant_channels(rx_vect)]
     parts = DataFrame[]; trk_parts = DataFrame[]; cands = []; g0 = 0; next_id = 1
     for (fi, f) in enumerate(files)
+        t_file = time()
         j = jldopen(f); tr = j["res_impulsetrain"]; fs = j["fs"]; ri = j["res_impulse"]; close(j)
         aufname, len_data = ri.aufname, ri.len_data
         P = tr.pind_good; n = length(P)
-        @info "multiarrival2: $(basename(aufname)), $n clicks"
+        @info "multiarrival2 ($tag): $(basename(aufname)), $n clicks"
         st = [tr.train_start_ind; n + 1]; blocks = UnitRange{Int}[]
         for t in 1:length(tr.train_start_ind)
             a = st[t]
@@ -602,19 +608,21 @@ function run_multiarrival2(res_folder; out_dir, viewer_dir=res_folder, K=3, bloc
                 push!(blocks, a:b); a = b + 1
             end
         end
-        C = (; uv=fill(NaN, n, K, 2), score=fill(NaN, n, K), rscore=fill(NaN, n, K), pmin=fill(NaN, n, K), tarr=fill(NaN, n, K),
-            nfound=zeros(Int, n), closure=fill(NaN, n), ncc_min=fill(NaN, n), gcc_peak_min=fill(NaN, n), gcc_npeaks=zeros(Int, n), env=zeros(Int, n))
+        C = (; uv=fill(NaN, n, K, 2), score=fill(NaN, n, K), rscore=fill(NaN, n, K), pmin=fill(NaN, n, K), efrac=fill(NaN, n, K),
+            tarr=fill(NaN, n, K), nfound=zeros(Int, n), closure=fill(NaN, n), ncc_min=fill(NaN, n), gcc_peak_min=fill(NaN, n),
+            gcc_npeaks=zeros(Int, n), env=zeros(Int, n))
         pad = round(Int, pad_s * fs)
         Threads.@threads :dynamic for bl in blocks[sortperm(length.(blocks); rev=true)]   # longest first
             lo = max(P[bl[1]] - pad, 1)
             d = read_filtered_block(aufname, lo:min(P[bl[end]] + pad, len_data); fs=fs)
             pk = P[bl] .- lo .+ 1
-            c = get_srp_candidates_clean(d, pk; window=window_impulsive, ref_channel=ref_channel, fs=fs, rx_vect=rx, K=K, threaded=false, candidate_kwargs...)
+            c = candidate_func(d, pk; window=window, ref_channel=ref_channel, fs=fs, rx_vect=rx, K=K, min_rel=min_rel, threaded=false, candidate_kwargs...)
             C.uv[bl, :, :] = c.uv
             for nm in (:score, :rscore, :pmin, :tarr); getfield(C, nm)[bl, :] = getfield(c, nm); end
+            hasproperty(c, :efrac) && (C.efrac[bl, :] = c.efrac)
             for nm in (:nfound, :closure, :ncc_min, :gcc_peak_min, :gcc_npeaks); getfield(C, nm)[bl] = getfield(c, nm); end
             ea = zeros(Int, length(bl))
-            for (q, p) in enumerate(pk)   # envelope_arrivals without its inner threads
+            for (q, p) in enumerate(pk)   # envelope_arrivals in the pipeline window, without its inner threads
                 win = _clip_window(window_impulsive .+ p, size(d, 1))
                 ea[q] = maximum(ch -> (pkk = findmaxima(abs.(hilbert(d[win, ch])), 8); isempty(pkk.heights) ? 0 : count(pkk.heights .>= 0.3maximum(pkk.heights))), axes(d, 2))
             end
@@ -622,11 +630,13 @@ function run_multiarrival2(res_folder; out_dir, viewer_dir=res_folder, K=3, bloc
         end
         ff = follower_flags(P, fs; echo_window_ms=echo_window_ms)
         tsec = (P .- 1) ./ fs
-        T = track_candidates(tsec, C.uv, C.score; first_id=next_id, tracker_kwargs...)
+        T = track_candidates(tsec, C.uv, C.rscore; first_id=next_id, tracker_kwargs...)
         next_id = isempty(T.tracks.id) ? next_id : maximum(T.tracks.id) + 1
         conf = Dict(zip(T.tracks.id, T.tracks.confirmed)); hits = Dict(zip(T.tracks.id, T.tracks.hits))
         lg = track_lags(T.track, C.tarr, conf)
-        S = select_candidates(T.track, C.tarr, C.score, conf, hits; lags=lg, select_kwargs...)
+        St = select_candidates(T.track, C.tarr, C.score, conf, hits; lags=lg, select_kwargs...)
+        sel_early = [(ks = findall(k -> !isnan(C.tarr[i, k]), 1:K); isempty(ks) ? 1 : ks[argmin(C.tarr[i, ks])]) for i in 1:n]
+        sel = select_rule == :earliest ? sel_early : St.sel
         T.tracks.file .= fi
         T.tracks.lag = [get(lg, id, (NaN, 0))[1] for id in T.tracks.id]
         T.tracks.n_shared = [get(lg, id, (NaN, 0))[2] for id in T.tracks.id]
@@ -636,17 +646,18 @@ function run_multiarrival2(res_folder; out_dir, viewer_dir=res_folder, K=3, bloc
             gap_prev_ms=ff.gap_prev, gap_next_ms=ff.gap_next, follower=ff.follower,
             closure_phat=C.closure, ncc_min=C.ncc_min, gcc_peak_min=C.gcc_peak_min, gcc_npeaks=C.gcc_npeaks,
             env_peaks=C.env, impulse5_flagged=w5.shape[g0 .+ (1:n)] .== "triangle", nfound=C.nfound,
-            selected=S.sel, select_status=S.status)
+            selected=sel, selected_earliest=sel_early, selected_track=St.sel, track_status=St.status)
         for k in 1:K
             ae = [isnan(C.uv[i, k, 1]) ? (NaN, NaN) : uv2azel(C.uv[i, k, 1], C.uv[i, k, 2]) for i in 1:n]
             rows[!, "az_$k"] = rad2deg.(first.(ae)); rows[!, "el_$k"] = rad2deg.(last.(ae))
             rows[!, "score_$k"] = C.score[:, k]; rows[!, "rscore_$k"] = C.rscore[:, k]; rows[!, "pmin_$k"] = C.pmin[:, k]
-            rows[!, "tarr_$k"] = C.tarr[:, k]; rows[!, "track_$k"] = T.track[:, k]
+            rows[!, "efrac_$k"] = C.efrac[:, k]; rows[!, "tarr_$k"] = C.tarr[:, k]; rows[!, "track_$k"] = T.track[:, k]
         end
-        ae = [uv2azel(C.uv[i, S.sel[i], 1], C.uv[i, S.sel[i], 2]) for i in 1:n]
+        ae = [uv2azel(C.uv[i, sel[i], 1], C.uv[i, sel[i], 2]) for i in 1:n]
         rows.az_sel = rad2deg.(first.(ae)); rows.el_sel = rad2deg.(last.(ae))
-        push!(parts, rows); push!(cands, (; g0, n, filt=T.filt, uv=C.uv, sel=S.sel))
+        push!(parts, rows); push!(cands, (; g0, n, filt=T.filt, uv=C.uv, sel))
         g0 += n
+        @info @sprintf("multiarrival2 (%s): %s done in %.0f s", tag, basename(aufname), time() - t_file)
     end
     feat = reduce(vcat, parts); tracks = reduce(vcat, trk_parts)
     N = nrow(feat)
@@ -655,7 +666,7 @@ function run_multiarrival2(res_folder; out_dir, viewer_dir=res_folder, K=3, bloc
     st = Dict(id => (az=Float64[], el=Float64[], s=Float64[]) for id in tracks.id)
     for k in 1:K, i in 1:N
         id = feat[i, "track_$k"]; id == 0 && continue
-        push!(st[id].az, feat[i, "az_$k"]); push!(st[id].el, feat[i, "el_$k"]); push!(st[id].s, feat[i, "score_$k"])
+        push!(st[id].az, feat[i, "az_$k"]); push!(st[id].el, feat[i, "el_$k"]); push!(st[id].s, feat[i, "rscore_$k"])
     end
     tv(az, el) = (sind(az) * cosd(el), sind(el), cosd(az) * cosd(el))
     angd2(a, b) = acosd(clamp(sum(a .* b), -1, 1))
@@ -685,51 +696,55 @@ function run_multiarrival2(res_folder; out_dir, viewer_dir=res_folder, K=3, bloc
                 push!(r7, (imp6.frame[g], q[1], q[2], imp6.radius[g], 255col[1], 255col[2], 255col[3], imp6.a[g], "circle"))
             end
         end
-        k = cd.sel[i]; id = feat[g, "track_$k"]
-        q = id > 0 && conf[id] ? px_of(cd.filt[i, k, 1], cd.filt[i, k, 2]) : px_of(cd.uv[i, k, 1], cd.uv[i, k, 2])
-        push!(r9, (imp6.frame[g], q[1], q[2], imp6.radius[g], imp6.r[g], imp6.g[g], imp6.b[g], imp6.a[g],
-            feat.select_status[g] == "direct" ? "circle" : "triangle"))
+        k = cd.sel[i]; q = px_of(cd.uv[i, k, 1], cd.uv[i, k, 2])
+        push!(r9, (imp6.frame[g], q[1], q[2], imp6.radius[g], imp6.r[g], imp6.g[g], imp6.b[g], imp6.a[g], feat.follower[g] ? "triangle" : "circle"))
     end
-    for (key, df) in [("Impulse7c_srpCleanTracks", r7), ("Impulse8c_srpCleanCandidates", r8), ("Impulse9_selected", r9)]
+    for (key, df) in [("Impulse7$(tag)_tracks", r7), ("Impulse8$(tag)_candidates", r8), ("Impulse9$(tag)_selected", r9)]
         df.type = df.shape
         CSV.write(joinpath(viewer_dir, "detection_pixels__color255_webui__$key.csv"), vcat(df, tonal[:, names(df)]))
     end
 
-    # summary, including the consecutive-click agreement of Impulse6 (candidate 1) vs the selection
+    # summary: candidates, tracks, selection, and consecutive-click agreement of Impulse6 (SRP) vs the selection
     inside(df) = mean((0 .<= df.px .<= imsize[2]) .& (0 .<= df.py .<= imsize[1]))
     ct = tracks[tracks.confirmed, :]
-    function agreement(az, el, lo, hi)
+    function agreement(az, el, lo, hi; only=trues(N))
         a = Float64[]
         for i in 2:N
-            feat.file[i] == feat.file[i-1] && lo <= feat.gap_prev_ms[i] < hi && push!(a, angd2(tv(az[i], el[i]), tv(az[i-1], el[i-1])))
+            feat.file[i] == feat.file[i-1] && only[i] && only[i-1] && lo <= feat.gap_prev_ms[i] < hi && push!(a, angd2(tv(az[i], el[i]), tv(az[i-1], el[i-1])))
         end
-        return median(a), 100mean(a .< 2)
+        return isempty(a) ? (NaN, NaN, 0) : (median(a), 100mean(a .< 2), length(a))
     end
     summ = DataFrame(metric=String[], value=Float64[])
     add(nm, v) = push!(summ, (nm, v))
-    add("clicks", N)
-    match1 = [angd2(tv(feat.az_1[g], feat.el_1[g]), tv(px2angle(imp6.px[g], imp6.py[g])...)) for g in 1:N]
-    add("candidate1_vs_Impulse6_within_0.5deg_pct", 100mean(match1 .<= 0.5))
+    add("clicks", N); add("window_first", first(window)); add("window_last", last(window)); add("min_rel", min_rel)
+    if first(window) == first(window_impulsive) && last(window) == last(window_impulsive)
+        match1 = [angd2(tv(feat.az_1[g], feat.el_1[g]), tv(px2angle(imp6.px[g], imp6.py[g])...)) for g in 1:N]
+        add("candidate1_vs_Impulse6_within_0.5deg_pct", 100mean(match1 .<= 0.5))
+    end
     for k in 1:K; add("clicks_with_ge$(k)_candidates_pct", 100mean(feat.nfound .>= k)); end
-    add("rscore2_over_score1_median", median(filter(!isnan, feat.rscore_2 ./ feat.score_1)))
+    add("followers_with_ge2_candidates_pct", 100mean(feat.nfound[feat.follower] .>= 2))
+    add("isolated_with_ge2_candidates_pct", 100mean(feat.nfound[.!feat.follower] .>= 2))
+    add("selected_not_rank1_pct", 100mean(feat.selected .!= 1))
+    add("selected_rules_agree_pct", 100mean(feat.selected_earliest .== feat.selected_track))
     add("tracks_total", nrow(tracks)); add("tracks_confirmed", nrow(ct))
     add("confirmed_duration_s_median", median(ct.duration_s)); add("confirmed_hits_median", median(ct.hits))
     add("confirmed_jitter_deg_median", median(filter(!isnan, ct.jitter_deg)))
-    add("confirmed_tracks_with_lag_evidence", count(ct.n_shared .>= 5)); add("confirmed_tracks_lagging_gt3", count((ct.n_shared .>= 5) .& (ct.lag .> 3)))
     add("clicks_on_confirmed_track_pct", 100mean(feat.track_confirmed))
-    for s in ("direct", "echo", "untracked"); add("selected_$(s)_pct", 100mean(feat.select_status .== s)); end
-    add("selected_not_rank1_pct", 100mean(feat.selected .!= 1))
-    for (lo, hi) in [(0.4, 1.6), (1.6, 2.2), (2.2, 10.0), (10.0, 30.0)]
-        m6, s6 = agreement(feat.az_1, feat.el_1, lo, hi); m9, s9 = agreement(feat.az_sel, feat.el_sel, lo, hi)
-        add("consecutive_$(lo)-$(hi)ms_median_deg_Impulse6", m6); add("consecutive_$(lo)-$(hi)ms_median_deg_Impulse9", m9)
-        add("consecutive_$(lo)-$(hi)ms_lt2deg_pct_Impulse6", s6); add("consecutive_$(lo)-$(hi)ms_lt2deg_pct_Impulse9", s9)
+    for s in ("direct", "echo", "untracked"); add("track_rule_$(s)_pct", 100mean(feat.track_status .== s)); end
+    az6 = [px2angle(imp6.px[g], imp6.py[g])[1] for g in 1:N]; el6 = [px2angle(imp6.px[g], imp6.py[g])[2] for g in 1:N]
+    iso = .!feat.follower
+    for (lo, hi) in [(0.4, 1.6), (1.6, 2.2), (2.2, 10.0), (10.0, 30.0)], (nm, only) in [("all", trues(N)), ("isolated", iso)]
+        m6, s6, n6 = agreement(az6, el6, lo, hi; only=only); m9, s9, _ = agreement(feat.az_sel, feat.el_sel, lo, hi; only=only)
+        add("consecutive_$(nm)_$(lo)-$(hi)ms_n", n6)
+        add("consecutive_$(nm)_$(lo)-$(hi)ms_median_deg_Impulse6", m6); add("consecutive_$(nm)_$(lo)-$(hi)ms_median_deg_selected", m9)
+        add("consecutive_$(nm)_$(lo)-$(hi)ms_lt2deg_pct_Impulse6", s6); add("consecutive_$(nm)_$(lo)-$(hi)ms_lt2deg_pct_selected", s9)
     end
-    add("inside_frame_pct_Impulse6", 100inside(imp6)); add("inside_frame_pct_Impulse9", 100inside(r9))
-    add("inside_frame_pct_Impulse9_direct", 100inside(r9[r9.shape .== "circle", :]))
-    add("rows_Impulse7c", nrow(r7)); add("rows_Impulse8c", nrow(r8)); add("rows_Impulse9", nrow(r9))
+    add("inside_frame_pct_Impulse6", 100inside(imp6)); add("inside_frame_pct_selected", 100inside(r9))
+    add("inside_frame_pct_selected_isolated", 100inside(r9[r9.shape .== "circle", :]))
+    add("rows_Impulse7", nrow(r7)); add("rows_Impulse8", nrow(r8)); add("rows_Impulse9", nrow(r9))
     CSV.write(joinpath(out_dir, "multiarrival_summary_$(tag)_$folder.csv"), summ)
     open(joinpath(out_dir, "multiarrival_summary_$(tag)_$folder.md"), "w") do io
-        println(io, "# Multi-arrival summary ($tag): $folder\n\nSource: `$res_folder`\n\n| metric | value |\n|---|---|")
+        println(io, "# Multi-arrival summary ($tag): $folder\n\nSource: `$res_folder`; candidates `$candidate_func`, window $window, min_rel $min_rel, selection `$select_rule`\n\n| metric | value |\n|---|---|")
         for r in eachrow(summ); println(io, "| ", r.metric, " | ", @sprintf("%.4g", r.value), " |"); end
     end
     show(stdout, MIME("text/plain"), summ); println()
