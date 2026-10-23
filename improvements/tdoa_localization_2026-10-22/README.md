@@ -121,8 +121,20 @@ Full report: `reports/round3_pool_simulation.md`. Plan: `reviews/plans/multiarri
 - **Real data:** the **longest-track rule** is the most consistent (burst pulses 8.0° vs 10.4° for Impulse6; 2–10 ms 17.3° vs 24.3°; 10–30 ms 25.2° vs 33.6°). With followers inheriting, 69.3% of points are in frame (Impulse6: 57.4%).
 - Recommended viewer file: `detection_pixels__color255_webui__Impulse10sicw_default_longesttrack-inherit.csv`.
 
+## Round 4 (2026-10-24): realistic simulation, smarter inheritance, separating n dolphins
+Full report: `reports/round4_realism_sources.md`. Plan: `reviews/plans/multiarrival-round4-realism-sources_2026-10-24.md`.
+
+- **Realism.** `src/pool_sim.jl` gained hydrophone scattering, diffuse reverb and off-axis low-pass; the defaults reproduce round 3 exactly.
+  - Per-hydrophone scattering, not reverb, reproduces the real windows: 78.5% vs 78% of clicks with a second SIC candidate, closure ≤ 1 in 33% vs 35%, followers 53% vs 51%.
+  - On that simulation, one direction per click is within 3° of the direct path for only 35% (2 dolphins) to 54% (3 dolphins) of detections, with the best method (longest track + inheritance).
+- **`src/source_separation.jl`** handles any number of dolphins (`n` given or estimated) and does smart inheritance (echo / repeat / the other dolphin's own click).
+  - Tuned (`SEPARATION_PARAMS_D3`), pairwise F1 is 0.84 with 2 dolphins and 0.83 with 3 (held out; k-means 0.80).
+  - A click-rhythm cost term did not help and was removed.
+- **Real two-male data (`n` = 2, tuned).** 88% of clicks get a dolphin label, and direction continuity within a label is twice the unseparated stream's. But click intervals within a label are not more regular, so direction alone does not isolate the two males.
+- Viewer file to check: `detection_pixels__color255_webui__Impulse11sicw_sources_n2_tuned.csv` (dolphin 1 blue, dolphin 2 orange, unassigned grey, echoes as triangles).
+
 ## Next
-1. Viewer check of `Impulse10sicw_default_longesttrack-inherit` against Impulse6.
-2. A more realistic simulation (hydrophone-specific waveform distortion, diffuse late reverberation, off-axis low-pass), aiming at the real 78% of clicks with a second SIC candidate; then validate the proxies.
-3. Smarter inheritance: inherit only when the follower's candidates include an image of the leader's direction, so that the other animal's clicks keep their own direction.
-4. Tracks → sources (the two males), using ICI and spectra (existing HDBSCAN); a false-detection score from the feature table; validation on the calibration sets when they arrive.
+1. Viewer check of `Impulse11sicw_sources_n2_tuned`.
+2. Equalize the per-hydrophone responses (the dominant error source per the simulation): estimate them from strong clicks, deconvolve before GCC/SRP, and test in the simulation, where the true responses are known.
+3. Multi-hypothesis click-train separation (ICI continuity) for dolphins in similar directions; spectral identity from the existing HDBSCAN code.
+4. Video labels of the males' positions as ground truth for the separation; validation on the calibration sets when they arrive.
