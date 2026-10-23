@@ -66,4 +66,45 @@ const FS = 192_000
         end
         @test sim.clicks.direct_az ≈ sim.arrivals.az
     end
+
+    # ---- round 4: realism options ----
+    tm = [exp(-((i - 41) / 2.0)^2) * cos(2π * 50e3 * (i - 41) / FS) for i in 1:101]
+    tm2 = [exp(-((i - 41) / 3.0)^2) * cos(2π * 35e3 * (i - 41) / FS) for i in 1:101]
+    @testset "defaults reproduce round 3" begin
+        noise = 0.01 .* randn(Xoshiro(5), 400_000, 3)
+        rng = Xoshiro(42); pool, ap = random_pool_setup(rng)
+        sim = simulate_scenario(rng, [tm, tm2], noise; dur=1.5, nsrc=2, pool=pool, array_pos=ap, A0=100.0, rx=RX)
+        # fingerprint of the round-3 simulator (commit b752612 + random reflections of 3ecf536) for this seed
+        @test size(sim.data, 1) == 290000 && nrow(sim.arrivals) == 20362
+        @test sum(abs, sim.data) ≈ 1.4406981242e+05 rtol = 1e-9
+        @test sum(sim.arrivals.sample) ≈ 3.4249072927e+09 rtol = 1e-9
+    end
+
+    @testset "realism options" begin
+        dry = Pool(L=20, W=10, D=5, refl_surface=0, refl_bottom=0, refl_wall=0)
+        ncc(sim) = begin   # correlation between hydrophones 1 and 3 of the first click, aligned by the true fractional delays
+            a = sim.arrivals[1, :]; p = round(Int, a.sample)
+            u, v = sind(a.az) * cosd(a.el), sind(a.el)
+            τ = -(RX' * [u, v, sqrt(max(1 - u^2 - v^2, 0.0))]) ./ default_c .* FS
+            x = _sim_frac_delay(sim.data[p-60:p+80, 3], -(τ[1] - τ[3])); y = sim.data[p-60:p+80, 5]
+            abs(sum(x .* y)) / sqrt(sum(abs2, x) * sum(abs2, y))
+        end
+        s0 = simulate_scenario(Xoshiro(7), [tm], zeros(300_000, 3); dur=0.5, nsrc=1, pool=dry, array_pos=[1.5, 5.0, 2.0], A0=1000.0, rx=RX, order=0)
+        s1 = simulate_scenario(Xoshiro(7), [tm], zeros(300_000, 3); dur=0.5, nsrc=1, pool=dry, array_pos=[1.5, 5.0, 2.0], A0=1000.0, rx=RX, order=0,
+            hyd_scatter=0.6)
+        @test ncc(s0) > 0.97
+        @test ncc(s1) < ncc(s0) - 0.05                              # hydrophone-specific scattering decorrelates the channels
+        s2 = simulate_scenario(Xoshiro(7), [tm], zeros(300_000, 3); dur=0.5, nsrc=1, pool=dry, array_pos=[1.5, 5.0, 2.0], A0=1000.0, rx=RX, order=0,
+            reverb_level=0.1, reverb_n=40, reverb_tmax=0.03)
+        diffuse = s2.arrivals[s2.arrivals.order .== -1, :]; direct = s2.arrivals[s2.arrivals.order .== 0, :]
+        @test nrow(diffuse) == 40 * nrow(direct)
+        for c in 1:nrow(direct)   # diffuse arrivals of each click come after its direct arrival, within reverb_tmax (+ array delays)
+            d = diffuse[diffuse.click .== direct.click[c], :]
+            @test all(direct.sample[c] - 25 .<= d.sample .<= direct.sample[c] + 0.03FS + 25)
+        end
+        x = randn(Xoshiro(1), 400)
+        lp = _sim_lowpass(x, 25e3, FS)
+        P(v) = abs2.(rfft(v)); f = rfftfreq(400, FS)
+        @test sum(P(lp)[f .> 50e3]) < 0.01 * sum(P(x)[f .> 50e3])  # off-axis low-pass removes the high band
+    end
 end

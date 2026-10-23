@@ -3,7 +3,7 @@
 # plan: reviews/plans/multiarrival-round3-pool-simulation_2026-10-23.md
 # pool frame: x along the length, y across, z depth (0 at the surface, positive down)
 # array frame as in cost_tdoa2ang / tdoa2uv: x right, y up, z forward; the array is level and faces +x of the pool
-using LinearAlgebra, Random, Statistics, DataFrames, FFTW
+using LinearAlgebra, Random, Statistics, DataFrames, FFTW, DSP
 
 Base.@kwdef struct Pool
     L::Float64 = 20.0             # length (x, m)
@@ -60,16 +60,16 @@ perceived_azel(dir) = (el = asind(clamp(dir[2], -1, 1)); (cosd(el) > 1e-12 ? asi
 """
     click_arrivals(src, heading, array_pos, pool; order=3, c=default_c, θ0=20.0, floor=0.03, rel_min=0.01)
 
-Arrivals of one click at the array centre: a Vector of (; delay (s), gain, dir (array frame), order), with
-gain = reflection product x beam gain toward the array / path length. Arrivals weaker than `rel_min` x the strongest
-are dropped.
+Arrivals of one click at the array centre: a Vector of (; delay (s), gain, dir (array frame), order, θ), with
+gain = reflection product x beam gain toward the array / path length and θ the angle (deg) between the (mirrored)
+beam axis and the ray to the array. Arrivals weaker than `rel_min` x the strongest are dropped.
 """
 function click_arrivals(src, heading, array_pos, pool::Pool; order=3, c=default_c, θ0=20.0, floor=0.03, rel_min=0.01)
-    out = NamedTuple{(:delay, :gain, :dir, :order),Tuple{Float64,Float64,NTuple{3,Float64},Int}}[]
+    out = NamedTuple{(:delay, :gain, :dir, :order, :θ),Tuple{Float64,Float64,NTuple{3,Float64},Int,Float64}}[]
     for im in pool_images(src, heading, pool; order=order)
         d = array_pos .- im.pos; r = norm(d)
         θ = acosd(clamp(dot(im.heading, d) / (r * norm(im.heading)), -1, 1))
-        push!(out, (; delay=r / c, gain=im.refl * beam_gain(θ; θ0=θ0, floor=floor) / r, dir=array_dir(im.pos, array_pos), order=im.order))
+        push!(out, (; delay=r / c, gain=im.refl * beam_gain(θ; θ0=θ0, floor=floor) / r, dir=array_dir(im.pos, array_pos), order=im.order, θ))
     end
     gmax = maximum(a -> abs(a.gain), out)
     return filter(a -> abs(a.gain) >= rel_min * gmax, out)
@@ -130,9 +130,18 @@ function _sim_frac_delay(x, d)
     return irfft(X .* cis.(-2π .* (0:length(X)-1) ./ N .* d), N)[1:n]
 end
 
+# zero-phase low-pass of a short template (padded so the filter's edges stay outside)
+function _sim_lowpass(x, fc, fs)
+    pad = 64
+    y = filtfilt(digitalfilter(Lowpass(fc / (fs / 2)), Butterworth(4)), [zeros(pad); x; zeros(pad)])
+    return y[pad+1:pad+length(x)]
+end
+
 """
     simulate_scenario(rng, templates, noise; fs=192000, dur=4.0, nsrc=2, pool=Pool(), array_pos=[1.5, 5.0, 1.5], A0=1.0,
-        rx, c=default_c, order=3, θ0=20.0, beam_floor=0.03, rel_min=0.01, source_kwargs=(;))
+        rx, c=default_c, order=3, θ0=20.0, beam_floor=0.03, rel_min=0.01, source_kwargs=(;),
+        hyd_scatter=0.0, scatter_taps=3, scatter_delay=(4, 30), reverb_level=0.0, reverb_t60=0.15, reverb_n=60,
+        reverb_tmax=0.06, offaxis_lowpass=false, lowpass_angles=(15.0, 40.0, 90.0), lowpass_cutoffs=(60e3, 40e3, 25e3))
 
 Simulates `nsrc` moving clicking sources (random_source) in `pool`, recorded by the array at `array_pos` (geometry
 `rx`, 3 x 3, as rx_vect's hydrophone columns). Every click is the template `templates[tmpl]` (peak at index 41) times
@@ -142,13 +151,48 @@ Returns (; data, arrivals, clicks): `data` has 5 columns (1-2 zero, 3-5 the hydr
 `arrivals` one row per arrival (src, click, order, sample = peak position on the reference hydrophone (1-based),
 amp, az, el as the planar array perceives them, behind); `clicks` one row per click (src, click, t, x, y, z, beam
 angle to the array, level, burst, the direct arrival's az/el/amp).
+
+Realism options (all off by default; off, they draw no random numbers, so the output is unchanged):
+- `hyd_scatter`: per hydrophone, a fixed random impulse response 1 + `scatter_taps` taps (delays `scatter_delay`
+  samples, amplitudes N(0, hyd_scatter)) convolved with every arrival: mount/housing scattering that makes the
+  waveforms differ between hydrophones.
+- `reverb_level`: a diffuse tail per click: `reverb_n` plane-wave arrivals from random directions, delays up to
+  `reverb_tmax` s after the direct arrival with density growing as t², amplitudes N(0, 1) x reverb_level x the click's
+  strongest specular arrival x exp(-6.9 t / reverb_t60). They enter `arrivals` with order -1.
+- `offaxis_lowpass`: arrivals leaving the beam at more than `lowpass_angles` degrees are low-passed at
+  `lowpass_cutoffs` (diffuse arrivals at the lowest cutoff): off-axis clicks are duller.
 """
 function simulate_scenario(rng, templates, noise; fs=192000, dur=4.0, nsrc=2, pool=Pool(), array_pos=[1.5, 5.0, 1.5], A0=1.0,
-    rx, c=default_c, order=3, θ0=20.0, beam_floor=0.03, rel_min=0.01, ref=3, source_kwargs=(;))
+    rx, c=default_c, order=3, θ0=20.0, beam_floor=0.03, rel_min=0.01, ref=3, source_kwargs=(;),
+    hyd_scatter=0.0, scatter_taps=3, scatter_delay=(4, 30), reverb_level=0.0, reverb_t60=0.15, reverb_n=60, reverb_tmax=0.06,
+    offaxis_lowpass=false, lowpass_angles=(15.0, 40.0, 90.0), lowpass_cutoffs=(60e3, 40e3, 25e3))
 
     n = round(Int, dur * fs) + 2000
     pad = 8; pk0 = 41
-    banks = [[_sim_frac_delay([zeros(pad); tm; zeros(pad)], f / 32) for f in 0:31] for tm in templates]
+    # waveform versions: [template][low-pass level][hydrophone][fraction]
+    versions(tm) = offaxis_lowpass ? [tm; [_sim_lowpass(tm, fc, fs) for fc in lowpass_cutoffs]] : [tm]
+    nh = hyd_scatter > 0 ? 3 : 1
+    taps = [hyd_scatter > 0 ? [(rand(rng, scatter_delay[1]:scatter_delay[2]), hyd_scatter * randn(rng)) for _ in 1:scatter_taps] : Tuple{Int,Float64}[] for _ in 1:nh]
+    function scatter(x, h)
+        isempty(h) && return x
+        y = [x; zeros(scatter_delay[2])]
+        for (d, a) in h; y[d+1:d+length(x)] .+= a .* x; end
+        return y
+    end
+    banks = [[[[_sim_frac_delay([zeros(pad); scatter(v, taps[m]); zeros(pad)], f / 32) for f in 0:31] for m in 1:nh] for v in versions(tm)] for tm in templates]
+    nver = offaxis_lowpass ? length(lowpass_cutoffs) + 1 : 1
+    level_of(θ) = offaxis_lowpass ? 1 + count(θ .>= lowpass_angles) : 1
+    function place!(hyd, tmpl, ver, x0, τ, amp)
+        for ch in 1:3
+            x = x0 + τ[ch] + 1          # template peak position (1-based); x0 = arrival time x fs
+            ip = floor(Int, x); f = round(Int, (x - ip) * 32)
+            f == 32 && (ip += 1; f = 0)
+            seg = banks[tmpl][ver][nh == 3 ? ch : 1][f+1]
+            i0 = ip - pk0 - pad + 1
+            (i0 < 1 || i0 + length(seg) - 1 > size(hyd, 1)) && continue
+            @views hyd[i0:i0+length(seg)-1, ch] .+= amp .* seg
+        end
+    end
     hyd = zeros(n, 3)
     arrivals = DataFrame(src=Int[], click=Int[], order=Int[], sample=Float64[], amp=Float64[], az=Float64[], el=Float64[], behind=Bool[])
     clicks = DataFrame(src=Int[], click=Int[], t=Float64[], x=Float64[], y=Float64[], z=Float64[], beam_angle=Float64[], level=Float64[],
@@ -162,17 +206,22 @@ function simulate_scenario(rng, templates, noise; fs=192000, dur=4.0, nsrc=2, po
             for a in arr
                 τ = -(rx' * collect(a.dir)) ./ c .* fs               # per-hydrophone delay (samples), as get_tdoa_srp
                 amp = A0 * cl.level * a.gain
-                for ch in 1:3
-                    x = (cl.t + a.delay) * fs + τ[ch] + 1             # position of the template peak (1-based)
-                    ip = floor(Int, x); f = round(Int, (x - ip) * 32)
-                    f == 32 && (ip += 1; f = 0)
-                    seg = banks[cl.tmpl][f+1]
-                    i0 = ip - pk0 - pad + 1
-                    (i0 < 1 || i0 + length(seg) - 1 > n) && continue
-                    @views hyd[i0:i0+length(seg)-1, ch] .+= amp .* seg
-                end
+                place!(hyd, cl.tmpl, level_of(a.θ), (cl.t + a.delay) * fs, τ, amp)
                 az, el = perceived_azel(a.dir)
                 push!(arrivals, (s, ci, a.order, (cl.t + a.delay) * fs + τ[ref] + 1, amp, az, el, a.dir[3] < 0))
+            end
+            if reverb_level > 0
+                d0 = arr[findfirst(a -> a.order == 0, arr)]
+                aref = A0 * cl.level * maximum(a -> abs(a.gain), arr)
+                for _ in 1:reverb_n
+                    tr = reverb_tmax * rand(rng)^(1 / 3)
+                    u = normalize(randn(rng, 3)); dir = (u[1], u[2], u[3])
+                    τ = -(rx' * u) ./ c .* fs
+                    amp = reverb_level * aref * randn(rng) * exp(-6.9 * tr / reverb_t60)
+                    place!(hyd, cl.tmpl, nver, (cl.t + d0.delay + tr) * fs, τ, amp)
+                    az, el = perceived_azel(dir)
+                    push!(arrivals, (s, ci, -1, (cl.t + d0.delay + tr) * fs + τ[ref] + 1, amp, az, el, dir[3] < 0))
+                end
             end
             d0 = arr[findfirst(a -> a.order == 0, arr)]
             az0, el0 = perceived_azel(d0.dir)
