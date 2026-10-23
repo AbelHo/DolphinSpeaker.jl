@@ -147,10 +147,11 @@ Simulates `nsrc` moving clicking sources (random_source) in `pool`, recorded by 
 `rx`, 3 x 3, as rx_vect's hydrophone columns). Every click is the template `templates[tmpl]` (peak at index 41) times
 A0 x level x gain of each arrival (click_arrivals), placed on each hydrophone at its plane-wave delay; `noise` (a
 matrix with >= dur x fs rows, 3 columns, e.g. real quiet recording) is added from a random offset.
-Returns (; data, arrivals, clicks): `data` has 5 columns (1-2 zero, 3-5 the hydrophones, as the D3 WAV files);
+Returns (; data, arrivals, clicks, responses): `data` has 5 columns (1-2 zero, 3-5 the hydrophones, as the D3 WAV files);
 `arrivals` one row per arrival (src, click, order, sample = peak position on the reference hydrophone (1-based),
 amp, az, el as the planar array perceives them, behind); `clicks` one row per click (src, click, t, x, y, z, beam
-angle to the array, level, burst, the direct arrival's az/el/amp).
+angle to the array, level, burst, the direct arrival's az/el/amp); `responses[m]` the scattering taps (delay in
+samples, amplitude) of hydrophone m (empty without `hyd_scatter`): its response is δ(t) + Σ amplitude x δ(t - delay).
 
 Realism options (all off by default; off, they draw no random numbers, so the output is unchanged):
 - `hyd_scatter`: per hydrophone, a fixed random impulse response 1 + `scatter_taps` taps (delays `scatter_delay`
@@ -230,7 +231,8 @@ function simulate_scenario(rng, templates, noise; fs=192000, dur=4.0, nsrc=2, po
     end
     off = rand(rng, 0:size(noise, 1)-n)
     hyd .+= @view noise[off+1:off+n, :]
-    return (; data=[zeros(n, 2) hyd], arrivals, clicks)
+    responses = nh == 3 ? taps : [Tuple{Int,Float64}[] for _ in 1:3]
+    return (; data=[zeros(n, 2) hyd], arrivals, clicks, responses)
 end
 
 """
