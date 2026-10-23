@@ -124,4 +124,67 @@ angle_uv(a, b) = _angle_uv(a, b)
         end
         @test all(1 .<= col .<= length(TRACK_PALETTE))
     end
+
+    # ---- round 2 ----
+    @testset "srp_support: true direction vs sidelobe" begin
+        d = synth_window([(10.0, -5.0, 0, 1.0)])
+        c = get_srp_candidates(d, [500]; window=-50:50, fs=FS, rx_vect=RX, min_rel=0.0)   # keeps sidelobe candidates
+        sp = srp_support(d, [500], c.uv; window=-50:50, fs=FS, rx_vect=RX)
+        @test c.nfound[1] >= 2
+        @test sp[1, 1] > 0.7
+        @test all(sp[1, 2:c.nfound[1]] .< 0.3)
+    end
+
+    @testset "CLEAN candidates: single wave" begin
+        d = synth_window([(10.0, -5.0, 0, 1.0)])
+        c = get_srp_candidates_clean(d, [500]; window=-50:50, fs=FS, rx_vect=RX, min_rel=0.35)
+        _, q = get_tdoa_srp(d, [500]; window=-50:50, fs=FS, rx_vect=RX, return_quality=true)
+        @test c.uv[1, 1, :] ≈ q.uv[1, :]
+        @test c.nfound[1] == 1
+    end
+
+    @testset "SIC candidates" begin
+        # single wave: candidate 1 = get_tdoa_srp, nothing else above 0.5 of it
+        for (seed, (az, el)) in enumerate([(10.0, -5.0), (-30.0, 20.0)])
+            d = synth_window([(az, el, 0, 1.0)]; seed=seed)
+            c = get_srp_candidates_sic(d, [500]; window=-50:50, fs=FS, rx_vect=RX, min_rel=0.5)
+            _, q = get_tdoa_srp(d, [500]; window=-50:50, fs=FS, rx_vect=RX, return_quality=true)
+            @test c.uv[1, 1, :] ≈ q.uv[1, :]
+            @test c.nfound[1] == 1
+            @test c.efrac[1, 1] > 0.8
+        end
+        # direct + image 30 samples later: both found, timed, and the earliest is the direct path
+        d1, d2 = (5.0, -10.0), (5.0, 30.0)
+        d = synth_window([(d1..., 0, 1.0), (d2..., 30, 0.8)])
+        c = get_srp_candidates_sic(d, [500]; window=-50:50, fs=FS, rx_vect=RX, min_rel=0.5)
+        found(dir) = findfirst(k -> !isnan(c.uv[1, k, 1]) && angle_uv(Tuple(c.uv[1, k, :]), uv_of(dir...)) < 1, 1:3)
+        k1, k2 = found(d1), found(d2)
+        @test !isnothing(k1) && !isnothing(k2)
+        @test abs(c.tarr[1, k1]) <= 2 && abs(c.tarr[1, k2] - 30) <= 2
+        # equally strong arrivals 10 samples apart: the earliest beam arrival is still the direct path
+        d = synth_window([(d1..., 0, 1.0), (d2..., 10, 1.0)])
+        c = get_srp_candidates_sic(d, [500]; window=-50:50, fs=FS, rx_vect=RX, min_rel=0.5)
+        ks = findall(k -> !isnan(c.uv[1, k, 1]), 1:3)
+        @test length(ks) >= 2
+        @test angle_uv(Tuple(c.uv[1, ks[argmin(c.tarr[1, ks])], :]), uv_of(d1...)) < 1
+    end
+
+    @testset "track_lags and select_candidates" begin
+        # 12 clicks; tracks 1 (direct, tarr 0) and 2 (image, tarr 20) share clicks 1-10, click 11 has only track 2,
+        # click 12 only an unconfirmed track 3
+        track = zeros(Int, 12, 3); tarr = fill(NaN, 12, 3); score = fill(NaN, 12, 3)
+        for i in 1:10
+            track[i, 1] = 2; tarr[i, 1] = 20; score[i, 1] = 0.6     # the image is candidate 1 (stronger)
+            track[i, 2] = 1; tarr[i, 2] = 0; score[i, 2] = 0.5
+        end
+        track[11, 1] = 2; tarr[11, 1] = 21; score[11, 1] = 0.6
+        track[12, 1] = 3; tarr[12, 1] = 0; score[12, 1] = 0.4
+        conf = Dict(1 => true, 2 => true, 3 => false); hits = Dict(1 => 10, 2 => 11, 3 => 1)
+        lg = track_lags(track, tarr, conf)
+        @test lg[1] == (0.0, 10) && lg[2] == (20.0, 10)
+        s = select_candidates(track, tarr, score, conf, hits; lags=lg)
+        @test s.sel[1:10] == fill(2, 10) && all(s.status[1:10] .== "direct")
+        @test s.status[11] == "echo"
+        @test s.sel[12] == 1 && s.status[12] == "untracked"
+    end
 end
