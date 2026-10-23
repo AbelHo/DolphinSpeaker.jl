@@ -253,5 +253,5 @@ Limits: the estimate assumes memory grows in proportion to audio duration; the c
 **Next** (from the recommendation list):
 1. The D3 clicker calibration data already exists (`Calibration_05_11_2025`: 165 usable annotated pixels, 123 outliers tagged `o`). Use it for per-method angular error and the offset fit (recommendation 5); `src/cam_calib.jl` is the starting point.
 2. Tune `closure_max` and choose the default overlay method from that error.
-3. Multi-arrival handling and closure-based false-detection rejection (recommendations 6 and 7).
+3. Multi-arrival handling and closure-based false-detection rejection (recommendations 6 and 7). Started: see `../tdoa_localization_2026-10-22/README.md`.
 4. Housekeeping: other sessions, the `runtests.jl` runner (add `test/test_multitdoa.jl` to it as well), and the decision on the old functions (recommendations 9, 10 and 4).
