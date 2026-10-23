@@ -96,9 +96,25 @@ julia --project=. -t 12 improvements/tdoa_localization_2026-10-22/scripts/run_mu
 julia --project=. -t 12 improvements/tdoa_localization_2026-10-22/scripts/bench_multipath.jl 3000          # needs the feature table
 ```
 
+## Round 2 (2026-10-23): sidelobe-free candidates and one direction per click
+The full report, with figures and reproduction steps, is `reports/round2_sic_selection.md`; round 1's is `reports/round1_candidates_tracking.md`. The plan is `reviews/plans/multiarrival-round2-clean-selection_2026-10-23.md`.
+
+- **Successive interference cancellation (SIC)** replaces local maxima: `get_srp_candidates_sic` subtracts each accepted arrival (beam waveform gated ±10 samples) from the channels and recomputes PHAT before searching again.
+  - Benchmark v2 (3,000 trials, a third echo-free): 0.01–0.02 false candidates per echo-free click (round 1: 1.6–2.0); direct path among the candidates in 73.9% (window −50:50) and 85.7% (−110:50) of echo trials (round 1: 67.9%).
+  - CLEAN on the GCC curves fails (PHAT is not additive).
+- **In the benchmark** the earliest SIC arrival selects the direct path in 71.6% / 83.4% of echo trials, against 55.7% for the single SRP estimate.
+- **On real data** 78–79% of clicks keep an accepted second arrival (reverberation, echoes, the other male), and per-click earliest selection is noisier than Impulse6.
+- The **track lag rule** is the best real-data selector. With the −110:50 window:
+  - consecutive isolated clicks 2.2–10 ms apart change by a median 19.2° (Impulse6: 24.3°), and 10–30 ms apart by 25.3° (33.6°);
+  - burst pulses are unchanged (11.5° vs 10.4°);
+  - 67.7% of points are inside the frame (Impulse6: 57.4%).
+- Viewer file to check: `detection_pixels__color255_webui__Impulse9sicwt_trackSelected.csv` (circle = direct, triangle = echo-only or untracked). The others are listed in the round-2 report.
+- New code: `get_srp_candidates_sic`, `get_srp_candidates_clean`, `srp_support`, `track_lags`, `select_candidates`, `run_multiarrival2` (`src/multiarrival.jl`); 238 tests.
+- New scripts: `bench_common.jl`, `bench_multipath2.jl`, `run_multiarrival2_newdevice.jl`, `compare_selection_rules.jl`, `write_track_selection_overlay.jl`, `report_figures.jl`, `report_figures_round2.jl`.
+
 ## Next
-1. **Sidelobe suppression** before tracking: CLEAN, i.e. subtract the best candidate's predicted GCC pattern and rescore, or a sidelobe model. This should cut the false candidates and fragmentation, and make Impulse8 readable.
-2. **Candidate selection** using the track context (prefer the candidate that continues a long track), then re-run the benchmark with selection.
-3. Retune the tracker on the cleaned candidates (gate, `birth_min_score`, `merge_deg`), and parallelise over clicks instead of blocks.
-4. Direct vs. image tracks; tracks → sources (the two males), using ICI and the existing HDBSCAN spectra; a polarity-aware follower ↔ leader similarity.
-5. False-detection score from the feature table, once the calibration sets arrive.
+1. Viewer check of `Impulse9sicwt_trackSelected` against Impulse6 and `Impulse7sicw_tracks`.
+2. A benchmark with reverberation (in-train noise, delayed copies of previous clicks), then retune `min_rel` and the selection.
+3. Reverberation-aware selection: discount candidates explained by the previous detections' tracks.
+4. Retune the tracker on SIC candidates (tracks are still about 0.2 s long).
+5. Tracks → sources (the two males) with ICI and spectra (existing HDBSCAN); a false-detection score from the feature table; validation on the calibration sets when they arrive.
