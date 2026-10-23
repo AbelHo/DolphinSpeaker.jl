@@ -133,8 +133,19 @@ Full report: `reports/round4_realism_sources.md`. Plan: `reviews/plans/multiarri
 - **Real two-male data (`n` = 2, tuned).** 88% of clicks get a dolphin label, and direction continuity within a label is twice the unseparated stream's. But click intervals within a label are not more regular, so direction alone does not isolate the two males.
 - Viewer file to check: `detection_pixels__color255_webui__Impulse11sicw_sources_n2_tuned.csv` (dolphin 1 blue, dolphin 2 orange, unassigned grey, echoes as triangles).
 
+## Round 5 (2026-10-24): hydrophone equalization
+Full report: `reports/round5_hydrophone_eq.md`. Plan: `reviews/plans/multiarrival-round5-hydrophone-eq_2026-10-24.md`.
+
+- `src/hydrophone_eq.jl`: two estimators of each hydrophone's response relative to the reference, from clicks (aligned self-calibration, and a direction-free "blind" version), plus `apply_hydrophone_eq` and `with_delays` (pure delays from calibration). 24 tests.
+- **Simulation.** An oracle equalizer lifts accuracy from 54% to 91% and separation F1 from 0.81 to 0.97. The estimates restore coherence (closure ≤ 1: 44% → 79–84%), but the per-hydrophone pure delay is not identifiable without calibration data, so absolute directions shift.
+- **Real data.**
+  - The fixed responses are tiny (dispersive phase 0.07–0.09 rad, magnitude spread 1.3–1.4×; the simulator used 1.46 rad, 6.7×) and consistent across the three files.
+  - Equalizing them changes nothing: closure ≤ 1 42.8% → 42.9–43.3%, directions move 0.3–0.5°.
+  - The cepstrum and envelope autocorrelation show no in-window echo tied to the array.
+  - So the real incoherence varies from click to click, and round 4's calibration used the wrong mechanism.
+
 ## Next
-1. Viewer check of `Impulse11sicw_sources_n2_tuned`.
-2. Equalize the per-hydrophone responses (the dominant error source per the simulation): estimate them from strong clicks, deconvolve before GCC/SRP, and test in the simulation, where the true responses are known.
-3. Multi-hypothesis click-train separation (ICI continuity) for dolphins in similar directions; spectral identity from the existing HDBSCAN code.
-4. Video labels of the males' positions as ground truth for the separation; validation on the calibration sets when they arrive.
+1. Re-calibrate the simulator with click-varying clutter (denser diffuse reverberation, random per-arrival scattering, fixed responses at the measured mild level); revisit round 4's absolute numbers and the separation tuning.
+2. Multi-hypothesis click-train separation (ICI continuity) for dolphins in similar directions.
+3. A calibration recording with this mounting, for the absolute direction and the per-hydrophone delays (`with_delays`).
+4. Video labels of the two males as ground truth for the separation.
