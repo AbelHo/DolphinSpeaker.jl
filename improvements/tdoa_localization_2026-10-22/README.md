@@ -112,9 +112,17 @@ The full report, with figures and reproduction steps, is `reports/round2_sic_sel
 - New code: `get_srp_candidates_sic`, `get_srp_candidates_clean`, `srp_support`, `track_lags`, `select_candidates`, `run_multiarrival2` (`src/multiarrival.jl`); 238 tests.
 - New scripts: `bench_common.jl`, `bench_multipath2.jl`, `run_multiarrival2_newdevice.jl`, `compare_selection_rules.jl`, `write_track_selection_overlay.jl`, `report_figures.jl`, `report_figures_round2.jl`.
 
+## Round 3 (2026-10-24): reverberant pool simulation and an end-to-end benchmark
+Full report: `reports/round3_pool_simulation.md`. Plan: `reviews/plans/multiarrival-round3-pool-simulation_2026-10-23.md`.
+
+- `src/pool_sim.jl`: image-source pool simulator (382 tests). `scripts/bench_sequences.jl` runs the pipeline detector, SIC candidates, tracker and rules on 55 random pools and scores them against the truth. Amplitudes and follower share are calibrated to the real data.
+- **Followers inherit the previous detection's direction:** about 68% → **about 80%** of detections at the direct path, for every rule. Tracker settings barely matter.
+- **The simulation is cleaner than the real data:** 15% vs 78% of clicks with a second SIC candidate, so it cannot validate the real-data proxies.
+- **Real data:** the **longest-track rule** is the most consistent (burst pulses 8.0° vs 10.4° for Impulse6; 2–10 ms 17.3° vs 24.3°; 10–30 ms 25.2° vs 33.6°). With followers inheriting, 69.3% of points are in frame (Impulse6: 57.4%).
+- Recommended viewer file: `detection_pixels__color255_webui__Impulse10sicw_default_longesttrack-inherit.csv`.
+
 ## Next
-1. Viewer check of `Impulse9sicwt_trackSelected` against Impulse6 and `Impulse7sicw_tracks`.
-2. A benchmark with reverberation (in-train noise, delayed copies of previous clicks), then retune `min_rel` and the selection.
-3. Reverberation-aware selection: discount candidates explained by the previous detections' tracks.
-4. Retune the tracker on SIC candidates (tracks are still about 0.2 s long).
-5. Tracks → sources (the two males) with ICI and spectra (existing HDBSCAN); a false-detection score from the feature table; validation on the calibration sets when they arrive.
+1. Viewer check of `Impulse10sicw_default_longesttrack-inherit` against Impulse6.
+2. A more realistic simulation (hydrophone-specific waveform distortion, diffuse late reverberation, off-axis low-pass), aiming at the real 78% of clicks with a second SIC candidate; then validate the proxies.
+3. Smarter inheritance: inherit only when the follower's candidates include an image of the leader's direction, so that the other animal's clicks keep their own direction.
+4. Tracks → sources (the two males), using ICI and spectra (existing HDBSCAN); a false-detection score from the feature table; validation on the calibration sets when they arrive.
