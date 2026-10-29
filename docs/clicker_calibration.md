@@ -47,6 +47,11 @@ predictions. `annotations.csv` has
 `frame_id,x,y,visibility,medium,uncertainty_px,note,annotator`.
 Visibility is visible/uncertain/occluded/absent; medium is
 underwater/air/mixed/unknown. The completion manifest binds both CSV hashes.
+The landmark is consistently the center of the identifiable clicker housing.
+A finger covering the button does not invalidate an otherwise clearly visible
+housing; the uncertainty radius covers plausible emitter position within it.
+A hand or cord alone cannot establish a hidden housing center. Mostly hidden or
+indistinct clickers remain uncertain/occluded and excluded from physical fitting.
 
 Every fifth 30-second block is held out, with a two-second boundary purge.
 Optical model selection uses only training blocks. Evaluation is saved before

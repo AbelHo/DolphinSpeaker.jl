@@ -103,6 +103,7 @@ def validate(directory: Path, *, seal: bool = False) -> tuple[list[dict], dict]:
                 "annotations_sha256": sha(annotations_path),
                 "n_frames": len(frames), "counts": counts,
                 "annotator": sorted({a["annotator"] for a in annotations}),
+                "landmark_convention": "visible clicker housing center; uncertainty covers possible emitter position within housing",
                 "created_utc": datetime.now(timezone.utc).isoformat(),
                 "coordinate_convention": "zero-origin original pixels; x right, y down"}
     if seal:

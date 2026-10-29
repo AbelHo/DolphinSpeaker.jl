@@ -59,12 +59,16 @@ across frames, or use acoustic predictions. No automatic object detector is a
 substitute for your requested image inspection. Do not open events.csv,
 predictions.csv, fit reports or calibration outputs when annotating.
 
-Target: the visible sound-producing part of the handheld clicker, not the hand,
-swimmer, hydrophone, or an acoustic prediction. In representative footage it is
-a small blue handheld button clicker with a cord. That is a visual cue, not an
-assumption of presence; if multiple plausible clickers or an obscured target
-prevent a definite location, mark uncertain/occluded. The first video minutes
-may be on the pool deck; later frames are underwater.
+Target: the CENTER OF THE CLEARLY IDENTIFIABLE CLICKER HOUSING, consistently in
+every image. In representative footage it is a small blue handheld clicker with
+a red button and a cord. Button visibility is not required when the housing
+outline and center are clear; use uncertainty covering the plausible sound
+emitter position within that housing and note button occlusion. Never substitute
+the hand, swimmer, hydrophone, cord alone, or an acoustic prediction. This visual
+cue is not an assumption of presence: a mostly hidden/indistinct housing or
+multiple plausible targets must be uncertain/occluded. Do not alternate between
+button-center and housing-center labels. Initial frames may be on the pool deck;
+later frames are underwater.
 
 Write only within $(abspath(output_dir)): annotations.pending.csv, optional
 visual-inspection crops/contact sheets under annotation_work/, then final
