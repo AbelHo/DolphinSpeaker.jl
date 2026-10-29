@@ -1,0 +1,12 @@
+schema = "Original-checkout DolphinSpeaker domain source freeze v1"
+reference_manifest_sha256 = "5bb307a92eda874a3e6bc3e342b5b4d94843807abb02de2da45cf1085db6b52f"
+[files]
+"Project.toml" = "1279e1af1529e17a64aadc232ec40e72b9e08d0f3195a027ff25566bb2111075"
+"Manifest.toml" = "96ad5036ac359b65f3876884a4a28738f52fd992827d765377de683adbdad48f"
+"src/localization.jl" = "c35143f112a31dafd2cfdcbefa14f291c87377a93077d61a5aa34baae886f663"
+"src/dsp.jl" = "5438b08e678304404eab283da05fdb04be2dc317bc21365ec4a4be6dea2c9102"
+"src/config.jl" = "30b8b1e44ec8a5d8b901133a77df0ed554a7e81bd4265f6969ef9e866689151b"
+"src/audio.jl" = "9bc99888614998d2cd3df743a1d7e0cb6163296804609b0581809c87ee02d49f"
+"src/media_info.jl" = "27f352f3800bbfd12adb1d98452f2659100e1c1e7c0c91fed85784180dc5a173"
+"src/synchronization.jl" = "11380fb188ce84d6089db6ab87a717b08f39c7822265848f81c1fdbbd18e23e9"
+"test/test_tdoa.jl" = "95e0b1bff5ba55d88f1905c41838b66cd6d36f6c7e1055e4a13ba555a52019f1"
