@@ -160,3 +160,48 @@ agent names. Name generation now conforms to that rule; the real second handoff
 completed and launched `clickann-a-1029222739-tf01` with gpt-6.1-terra/high for
 all791 frames. The annotation agent has no acoustic prediction inputs. The
 gallery-ready Telegram message and fit will follow its complete validated CSV.
+
+## A annotation and first-fit findings
+
+Terra completed and sealed all791 frames:180 visible,207 uncertain,1 occluded,
+403 absent. There are44 visible underwater clickers. After the unchanged timing
+and block-boundary exclusions,39 events remain:23 training events in four blocks
+and16 evaluation events in block34. The annotation SHA256 is
+`ada438af58486074f8c46ed3a55c5a574a0b49e8ba69fb35272453cee3e0aa65`.
+The review gallery is under A/annotation_review/ada438af5848; its location was
+delivered through Telegram. Use its Visible underwater filter to inspect the
+calibration landmarks. Annotation and image files remain unchanged during fitting.
+
+The first physical fit is diagnostic and unsuitable as A's installed default.
+Only5/16 evaluation events project validly, with1750.40 px RMSE and1991.96 px
+median error. The other11 have impossible delays. Its sound speed reaches the
+lower bound and vertical field of view the upper bound; a training-only local
+sound-speed standard error of about480 m/s indicates weak physical identification.
+The final all39-point refit also remains poor:18/39 valid projections,779.56 px
+RMSE. These values are retained in the original fit/evaluation reports.
+
+The subsequent estimator comparison uses the same frozen training-only physical
+model for every method. It is not a method-specific recalibration:
+
+| Training data | Valid projections | RMSE, px | Median, px |
+|---|---:|---:|---:|
+| Corrected extrema |13/23|1637.79|259.79|
+| Guided GCC-PHAT |23/23|230.90|146.96|
+| Fixed original SRP-PHAT |23/23|256.49|147.72|
+
+Eight training extrema estimates are impossible even across the permitted
+sound-speed/delay parameter box. All23 training GCC estimates are physically
+feasible at the original1540 m/s. No sign, reference-channel, unit, or rotation
+implementation fault was found in the bounded audit. This supports changing the
+delay estimator before introducing extra optics; it does not validate a new
+physical calibration yet.
+
+A separate method-refinement plan is frozen at A/refinement_v1/plan.json,
+SHA256`0931f5bfd68587af9efde414e6d1025f6f49ce1fc5c71212dd57646e137a45fa`.
+It compares two predeclared physical fits (GCC and SRP), using leave-one-training-
+block-out selection with equal block weights, the same eight-parameter centered
+model and fixed optimization settings. The nine-point fold is reported explicitly.
+Selection and its training fit must be frozen before replay of block34, which is
+already inspected and therefore follow-up evidence rather than fresh confirmation.
+The original first-fit artifacts remain untouched; refined results have separate
+paths. B preparation continues independently.
