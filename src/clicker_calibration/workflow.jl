@@ -104,6 +104,8 @@ function _workflow_spawn_annotation(name,prompt)
         operation="launch Terra annotation $name",capture=true)
 end
 
+_workflow_annotation_name(device) = lowercase("clickann-$(device)-$(Dates.format(now(UTC),"mmddHHMMSS"))-$(randstring(4))")
+
 function request_annotations(output_dir::AbstractString; annotator=:herdr, python=nothing, resume=true,
     agent_lookup=_workflow_live_annotation_agent,agent_spawn=_workflow_spawn_annotation)
     frames=joinpath(output_dir,"frames.csv")
@@ -133,7 +135,7 @@ function request_annotations(output_dir::AbstractString; annotator=:herdr, pytho
         "frame_count"=>nrow(table),"prompt_path"=>prompt_path,"model"=>"gpt-6.1-terra","effort"=>"high")
     if annotator == :herdr
         device=replace(basename(output_dir),r"[^A-Za-z0-9]"=>"")
-        name="clickann-$(device)-$(Dates.format(now(UTC),"mmddHHMMSS"))-$(randstring(4))"
+        name=_workflow_annotation_name(device)
         # hagent is initialized by the caller/lead once in its Herdr pane.
         agent_spawn(name,prompt)
         request["status"]="launched";request["agent_name"]=name

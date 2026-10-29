@@ -47,6 +47,7 @@ end
             agent_spawn=(name,prompt)->push!(spawned,(name,prompt)))
         @test length(spawned)==1
         @test replacement["agent_name"]!="old-annotation-agent"
+        @test occursin(r"^[a-z][a-z0-9_-]{0,31}$",replacement["agent_name"])
         @test C.read_json(joinpath(dest,"annotation_request.previous.json"))==previous
         state=C.run_clicker_calibration(source;devices=(:A,),output_dir=out,stage=:fit,
             annotator=:external,notify=:none,wait_annotations=false,error_log=joinpath(dir,"errors.jsonl"))

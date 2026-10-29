@@ -28,9 +28,9 @@ recovered SHA-256 values, and changed include paths. Preparation and physical-fi
 sources match their last reported precrash hashes. Historical execution evidence
 does not substitute for the remaining post-recovery integration checks.
 
-Current work: finish integration, validate the invalid-TDOA influence correction,
-complete the SRP comparator, then run A and B. Full real-data preparation, Terra
-event annotation, and final A/B fitted presets have not yet been completed.
+Integration and the invalid-TDOA/SRP controls now pass. A real-data preparation
+is complete and Terra annotation is active; B preparation follows independently.
+Final A/B fitted parameters remain pending annotation and physical fitting.
 Native Julia had intermittent CSV/LLVM SIG11 failures before the machine crash;
 record any recurrence durably and use bounded checks before heavy computation.
 
@@ -120,3 +120,38 @@ implementation; those files will be installed only after the real fits exist.
 
 Run receipts/logs are under `calibration_runs/clicker_20260209/20261030_v1`.
 These checks establish the tested implementation controls, not field accuracy.
+
+## Device A preparation (2026-10-30)
+
+Job `prepare_A_01` completed with exit0 in6949.83 s; sampled process-tree peak
+RSS was17,289,895,936 bytes and completion notification was delivered. It produced
+791 candidate events and791 unique original-resolution frames:775 mapped and16
+ambiguous at frame-selection boundaries. Every listed image exists.
+
+Seventeen waveform anchors cover both WAVs and all three video chapters.
+The fitted video-minus-recorder offset is-10.03635704395856 s, clock drift
+61.4488198059 ppm, maximum anchor residual121.013 microseconds and RMS55.800
+microseconds. Minimum normalized waveform score is0.8335 and minimum peak
+uniqueness ratio6.584. Localization accuracy remains unmeasured until annotation
+and fitting complete.
+
+The bounded preparation review reproduced all event/frame/sample/cache identities.
+Its exact-camera-base diagnostic found that coarse2 kHz camera-audio lengths
+round chapter bases by167/334 microseconds. Replacing those bases and refitting
+the existing anchors changes six central frames, all already ambiguous. None
+of the775 mapped frames changes or becomes ambiguous, even preserving the old
+conservative uncertainty bound. Keep the original16 exclusions and frozen A v1
+artifacts. The diagnostic is recorded in
+`calibration_runs/clicker_20260209/20261030_v1/diagnostics/A_exact_camera_bases.json`;
+an exact-base code correction remains a documented follow-up.
+
+Recorded artifact timing attributes90m25s to sequential audio detection/TDOA/
+snippet generation and21m08s to video probing/synchronization/mapping before
+the first PNG. Image writing took about78s. These are combined-stage intervals,
+not isolated kernel benchmarks.
+
+The first automated annotation handoff failed because Herdr requires lowercase
+agent names. Name generation now conforms to that rule; the real second handoff
+completed and launched `clickann-a-1029222739-tf01` with gpt-6.1-terra/high for
+all791 frames. The annotation agent has no acoustic prediction inputs. The
+gallery-ready Telegram message and fit will follow its complete validated CSV.
