@@ -2,11 +2,25 @@
 
 function load_calibration(path::AbstractString; device=nothing)
     calibration = read_json(path)
-    calibration["schema_version"] isa AbstractString || error("Missing calibration schema")
+    calibration["schema_version"]=="clicker-physical-calibration/1.0" || error("Unsupported calibration schema")
     isnothing(device) || string(calibration["device"]) == string(device) || error("Calibration belongs to a different device")
     calibration["physical_channels"] == [3,4,5] || error("Unexpected physical channel mapping")
     calibration["reference_channel"] == 3 || error("Unexpected reference channel")
     1400 <= calibration["sound_speed_m_s"] <= 1600 || error("Sound speed outside calibrated bounds")
+    geometry=_pf_matrix(calibration["geometry_m"])
+    size(geometry)==(3,3) && all(isfinite,geometry) && maximum(abs.(geometry.-clicker_geometry()))<1e-12 || error("Calibration geometry is not the confirmed D3 array")
+    rotation=_pf_matrix(calibration["rotation_array_to_camera"])
+    size(rotation)==(3,3) && all(isfinite,rotation) &&
+        norm(rotation' * rotation-I)<1e-9 && abs(det(rotation)-1)<1e-9 || error("Calibration rotation must be proper SO(3)")
+    offsets=Float64.(calibration["relative_delay_offsets_s"])
+    length(offsets)==3 && all(isfinite,offsets) && abs(offsets[3])<=1e-12 && maximum(abs.(offsets))<=1e-4+eps(Float64) || error("Invalid relative channel delay offsets")
+    for key in ("width","height")
+        value=calibration[key]
+        value isa Integer && value>0 || error("Image dimensions must be positive integers")
+    end
+    camera=calibration["camera"]
+    all(key->camera[key] isa Real && isfinite(camera[key]),("fx","fy","cx","cy","k1","k2")) || error("Camera parameters must be finite")
+    camera["fx"]>0 && camera["fy"]>0 || error("Focal lengths must be positive")
     return calibration
 end
 
@@ -77,7 +91,21 @@ notification. No input media edits, source edits, commits or other writes.
 end
 
 """Create the image-only handoff and optionally launch the specified Terra agent."""
-function request_annotations(output_dir::AbstractString; annotator=:herdr, python=nothing, resume=true)
+function _workflow_live_annotation_agent(name)
+    bytes=run_logged(`hagent list`;operation="inspect existing annotation worker",capture=true)
+    listing=JSON.parse(String(bytes))
+    agents=listing["result"]["agents"]
+    matches=filter(a->get(a,"name",nothing)==name,agents)
+    return isempty(matches) ? nothing : only(matches)
+end
+
+function _workflow_spawn_annotation(name,prompt)
+    run_logged(`hagent spawn codex $name --model gpt-6.1-terra --effort high -- $prompt`;
+        operation="launch Terra annotation $name",capture=true)
+end
+
+function request_annotations(output_dir::AbstractString; annotator=:herdr, python=nothing, resume=true,
+    agent_lookup=_workflow_live_annotation_agent,agent_spawn=_workflow_spawn_annotation)
     frames=joinpath(output_dir,"frames.csv")
     isfile(frames) || error("Run preparation before requesting annotations")
     table=CSV.read(frames,DataFrame)
@@ -85,10 +113,17 @@ function request_annotations(output_dir::AbstractString; annotator=:herdr, pytho
     _workflow_annotation_current(output_dir) && return Dict("status"=>"ready")
     request_path=joinpath(output_dir,"annotation_request.json")
     frames_sha=sha256_file(frames)
-    if resume && isfile(request_path)
+    previous=nothing
+    if resume && annotator==:herdr && isfile(request_path)
         previous=read_json(request_path)
         if get(previous,"frames_sha256",nothing)==frames_sha && get(previous,"status",nothing)=="launched"
-            return previous
+            agent=agent_lookup(previous["agent_name"])
+            if agent !== nothing && get(agent,"agent_status","") in ("working","running")
+                return previous
+            end
+            # A saved launch receipt is not liveness. Retain it as recovery
+            # evidence, then launch a replacement for unfinished annotation.
+            write_json(joinpath(output_dir,"annotation_request.previous.json"),previous)
         end
     end
     prompt=_workflow_annotation_prompt(output_dir,_workflow_python(python))
@@ -98,10 +133,9 @@ function request_annotations(output_dir::AbstractString; annotator=:herdr, pytho
         "frame_count"=>nrow(table),"prompt_path"=>prompt_path,"model"=>"gpt-6.1-terra","effort"=>"high")
     if annotator == :herdr
         device=replace(basename(output_dir),r"[^A-Za-z0-9]"=>"")
-        name="clickann-$(device)-$(Dates.format(now(UTC),"yyyymmddHHMMSS"))-$(getpid())"
+        name="clickann-$(device)-$(Dates.format(now(UTC),"mmddHHMMSS"))-$(randstring(4))"
         # hagent is initialized by the caller/lead once in its Herdr pane.
-        run_logged(`hagent spawn codex $name --model gpt-6.1-terra --effort high -- $prompt`;
-            operation="launch Terra annotation for $device",capture=true)
+        agent_spawn(name,prompt)
         request["status"]="launched";request["agent_name"]=name
     elseif annotator != :external
         throw(ArgumentError("annotator must be :herdr or :external"))
@@ -143,7 +177,9 @@ function run_estimator_review(output_dir;resume=true)
     if !isdefined(@__MODULE__,:review_estimators)
         Base.include(@__MODULE__,source)
     end
-    Base.invokelatest(review_estimators,output_dir;resume=resume)
+    Base.invokelatest() do
+        getfield(@__MODULE__,:review_estimators)(output_dir;resume=resume)
+    end
 end
 
 """

@@ -206,7 +206,9 @@ end
 mod_sign(a,b) = sign(a)*mod(abs(a),b)
 
 function tdoa2dir(tdoas,rx_vect,fs; 
-	solver_func=default_tdoa2dir_solver, cost_tdoa2ang=cost_tdoa2ang, return_residual=false)
+	solver_func=default_tdoa2dir_solver, cost_tdoa2ang=cost_tdoa2ang, return_residual=false,
+    calibration=active_clicker_calibration())
+	calibration === nothing || return calibrated_tdoa2dir(tdoas,rx_vect,fs,calibration;return_residual=return_residual)
 	
 	initial_vals = zeros(size(tdoas,1),2) .+0.0
 	for i in 1:size(tdoas,1)
@@ -235,12 +237,13 @@ function detection2angle_envelope(data, pind_good, rx_vect; window=default_windo
 end
 
 
-function angle2px(ang, fov_angle=fov_angle, imsize=imsize)
-	@debug angle2pxd( rad2deg.(ang), fov_angle, imsize)
-	return angle2pxd( rad2deg.(ang), fov_angle, imsize)
+function angle2px(ang, fov_angle=fov_angle, imsize=imsize;calibration=active_clicker_calibration())
+    calibration === nothing || return calibrated_angle2px(ang,calibration,imsize)
+	return angle2pxd(rad2deg.(ang),fov_angle,imsize;calibration=nothing)
 end
 
-function angle2pxd(angd, fov_angled=fov_angle, imsize=imsize)
+function angle2pxd(angd, fov_angled=fov_angle, imsize=imsize;calibration=active_clicker_calibration())
+    calibration === nothing || return calibrated_angle2px(angd,calibration,imsize;degrees=true)
 	return angd ./ [fov_angled[1]/2 -fov_angled[2]/2] .* [imsize[2]/2 imsize[1]/2] .+ [imsize[2]/2 imsize[1]/2]
 end
 
@@ -635,10 +638,11 @@ end
 
 # closed-form tdoa2dir for planar arrays (same call and output); infeasible TDOAs (u²+v² > 1) are
 # clamped to the unit circle, which shows as a non-zero residual; non-planar arrays fall back to tdoa2dir
-function tdoa2dir_ls(tdoas, rx_vect, fs; c=default_c, ref_channel=ref_channel, return_residual=false, cost_tdoa2ang=cost_tdoa2ang, kwargs...)
+function tdoa2dir_ls(tdoas, rx_vect, fs; c=default_c, ref_channel=ref_channel, return_residual=false, cost_tdoa2ang=cost_tdoa2ang, calibration=active_clicker_calibration(), kwargs...)
+    calibration === nothing || return calibrated_tdoa2dir(tdoas,rx_vect,fs,calibration;return_residual=return_residual)
 	z = rx_vect[3, :]
 	all(abs.(z .- z[1]) .< 1e-9) ||
-		return tdoa2dir(tdoas, rx_vect, fs; cost_tdoa2ang=cost_tdoa2ang, return_residual=return_residual, kwargs...)
+		return tdoa2dir(tdoas, rx_vect, fs; cost_tdoa2ang=cost_tdoa2ang, return_residual=return_residual, calibration=nothing, kwargs...)
 	uv = tdoa2uv(tdoas, rx_vect, fs; c=c, ref_channel=ref_channel)
 	angs = zeros(size(tdoas, 1), 2)
 	for i in axes(uv, 1)

@@ -36,6 +36,18 @@ end
         @test occursin("gpt-6.1-terra",prompt)
         @test occursin("Do not open events.csv",prompt)
         @test occursin("medium: underwater/air/mixed/unknown",prompt)
+        previous=Dict("status"=>"launched","frames_sha256"=>C.sha256_file(joinpath(dest,"frames.csv")),"agent_name"=>"old-annotation-agent")
+        C.write_json(joinpath(dest,"annotation_request.json"),previous)
+        spawned=Any[]
+        live=C.request_annotations(dest;agent_lookup=name->Dict("name"=>name,"agent_status"=>"working"),
+            agent_spawn=(name,prompt)->push!(spawned,(name,prompt)))
+        @test live["agent_name"]=="old-annotation-agent"
+        @test isempty(spawned)
+        replacement=C.request_annotations(dest;agent_lookup=name->nothing,
+            agent_spawn=(name,prompt)->push!(spawned,(name,prompt)))
+        @test length(spawned)==1
+        @test replacement["agent_name"]!="old-annotation-agent"
+        @test C.read_json(joinpath(dest,"annotation_request.previous.json"))==previous
         state=C.run_clicker_calibration(source;devices=(:A,),output_dir=out,stage=:fit,
             annotator=:external,notify=:none,wait_annotations=false,error_log=joinpath(dir,"errors.jsonl"))
         @test state["status"]=="awaiting_annotations"

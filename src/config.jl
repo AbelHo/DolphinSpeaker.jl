@@ -1,4 +1,5 @@
 using Dates
+include("clicker_calibration/preset_bridge.jl")
 # rx = 0.14722/sqrt(3) .* exp.(im.* deg2rad.([-30 90 -150]) ) #aspod 2
 # rx = 0.4/sqrt(3) .* exp.(im.* deg2rad.([30 -90 150]) ) # calf_hk
 # rx_vect = [real(rx); imag(rx); zeros(1,3)]
@@ -79,6 +80,7 @@ rx_vect = [0;0;0]
 get_relevant_channels(rx_vect) = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 
 function set_device__hk_clicker()
+    clear_clicker_calibration!()
     global impulsive_band_pass = [1000, Inf] #fs/2*.98]
     global threshold_impulsive = nothing# .003#calf_hk
     global impulsive_autothreshold_median_ratio = 12
@@ -96,6 +98,7 @@ function set_device__hk_clicker()
 end
 
 function set_device__calf_hk()
+    clear_clicker_calibration!()
     global ref_channel = 3
 
     global impulsive_band_pass = [5000, 180_000] #fs/2*.98]
@@ -136,6 +139,7 @@ end
 
 
 function set_device__ophk_acoustic_D3_clicker()
+    clear_clicker_calibration!()
     global impulsive_band_pass = [1000, Inf] #fs/2*.98]
     global threshold_impulsive = nothing# .003#calf_hk
     global impulsive_autothreshold_median_ratio = 12
@@ -163,7 +167,18 @@ function set_device__ophk_acoustic_D3_clicker()
     global OVERLAY_RADIUS = 20
 end
 
+"""Activate A's fitted physical calibration. Pass calibration_path for a new run."""
+function set_device__ophk_acoustic_D3_clicker_A(;calibration_path=joinpath(@__DIR__,"clicker_calibration","calibrations","clicker_20260209_A.json"))
+    _set_clicker_calibration("A",calibration_path)
+end
+
+"""Activate B's fitted physical calibration. Pass calibration_path for a new run."""
+function set_device__ophk_acoustic_D3_clicker_B(;calibration_path=joinpath(@__DIR__,"clicker_calibration","calibrations","clicker_20260209_B.json"))
+    _set_clicker_calibration("B",calibration_path)
+end
+
 function set_device__ophk_acoustic_D3()
+    clear_clicker_calibration!()
     set_device__ophk_acoustic_D3_clicker()
     global FILE_device_ID = "ophk_acoustic_D3.0.0"
     global ref_channel = 3
@@ -195,6 +210,7 @@ function set_device__ophk_acoustic_D3()
 end
 
 function set_device__aspod2()
+    clear_clicker_calibration!()
     global band_pass = [5000, 24000]; winlen=0.01s;
     global threshold_impulsive = .005*32767#aspod2 .003#calf_hk #0.01 # 0.1#pinger/clickler #0.2
     global threshold_tonal = -20#aspod2 -110#calf_hk 
@@ -205,6 +221,7 @@ function set_device__aspod2()
 end
 
 function set_device__rwsnus()
+    clear_clicker_calibration!()
     global DEFAULT_fname2timestamp_func = fname2dt_dashdot
 
     # bin file parameters
@@ -217,6 +234,7 @@ function set_device__rwsnus()
 end
 
 function set_device__LS1()
+    clear_clicker_calibration!()
     global impulsive_band_pass = [5000, Inf] #fs/2*.98]
     global ref_channel = 1
     global tonal_band_pass = [900 Inf]
@@ -236,6 +254,7 @@ function set_device__LS1()
 end
 
 function set_device__calf_hk2_smallarray()
+    clear_clicker_calibration!()
     global MERGE_VID_AU_DYNAMIC_NORM = true
     global impulsive_autothreshold_median_ratio = 4
     global DETECTION_TYPES = 1:2
@@ -247,6 +266,7 @@ function set_device__calf_hk2_smallarray()
 end
 
 function set_device_default()
+    clear_clicker_calibration!()
     global DEFAULT_fname2timestamp_func = fname2dt_date_time
     global tonal_band_pass = [500 47000]
     global impulsive_band_pass = [500 47000]
@@ -262,6 +282,7 @@ function set_device_default()
 end
 
 function set_device__soundtrap()
+    clear_clicker_calibration!()
     global DEFAULT_fname2timestamp_func = fname2dt_soundtrap
     global threshold_tonal = nothing
     global tonal_band_pass = [2500, 40_000]
@@ -292,6 +313,7 @@ function set_device__soundtrap()
 end
 
 function set_device__hydromoth()
+    clear_clicker_calibration!()
     global DEFAULT_fname2timestamp_func = fname2dt_date_time
     global threshold_tonal = nothing
     global tonal_band_pass = [2500, 40_000]
