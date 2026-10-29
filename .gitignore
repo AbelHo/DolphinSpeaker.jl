@@ -12,3 +12,8 @@
 /results
 /tried_old
 /dolphin-whisper/
+/.hagent/
+/calibration_runs/
+/docs/error.log
+/docs/error_archive.log
+__pycache__/
