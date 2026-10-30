@@ -88,6 +88,33 @@ class AnnotationContract(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "dimensions differ"):
             tools.validate(self.root, seal=True)
 
+    def test_human_selection_requires_reinspection_and_keeps_exclusions(self):
+        self.frames.append({**self.frames[0], "frame_id": "A-test-f2"})
+        self.annotations.append({**self.annotations[0], "frame_id": "A-test-f2"})
+        self.write()
+        selection = dict(schema_version="clicker-human-review-selection-v1",
+                         frames_sha256=tools.sha(self.root / "frames.csv"),
+                         accepted_frame_ids=["A-test-f2"],
+                         coordinate_reannotation_required=True)
+        tools.atomic_json(self.root / "human_review_selection.json", selection)
+        with self.assertRaisesRegex(ValueError, "outside the human-selected"):
+            tools.validate(self.root, seal=True)
+        self.annotations[0].update(visibility="excluded", x="", y="", uncertainty_px="", annotator="user_scope")
+        self.annotations[1]["annotator"] = "pending_manual_reannotation"
+        self.write()
+        with self.assertRaisesRegex(ValueError, "requires Terra"):
+            tools.validate(self.root, seal=True)
+        self.annotations[1]["annotator"] = "gpt-6.1-terra"
+        self.write()
+        _, manifest = tools.validate(self.root, seal=True)
+        self.assertEqual(manifest["human_selected_frame_count"], 1)
+        self.assertEqual(manifest["counts"]["excluded"], 1)
+        tools.validate(self.root)
+        selection["reason"] = "changed after sealing"
+        tools.atomic_json(self.root / "human_review_selection.json", selection)
+        with self.assertRaisesRegex(ValueError, "Stale annotation completion"):
+            tools.validate(self.root)
+
     def test_refined_gallery_keeps_original_fit_and_reports_invalid_projection(self):
         tools.validate(self.root, seal=True)
         original = self.root / "calibration.json"

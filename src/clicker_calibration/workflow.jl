@@ -51,11 +51,32 @@ end
 function _workflow_annotation_prompt(output_dir, python)
     frames=abspath(joinpath(output_dir,"frames.csv"))
     helper=joinpath(@__DIR__,"annotation_tools.py")
+    selection_path=joinpath(output_dir,"human_review_selection.json")
+    has_selection=isfile(selection_path)
+    inspection_scope=has_selection ? "Inspect EVERY accepted_frame_id in human_review_selection.json individually using image tools; preserve all other rows as excluded." :
+        "Inspect EVERY unique image individually using image tools."
+    human_review_instructions=has_selection ? """
+The user has confirmed that the interval in $(abspath(selection_path)) contains
+the valid underwater clicker sequence. This establishes object presence and
+selection independently of the old annotation labels. Inspect these selected
+frames again; do not reuse previous coordinates without visual reinspection.
+Use visible housing parts to locate its center even when fingers cover the button
+or part of the outline. A completely visible outline is not required. Supply a
+best visual point with a conservative uncertainty radius when the object can be
+localized. If the estimate remains uncertain, coordinates plus an uncertainty
+circle are useful for human review; mark visibility uncertain. A completely
+unlocalizable object stays occluded/uncertain without invented coordinates.
+Do not substitute the hand or cord alone for a hidden housing. The selected rows
+retain medium=underwater and annotator=gpt-6.1-terra. All nonselected rows remain
+visibility=excluded, with blank coordinates/uncertainty, and need no reinspection.
+Preserve the original gallery index ordering, all frame IDs and image paths.
+Do not read revision_source/previous annotations or any prior calibration outputs.
+""" : ""
     return """
 User-authorized visual clicker annotation task. Parent calibration lead owns all
 scientific processing. Use gpt-6.1-terra high. Do not spawn other agents.
 
-Read $frames. Inspect EVERY unique image individually using image tools. You may
+Read $frames. $inspection_scope You may
 use labeled contact sheets to navigate, but inspect native image/crops wherever
 needed. Do not infer unseen points, interpolate a track, copy one coordinate
 across frames, or use acoustic predictions. No automatic object detector is a
@@ -72,13 +93,14 @@ cue is not an assumption of presence: a mostly hidden/indistinct housing or
 multiple plausible targets must be uncertain/occluded. Do not alternate between
 button-center and housing-center labels. Initial frames may be on the pool deck;
 later frames are underwater.
+$human_review_instructions
 
 Write only within $(abspath(output_dir)): annotations.pending.csv, optional
 visual-inspection crops/contact sheets under annotation_work/, then final
 annotations.csv and annotations.complete.json. Keep every frames.csv identity,
 one annotation row per frame, including non-visible frames. Schema:
 frame_id,x,y,visibility,medium,uncertainty_px,note,annotator
-visibility: visible/uncertain/occluded/absent.
+visibility: visible/uncertain/occluded/absent/excluded (excluded is for user-selected scope only).
 medium: underwater/air/mixed/unknown; mixed includes an uncertain water boundary.
 x,y are ZERO-ORIGIN ORIGINAL-RESOLUTION pixels, x right/y down, never coordinates
 of a resized display/crop. Visible rows need finite x,y and positive uncertainty

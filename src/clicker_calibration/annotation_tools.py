@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from PIL import Image, ImageDraw, ImageFont
 
 FIELDS = ("frame_id", "x", "y", "visibility", "medium", "uncertainty_px", "note", "annotator")
-VISIBILITY = {"visible", "uncertain", "occluded", "absent"}
+VISIBILITY = {"visible", "uncertain", "occluded", "absent", "excluded"}
 
 
 def sha(path: Path) -> str:
@@ -63,6 +63,17 @@ def validate(directory: Path, *, seal: bool = False) -> tuple[list[dict], dict]:
     if set(annotation_ids) != set(ids):
         raise ValueError(f"Annotation identities differ: missing={len(set(ids)-set(annotation_ids))}, extra={len(set(annotation_ids)-set(ids))}")
     by_id = {a["frame_id"]: a for a in annotations}
+    selection_path = directory / "human_review_selection.json"
+    selection = json.loads(selection_path.read_text()) if selection_path.exists() else None
+    accepted = None
+    if selection is not None:
+        if selection.get("schema_version", selection.get("schema")) != "clicker-human-review-selection-v1":
+            raise ValueError("Unsupported human review selection schema")
+        if selection.get("frames_sha256") != sha(frames_path):
+            raise ValueError("Human review selection does not match frames.csv")
+        accepted = set(selection["accepted_frame_ids"])
+        if not accepted or not accepted <= set(ids) or len(accepted) != len(selection["accepted_frame_ids"]):
+            raise ValueError("Human review selection has invalid frame identities")
     joined, counts = [], {v: 0 for v in sorted(VISIBILITY)}
     for f in frames:
         a = by_id[f["frame_id"]]
@@ -75,6 +86,15 @@ def validate(directory: Path, *, seal: bool = False) -> tuple[list[dict], dict]:
             raise ValueError(f"Invalid medium: {a['medium']!r}")
         if not a["annotator"].strip():
             raise ValueError("Annotator identity is required")
+        if accepted is not None:
+            if f["frame_id"] not in accepted:
+                if status != "excluded" or a["x"].strip() or a["y"].strip() or a["uncertainty_px"].strip():
+                    raise ValueError("Frames outside the human-selected interval must remain excluded without coordinates")
+            elif selection.get("coordinate_reannotation_required", False):
+                if "gpt-6.1-terra" not in a["annotator"] or status not in {"visible", "uncertain", "occluded"}:
+                    raise ValueError("Selected frame still requires Terra coordinate reinspection")
+                if a["medium"] != "underwater":
+                    raise ValueError("Human-confirmed underwater interval has a conflicting medium label")
         width, height = int(f["width"]), int(f["height"])
         if width <= 0 or height <= 0:
             raise ValueError("Invalid frame dimensions")
@@ -106,12 +126,15 @@ def validate(directory: Path, *, seal: bool = False) -> tuple[list[dict], dict]:
                 "landmark_convention": "visible clicker housing center; uncertainty covers possible emitter position within housing",
                 "created_utc": datetime.now(timezone.utc).isoformat(),
                 "coordinate_convention": "zero-origin original pixels; x right, y down"}
+    if selection is not None:
+        manifest["human_review_selection_sha256"] = sha(selection_path)
+        manifest["human_selected_frame_count"] = len(accepted)
     if seal:
         atomic_json(directory / "annotations.complete.json", manifest)
     else:
         existing = json.loads((directory / "annotations.complete.json").read_text())
-        for key in ("frames_sha256", "annotations_sha256", "n_frames"):
-            if existing.get(key) != manifest[key]:
+        for key in ("frames_sha256", "annotations_sha256", "n_frames", "human_review_selection_sha256"):
+            if existing.get(key) != manifest.get(key):
                 raise ValueError(f"Stale annotation completion manifest: {key}")
     return joined, manifest
 
@@ -158,8 +181,7 @@ def gallery(directory: Path, *, fitted: bool = False, model_dir: Path | None = N
                 x, y = point
                 draw.ellipse((x-u, y-u, x+u, y+u), outline=color, width=2)
         for p in predictions.get(row["frame_id"], []):
-            for keys, color in [(("predicted_x", "predicted_y"), "#ff557d"),
-                                (("baseline_x", "baseline_y"), "#54a5ff")]:
+            for keys, color in [(("predicted_x", "predicted_y"), "#ff557d")]:
                 try:
                     xy = tuple(float(p[k]) for k in keys)
                 except (KeyError, TypeError, ValueError):
@@ -195,8 +217,10 @@ def gallery(directory: Path, *, fitted: bool = False, model_dir: Path | None = N
         fit_caption = ''.join(f'<p class="legend">{html.escape(note)}</p>' for note in fit_notes)
         cards.append(f'<article data-status="{row["visibility"]}" data-medium="{row["medium"]}"><a href="{filename}" target="_blank"><img loading="lazy" src="{thumbnail}" alt="{html.escape(row["frame_id"])}"></a><div><b>{html.escape(row["frame_id"])}</b><p>{row["visibility"]} / {row["medium"]} {position}</p><p>{html.escape(row["note"])}</p>{fit_caption}<a href="{html.escape(raw_link, quote=True)}" target="_blank">Original image</a></div></article>')
     counts = " · ".join(f"{k}: {v}" for k, v in manifest["counts"].items())
+    selected_button = '<button onclick="filter(\'selected\')">User-selected frames</button>' if "human_selected_frame_count" in manifest else ""
+    initial_filter = "filter('selected');" if selected_button else ""
     title = f"Device {directory.name}: {'fit' if fitted else 'annotation'} review"
-    body = f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{html.escape(title)}</title><style>body{{font:16px system-ui;margin:28px;background:#101822;color:#e8eff5}}header{{max-width:1100px}}a{{color:#74d8ff}}main{{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:18px}}article{{background:#1d2a38;border-radius:10px;overflow:hidden}}article img{{width:100%;display:block}}article div{{padding:14px}}button{{padding:8px 12px;margin:5px;border:0;border-radius:5px}}p{{line-height:1.5}}.legend{{color:#a9bccb}}</style></head><body><header><h1>{html.escape(title)}</h1><p>{counts}</p><p class="legend">Green: visible clicker annotation. Amber: uncertain annotation. Red: calibrated prediction. Blue: original baseline. Coordinates refer to the original image, with x right and y down.</p><p>Click an image for full resolution. Review version: {revision}. <a href="../../annotations.csv">Annotations CSV</a>. Send corrections by frame ID; refitting will preserve this version.</p><p><button onclick="filter('all')">All</button><button onclick="filter('underwater-visible')">Visible underwater</button><button onclick="filter('visible')">All visible</button><button onclick="filter('uncertain')">Uncertain</button><button onclick="filter('absent')">Absent</button><button onclick="filter('occluded')">Occluded</button></p></header><main>{''.join(cards)}</main><script>function filter(v){{document.querySelectorAll('article').forEach(e=>e.style.display=(v==='all'||(v==='underwater-visible'?e.dataset.status==='visible'&&e.dataset.medium==='underwater':e.dataset.status===v))?'':'none')}}</script></body></html>'''
+    body = f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{html.escape(title)}</title><style>body{{font:16px system-ui;margin:28px;background:#101822;color:#e8eff5}}header{{max-width:1100px}}a{{color:#74d8ff}}main{{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:18px}}article{{background:#1d2a38;border-radius:10px;overflow:hidden}}article img{{width:100%;display:block}}article div{{padding:14px}}button{{padding:8px 12px;margin:5px;border:0;border-radius:5px}}p{{line-height:1.5}}.legend{{color:#a9bccb}}</style></head><body><header><h1>{html.escape(title)}</h1><p>{counts}</p><p class="legend">Green: visible clicker annotation. Amber: uncertain annotation. Red: calibrated acoustic estimate. Baseline comparisons remain in the reports. Coordinates refer to the original image, with x right and y down.</p><p>Click an image for full resolution. Review version: {revision}. <a href="../../annotations.csv">Annotations CSV</a>. Send corrections by frame ID; refitting will preserve this version.</p><p>{selected_button}<button onclick="filter('all')">All</button><button onclick="filter('underwater-visible')">Visible underwater</button><button onclick="filter('visible')">All visible</button><button onclick="filter('uncertain')">Uncertain</button><button onclick="filter('absent')">Absent</button><button onclick="filter('occluded')">Occluded</button></p></header><main>{''.join(cards)}</main><script>function filter(v){{document.querySelectorAll('article').forEach(e=>e.style.display=(v==='all'||(v==='selected'?e.dataset.status!=='excluded':v==='underwater-visible'?e.dataset.status==='visible'&&e.dataset.medium==='underwater':e.dataset.status===v))?'':'none')}}{initial_filter}</script></body></html>'''
     (out / "index.html").write_text(body)
     if thumbs:
         selected = [thumbs[round(i*(len(thumbs)-1)/min(11,len(thumbs)-1))] for i in range(min(12,len(thumbs)))] if len(thumbs)>1 else thumbs

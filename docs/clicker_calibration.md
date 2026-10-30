@@ -46,7 +46,8 @@ Camera rotation is proper SO(3); pixel y reverses the vertical camera coordinate
 `frames.csv` lists unique source frame identities and image paths without
 predictions. `annotations.csv` has
 `frame_id,x,y,visibility,medium,uncertainty_px,note,annotator`.
-Visibility is visible/uncertain/occluded/absent; medium is
+Visibility is visible/uncertain/occluded/absent, or excluded for an explicit
+human-selected scope; medium is
 underwater/air/mixed/unknown. The completion manifest binds both CSV hashes.
 The landmark is consistently the center of the identifiable clicker housing.
 A finger covering the button does not invalidate an otherwise clearly visible
@@ -326,3 +327,49 @@ from other sources. Independently measured sound speed or additional array/pose
 constraints would reduce the speed/delay/camera tradeoff. Keep an independent
 recording for validation after estimator changes. The present narrow temporal and
 spatial coverage cannot establish a unique sound speed or general camera model.
+
+## Human correction and final deliverables
+
+The user confirmed that A review files00459.jpg through00701.jpg inclusive in
+galleryada438af5848 contain the valid underwater clicker sequence; other images
+are outside the calibration scope. This is243 selected frame IDs. The old44
+underwater-visible annotations are all within this range;199 additional selected
+frames previously had uncertain labels. Object presence is user-confirmed;
+coordinates still require individual Terra reinspection.
+
+`annotation_revision.py` creates the separate
+`calibration_runs/clicker_20260209/20261030_v2/A` revision, with byte-identical
+prepared event/frame/cache data, unchanged source-image references, and explicit
+parent-manifest lineage. It resolves the inclusive JPG range through the original
+gallery HTML frame identities, preserves the old annotations/manifest under
+`revision_source`, clears previous coordinates, and records the selection in
+`human_review_selection.json`. Every other row is explicitly excluded, rather
+than falsely relabeled absent or air. The original A v1 fits remain unchanged.
+
+```sh
+python src/clicker_calibration/annotation_revision.py SOURCE_A NEW_A \
+  --first-index 459 --last-index 701 --gallery-revision ada438af5848 \
+  --reason 'User-confirmed underwater clicker interval'
+```
+
+Selected frames must receive independent Terra reinspection before sealing.
+Partially covered but localizable housings can receive a point and conservative
+uncertainty; uncertain coordinates are shown for human review and do not silently
+become fitting truth. Fully unlocalizable objects remain without invented points.
+The review defaults to the user-selected frames. Initial overlays show Terra
+coordinates/circles; final comparison overlays show Terra in green and calibrated
+acoustic estimates in red, with uncertainty/status retained. No baseline marker
+obscures that comparison; baseline statistics remain in the reports.
+
+The requested final delivery root is
+`/media/spin/anas2/data/calf/Clicktest/clicker_20260209/results`, with independent
+A/B results, parameters, individual original frames and comparison overlays,
+plus full synchronized annotated videos. Video export is being implemented and
+will retain complete chapter frames, explicit timing, and an aligned physical
+channel5 review soundtrack. Final A delivery will use the corrected v2 labels;
+v1 remains historical evidence. B processing continues in v1 independently.
+
+The revision helper passed12 synthetic tests; annotation validation/rendering
+passed8 tests including selection enforcement and stale-selection detection.
+Actual revision creation and native annotation handoff completed successfully;
+the A timing review again added zero exclusions.
