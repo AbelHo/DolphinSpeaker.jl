@@ -111,7 +111,7 @@ def plot(data, destination, full=False):
     ax.set_aspect('equal',adjustable='box'); ax.set_xlabel('Image x (pixels)'); ax.set_ylabel('Image y (pixels)')
     ax.set_title('Click-frame positions — descriptive in-sample deployment model' + (' (full extent)' if full else ''))
     ax.grid(alpha=.2); ax.legend(loc='upper center',bbox_to_anchor=(.5,-.12), ncol=1, fontsize=9)
-    fig.tight_layout(); fig.savefig(destination.with_suffix('.png'),dpi=160); fig.savefig(destination.with_suffix('.svg')); plt.close(fig)
+    fig.tight_layout(); fig.savefig(destination.with_suffix('.png'),dpi=160,bbox_inches='tight'); fig.savefig(destination.with_suffix('.svg'),bbox_inches='tight'); plt.close(fig)
     return counts
 
 def main():
