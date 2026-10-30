@@ -656,12 +656,23 @@ def _load(device, model, output, ffmpeg, ffprobe, work,*,annotation_only=False):
     if len({(v["probe"]["width"],v["probe"]["height"]) for v in videos}) != 1:
         raise ValueError("Original-resolution export requires one resolution per device")
     accepted = None
+    publish_selected_only = False
     if (device / "human_review_selection.json").exists():
-        accepted = set(_json(device / "human_review_selection.json")["accepted_frame_ids"])
+        selection = _json(device / "human_review_selection.json")
+        accepted = set(selection["accepted_frame_ids"])
+        publish_selected_only = selection.get("publish_selected_only", False)
+        if publish_selected_only and (seal.get("human_review_selection_sha256") != hashes[str((device / "human_review_selection.json").resolve())]
+                or selection.get("frames_sha256") != hashes[str((device / "frames.csv").resolve())]
+                or not accepted or not accepted <= set(frames) or len(accepted) != len(selection["accepted_frame_ids"])):
+            raise ValueError("Published selection differs from annotation seal or frame identities")
     qc = {row["event_id"]:row.get("final_sync_status") for row in eligibility["review"]["events"]} if eligibility else {}
     by_video = {str(Path(v["info"]["path"]).resolve()):v for v in videos}
     missing = []
+    scope_omitted = []
     for identity, event in events.items():
+        if publish_selected_only and event.get("frame_id") not in accepted:
+            scope_omitted.append(dict(event_id=identity, frame_id=event.get("frame_id"), reason="user_scope_excluded"))
+            continue
         frame = frames.get(event.get("frame_id"))
         if frame is None:
             missing.append(dict(event_id=identity,status="no_source_frame_identity"))
@@ -682,7 +693,7 @@ def _load(device, model, output, ffmpeg, ffprobe, work,*,annotation_only=False):
     duration = max(v["base"] + v["probe"]["duration"]-float(v["info"].get("audio_start_s",0)) for v in videos)
     return dict(metadata=metadata, hashes=hashes, timing=timing, videos=videos,
                 expected_pts=expected_pts, duration=duration, missing=missing,policy_bridge=policy_bridge,
-                prediction_provenance=prediction_provenance)
+                prediction_provenance=prediction_provenance,scope_omitted=scope_omitted)
 
 
 def export_video(device_dir, model_dir=None, output_dir=None, *, ffmpeg="/usr/bin/ffmpeg", ffprobe="/usr/bin/ffprobe",
@@ -805,6 +816,7 @@ def export_video(device_dir, model_dir=None, output_dir=None, *, ffmpeg="/usr/bi
                       video_duration_s=loaded["duration"],chapter_bases_s=loaded["timing"]["bases"],timing=loaded["timing"],
                       review_audio=audio,review_audio_gain=audio_gain,resources=resources,source_audio_cache=source_audio,event_frame_pairs=len(frame_map),unmapped_events=loaded["missing"],
                       annotation_fit_policy_bridge=loaded["policy_bridge"],
+                      user_omitted_events=loaded["scope_omitted"],
                       display_semantics="Exact original target frame, never preceding frame; nominal120ms fixed-position hold capped at chapter end, ASS endpoint quantization<10ms; no trajectory interpolation. Rare sub10ms intervals use decoded-index filters.",
                       precision="Source frame index/PTS verified; microsecond encoding and concat timestamps, maximum2.1us acceptance tolerance; no CFR conversion, frame drop, frame duplication, shortest trimming, integer asetrate or atempo.",
                       outputs_sha256={str(path.relative_to(output)):_sha(path) for path in files})

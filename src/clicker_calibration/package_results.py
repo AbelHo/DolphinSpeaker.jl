@@ -103,7 +103,7 @@ class Bundle:
                 self.copy(path, str(Path(relative) / path.relative_to(source)))
 
 
-def portable_gallery(bundle, source_meta, annotations_sha, frames, label, model_sha=None):
+def portable_gallery(bundle, source_meta, annotations_sha, frames, label, model_sha=None, published_ids=None):
     metadata = read_json(source_meta)
     if metadata["annotations_sha256"] != annotations_sha:
         raise ValueError("Review gallery does not bind the current Terra annotations")
@@ -123,6 +123,9 @@ def portable_gallery(bundle, source_meta, annotations_sha, frames, label, model_
             raise ValueError("Gallery ordering differs from original frames")
         if f'alt="{html.escape(frames[index]["frame_id"])}"' not in text:
             raise ValueError("Gallery card frame identity differs")
+        count += 1
+        if published_ids is not None and frames[index]["frame_id"] not in published_ids:
+            return ""
         number = f"{index:05d}"
         for suffix in (".jpg", "_thumb.jpg"):
             bundle.copy(source.parent / (number + suffix), f"frames/{label}/{number}{suffix}")
@@ -132,13 +135,14 @@ def portable_gallery(bundle, source_meta, annotations_sha, frames, label, model_
         text, substitutions = re.subn(r'<a href="[^"]+"(?: target="_blank")?>Original image</a>', f'<a href="../frames/raw/{raw}" target="_blank">Original image</a>', text)
         if substitutions != 1:
             raise ValueError("Gallery original-image link is ambiguous")
-        count += 1
         return text
 
     text = re.sub(r"<article\b.*?</article>", article, source.read_text(), flags=re.DOTALL)
     if count != len(frames):
         raise ValueError("Gallery does not contain every prepared frame")
     text = text.replace('href="../../annotations.csv"', 'href="../annotations.csv"')
+    if published_ids is not None:
+        text = text.replace("<main>", f'<p>Published review: only the {len(published_ids)} user-selected images. Original numbering is preserved; excluded rows remain in the audit CSV.</p><main>')
     directory = "annotation_review" if label == "terra" else "calibrated_review"
     bundle.write(f"{directory}/index.html", text)
     return f"{directory}/index.html"
@@ -162,6 +166,19 @@ def package_device(device_dir, destination_dir, *, model_dir=None, video_dir=Non
     by_id = {row["frame_id"]: row for row in annotations}
     if set(by_id) != {row["frame_id"] for row in frames} or len(by_id) != len(annotations):
         raise ValueError("Annotation/frame identities differ")
+    published_ids = None
+    selection_path = source / "human_review_selection.json"
+    if selection_path.exists():
+        selection = read_json(selection_path)
+        if selection.get("publish_selected_only", False):
+            if seal.get("human_review_selection_sha256") != sha(selection_path) or selection.get("frames_sha256") != sha(source / "frames.csv"):
+                raise ValueError("Published selection is not bound to the annotation seal/frames")
+            published_ids = set(selection["accepted_frame_ids"])
+            if not published_ids or not published_ids <= set(by_id) or len(published_ids) != len(selection["accepted_frame_ids"]):
+                raise ValueError("Invalid published frame selection")
+            if any(a["visibility"] != "excluded" or a["x"].strip() or a["y"].strip() or a["uncertainty_px"].strip()
+                   for fid, a in by_id.items() if fid not in published_ids):
+                raise ValueError("Omitted frames must be explicitly excluded without coordinates")
     prepared = read_json(source / "prepare_manifest.json")
     original_hashes = {str(Path(entry["path"]).resolve()): entry["sha256"] for entry in prepared["outputs"]}
     bundle = Bundle(destination, source)
@@ -177,12 +194,14 @@ def package_device(device_dir, destination_dir, *, model_dir=None, video_dir=Non
         if (source / name).exists():
             bundle.copy(source / name, name)
     for index, frame in enumerate(frames):
+        if published_ids is not None and frame["frame_id"] not in published_ids:
+            continue
         original = Path(frame["image_path"]).resolve()
         expected = original_hashes.get(str(original))
         if expected is None:
             raise ValueError("Original frame has no preparation checksum")
         bundle.copy(original, f"frames/raw/{index:05d}{original.suffix}", expected)
-    annotation_gallery = portable_gallery(bundle, source / "annotation_review.json", annotation_sha, frames, "terra")
+    annotation_gallery = portable_gallery(bundle, source / "annotation_review.json", annotation_sha, frames, "terra", published_ids=published_ids)
     comparison_gallery = bundle.previous.get("comparison_gallery")
     video_link = audio_link = None
     review_video_link = bundle.previous.get("review_video")
@@ -203,7 +222,7 @@ def package_device(device_dir, destination_dir, *, model_dir=None, video_dir=Non
         for name in ("calibration.json", "predictions.csv"):
             bundle.copy(model / name, name)
         gallery_meta = source / ("fit_review.json" if model == source else "refined_review.json")
-        comparison_gallery = portable_gallery(bundle, gallery_meta, annotation_sha, frames, "comparison", model_sha)
+        comparison_gallery = portable_gallery(bundle, gallery_meta, annotation_sha, frames, "comparison", model_sha, published_ids=published_ids)
         quality = "Fit status: " + str(calibration.get("fit_status", "unknown")) + ". Review errors and coverage in the model reports; fitted parameters are not independent physical measurements."
     if video is not None:
         export = read_json(video / "export_manifest.json")
@@ -229,6 +248,8 @@ def package_device(device_dir, destination_dir, *, model_dir=None, video_dir=Non
     index_writer = csv.DictWriter(index_stream, fieldnames=["review_index", "frame_id", "source_video", "source_frame_index", "source_pts_s", "visibility", "medium", "terra_x", "terra_y", "uncertainty_px", "raw_image", "terra_overlay", "comparison_overlay"])
     index_writer.writeheader()
     for index, frame in enumerate(frames):
+        if published_ids is not None and frame["frame_id"] not in published_ids:
+            continue
         annotation = by_id[frame["frame_id"]]
         index_writer.writerow(dict(review_index=index, frame_id=frame["frame_id"], source_video=frame["video_file"],
                                    source_frame_index=frame["frame_index"], source_pts_s=frame["frame_pts_s"],
@@ -259,6 +280,8 @@ def package_device(device_dir, destination_dir, *, model_dir=None, video_dir=Non
     result = dict(schema_version="clicker-delivery-v1", status=status, source_directory=str(source),
                   destination=str(destination), annotations_sha256=annotation_sha, calibration_sha256=model_sha,
                   source_model_directory=bundle.previous.get("source_model_directory") if model is None else str(model), n_frames=len(frames),
+                  n_published_frames=len(frames) if published_ids is None else len(published_ids),
+                  publication_scope="all_frames" if published_ids is None else "human_selected_only",
                   annotation_gallery=annotation_gallery, comparison_gallery=comparison_gallery,
                   video=video_link, review_video=review_video_link, comparison_video=comparison_video_link,
                   review_audio=audio_link or bundle.previous.get("review_audio"), files_sha256=bundle.files,

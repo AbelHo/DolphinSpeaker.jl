@@ -287,6 +287,31 @@ class VideoExportTests(unittest.TestCase):
         self.assertLessEqual(abs(found-index),1)
         self.assertEqual(VE.export_video(device,output_dir=output,annotation_only=True,threads=0),result)
 
+    def test_selected_only_events_leave_full_timeline_but_omit_other_markers_and_pngs(self):
+        root=self.root/"selected_only";root.mkdir()
+        device,model,output=fixture(root)
+        selection=VE._json(device/"human_review_selection.json")
+        selection.update(publish_selected_only=True,accepted_frame_ids=["frame0","frame3"])
+        VE._write_json(device/"human_review_selection.json",selection)
+        seal=VE._json(device/"annotations.complete.json")
+        seal["human_review_selection_sha256"]=VE._sha(device/"human_review_selection.json")
+        VE._write_json(device/"annotations.complete.json",seal)
+        result=VE.export_video(device,output_dir=output,annotation_only=True)
+        self.assertEqual(result["source_frames"],21);self.assertEqual(result["output_frames"],21)
+        self.assertEqual(result["event_frame_pairs"],2)
+        self.assertEqual({r["event_id"] for r in result["user_omitted_events"]},{"event1","event2","event4","event5"})
+        pairs=VE._json(output/result["generation"]/"frame_manifest.json")["events"]
+        self.assertEqual({r["frame_id"] for r in pairs},{"frame0","frame3"})
+        self.assertEqual(len(list((output/result["generation"]/"frames/raw").glob("*.png"))),2)
+        images=rgb(result["video_path"],[2,6])
+        self.assertTrue(colored(images[0],35,90,1))
+        self.assertFalse(colored(images[1],70,90,1))
+        self.assertLessEqual(result["maximum_pts_error_s"],2.1e-6)
+        selection["accepted_frame_ids"]=["frame0"]
+        VE._write_json(device/"human_review_selection.json",selection)
+        with self.assertRaisesRegex(ValueError,"selection"):
+            VE.export_video(device,output_dir=output,annotation_only=True)
+
     def test_real_policy_validator_bridge_keeps_original_uncertain_amber(self):
         helper=ROOT/"src/clicker_calibration/fit_annotation_policy.py"
         self.assertTrue(helper.is_file(),"The explicit policy helper must be ready before exporter integration")

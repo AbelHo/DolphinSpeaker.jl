@@ -65,6 +65,35 @@ class PortableResults(unittest.TestCase):
             pack.package_device(self.source, self.destination)
         self.assertEqual(edited.read_text(), "a human edit\n")
 
+    def test_user_scope_omits_other_public_images_and_preserves_original_numbers(self):
+        frame = pack.rows(self.source / "frames.csv")[0]
+        annotation = pack.rows(self.source / "annotations.csv")[0]
+        frames = [{**frame, "frame_id": f"A-f{i}", "frame_index": i} for i in range(5)]
+        annotations = [{**annotation, "frame_id": f"A-f{i}"} for i in range(5)]
+        for i in (0, 4):
+            annotations[i].update(visibility="excluded", x="", y="", uncertainty_px="", annotator="user_scope")
+        for name, rows in (("frames", frames), ("annotations", annotations)):
+            with (self.source / (name + ".csv")).open("w", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=list(rows[0])); writer.writeheader(); writer.writerows(rows)
+        selection = dict(schema_version="clicker-human-review-selection-v1", frames_sha256=pack.sha(self.source / "frames.csv"),
+                         accepted_frame_ids=[f"A-f{i}" for i in (1, 2, 3)], publish_selected_only=True)
+        (self.source / "human_review_selection.json").write_text(json.dumps(selection))
+        ann.validate(self.source, seal=True); ann.gallery(self.source)
+        result = pack.package_device(self.source, self.destination)
+        self.assertEqual(result["n_frames"], 5)
+        self.assertEqual(result["n_published_frames"], 3)
+        self.assertEqual(result["publication_scope"], "human_selected_only")
+        self.assertEqual(sorted(p.name for p in (self.destination / "frames/raw").iterdir()), ["00001.png", "00002.png", "00003.png"])
+        self.assertEqual([r["review_index"] for r in pack.rows(self.destination / "frames/index.csv")], ["1", "2", "3"])
+        page = (self.destination / "annotation_review/index.html").read_text()
+        self.assertNotIn('alt="A-f0"', page); self.assertNotIn('alt="A-f4"', page)
+        self.assertIn('../frames/terra/00001.jpg', page)
+        self.assertEqual(pack.rows(self.destination / "annotations.csv"), annotations)
+        selection["accepted_frame_ids"] = ["A-f2"]
+        (self.source / "human_review_selection.json").write_text(json.dumps(selection))
+        with self.assertRaisesRegex(ValueError, "selection"):
+            pack.package_device(self.source, self.root / "stale")
+
     def test_frame_tamper_and_stale_annotations_are_rejected(self):
         (self.source / "frame.png").write_bytes(b"changed")
         with self.assertRaisesRegex(ValueError, "checksum"):
