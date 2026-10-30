@@ -287,10 +287,14 @@ class ReproducibilityPackageTests(unittest.TestCase):
     def test_active_jobs_are_not_snapshotted_as_completed_reproducibility_evidence(self):
         dump(self.runs / "jobs/active/result.json", {"status": "running"})
         write(self.runs / "jobs/active/process.log", "mutable active output")
+        dump(self.runs / "jobs/legacy_passed/result.json", {"status": "passed", "exit_code": 0})
+        write(self.runs / "jobs/legacy_passed/process.log", "completed historical controls")
         result = self.run_package(run_roots={"jobs": self.runs / "jobs"})
         gen = self.generation(result)
         manifest = package.read_json(gen / "generation_manifest.json")
         self.assertTrue((gen / "runs/jobs/job01/result.json").is_file())
+        self.assertTrue((gen / "runs/jobs/legacy_passed/result.json").is_file())
+        self.assertTrue((gen / "runs/jobs/legacy_passed/process.log").is_file())
         self.assertFalse(any("/active/" in name for name in manifest["files_sha256"]))
         self.assertTrue(any(row.get("status") == "running" for row in manifest["excluded_files"]))
 

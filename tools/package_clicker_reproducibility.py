@@ -140,7 +140,7 @@ def active_job_roots(root):
     active = []
     for path in candidates:
         status = read_json(path / "result.json").get("status")
-        if status not in {"complete", "failed", "cancelled", "interrupted", "terminated"}:
+        if status not in {"complete", "passed", "failed", "cancelled", "interrupted", "terminated"}:
             active.append((path, status))
     return active
 
