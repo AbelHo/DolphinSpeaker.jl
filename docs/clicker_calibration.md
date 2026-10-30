@@ -69,12 +69,28 @@ The standalone entry point avoids the legacy script include chain:
 
 ```julia
 include("src/clicker_calibration.jl")
-run_clicker_calibration(
+run_full_clicker_calibration(
     "/media/spin/anas2/data/calf/Clicktest/clicker_20260209";
-    output_dir=joinpath(pwd(), "calibration_runs/clicker_20260209/20261030_v1"),
+    output_dir=joinpath(pwd(), "calibration_runs/clicker_20260209/new_run"),
+    results_dir="/media/spin/anas2/data/calf/Clicktest/clicker_20260209/results_new_run",
     devices=(:A, :B), annotator=:herdr, notify=:telegram,
+    observation_policy=:terra_estimated_underwater_coordinates,
 )
 ```
+
+This call delivers Terra-overlay images and a full synchronized hydrophone movie
+before fitting, then creates the fitted comparison images/movie and portable
+results. The explicit observation policy includes uncertain estimated points with
+their original uncertainty; omit it for strict visible-only fitting. It is not
+human approval of Terra coordinates. Independent annotations are the only manual
+stage. Heavy stages run sequentially with automatic CPU/GPU defaults.
+
+Use a fresh run/delivery directory for new annotations or changed numerical
+sources. Completed historical fits are never silently overwritten.
+`delivery_only=true`, with device-keyed `original_dirs` and `model_dirs`, delivers
+already fitted models without preparation, annotation launch or refitting.
+Mode-specific saved video manifests allow resume without alternately re-encoding
+the Terra and comparison movies. The exporter still checks inputs and outputs.
 
 Run from an initialized Herdr pane for automatic Terra handoff. The agent reads
 every frame without acoustic predictions; completion is authenticated by image
@@ -96,6 +112,9 @@ timeout/memory monitoring, native-crash logging, and completion wake-up.
 It holds the execution session through watcher delivery and cleans up the owned
 process group on failures or termination. Use a fresh job directory for each
 attempt; keep the calibration output directory stable for stage resume.
+Add `--results=DELIVERY_ROOT` for the full media/delivery workflow, and optionally
+`--observation-policy=terra_estimated_underwater_coordinates` for provisional
+coordinate fitting. Without `--results`, the existing stage-based API is retained.
 
 New runs use `--startup-file=no --compiled-modules=no --pkgimages=no
 --threads=auto -O2`. Both the 139-assertion native policy suite and actual B fit
@@ -560,5 +579,9 @@ version; historical fits are never overwritten. Prepare/SRP/projection code is
 unchanged, so A's stored inference contract remains valid. The normal-optimization,
 automatic-thread native suite passed139/139 checks. The earlier normal-resource
 85-check suite also passed; the old compiler crashes were not reproduced in these
-bounded checks. B's provisional-policy fit has not yet been launched at this
-checkpoint.
+bounded checks. B's real provisional-policy fit/review/refinement subsequently
+completed in 212.37 seconds using all 28 available CPU threads. Its original
+annotations remain unchanged. The one-call full-workflow orchestration passed
+78 native controls; all-event projection passed 49, packaged presets passed 48,
+and the presentation-source integration passed 5 focused Python controls alongside
+the existing 10 video, 8 annotation and 5 packaging tests.
