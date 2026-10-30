@@ -145,7 +145,7 @@ Refined presets use their selected GCC or SRP estimator with the actual sample
 rate and trained window, preserving the clicker1 kHz high-pass preprocessing.
 The fitted delays and camera rotation are applied only in projection. Switching
 devices also restores the previous default localization window.
-The no-argument defaults load separate committed A/B GCC calibration JSONs from
+The no-argument defaults load separate committed A GCC and B SRP calibration JSONs from
 this recording. These are provisional fits with substantial outliers, not a
 validated accuracy guarantee or transferable parameters for another mounting.
 
@@ -163,7 +163,10 @@ interpolation. Movies retain every original video frame and exact chapter timing
 A uses the user's inclusive gallery selection 00459–00701: 233 uncertain point
 estimates, 10 unlocalizable selected frames and 548 excluded frames. Its separate
 fit-input adapter preserves original truth and explicitly admits those estimates.
-B retains its original labels and uses the declared
+B uses the user's inclusive gallery selection 00140–00318: 174 unchanged Terra
+estimates and 5 unlocalizable frames, with all other 290 rows excluded. The
+selected records are copied byte-for-byte from the sealed B review, without new
+annotation or guessed coordinates. B retains its original labels and uses the declared
 `terra_estimated_underwater_coordinates` observation policy; these are provisional
 visual estimates, not human-confirmed positions. The same timing and temporal
 purge rules apply to both.
@@ -171,20 +174,33 @@ purge rules apply to both.
 | Result | A | B |
 |---|---:|---:|
 | Candidate events retained | 791 | 469 |
-| Fitting cohort (train / reused evaluation) | 202 (163 / 39) | 200 (160 / 40) |
-| Selected estimator | GCC | GCC |
-| Training-block GCC / SRP score (px; lower better) | 247.09 / 302.96 | 301.42 / 408.77 |
+| Fitting cohort (train / reused evaluation) | 202 (163 / 39) | 149 (109 / 40) |
+| Selected estimator | GCC | SRP |
+| Training-block GCC / SRP score (px; lower better) | 247.09 / 302.96 | 398.34 / 235.94 |
 | Reused evaluation projected / eligible | 35 / 39 | 40 / 40 |
-| Reused evaluation median / RMSE (px) | 176.74 / 2564.63 | 132.30 / 2007.23 |
-| Deployment descriptive median / RMSE (px) | 44.31 / 1755.38 | 43.11 / 911.42 |
-| Deployment effective sound speed (m/s) | 1562.18 | 1600.00 (bound) |
-| Deployment horizontal / vertical FOV (degrees) | 75.89 / 56.17 | 86.82 / 63.78 |
+| Reused evaluation median / RMSE (px) | 176.74 / 2564.63 | 90.97 / 996.61 |
+| Deployment descriptive median / RMSE (px) | 44.31 / 1755.38 | 101.17 / 551.19 |
+| Deployment effective sound speed (m/s) | 1562.18 | 1401.00 (near lower bound) |
+| Deployment horizontal / vertical FOV (degrees) | 75.89 / 56.17 | 78.77 / 150.00 (vertical bound) |
 
 Errors are original-resolution Euclidean pixels on projected rays; denominator
 coverage is reported separately and includes invalid events. Reused evaluation
 was already inspected, so it is descriptive evidence rather than an untouched
 confirmation set. Both models report `fitted_weak_identifiability`; small median
 errors do not cancel the severe outliers or establish a physical sound speed.
+B's extreme fitted vertical field of view is further evidence that the model is
+compensating for inconsistent rays or limited observations, not a reliable optical
+measurement. Its selected estimator follows the predeclared training-block rule;
+it was not chosen by the reused evaluation errors.
+
+The current B source is `20261030_v2/B`; `20261030_v1/B` and the public
+`results/history/B_before_00140_00318_dda980b38c25` preserve the superseded results.
+The main B gallery and event-image folders publish only the 179 selected images,
+retaining filenames 00140–00318. Full video/audio timing remains intact, with
+outside-scope event markers and captions omitted. Complete excluded rows remain
+in the audit CSVs. `scope_revision.py SOURCE DEST --first-index 140 --last-index 318
+--gallery-revision dda980b38c25 --reason ...` reproduces this scope-only revision;
+it atomically creates a new sealed directory and never overwrites its source.
 
 `project_calibration_events(original_dir, model_dir)` additionally writes
 `inference_events.csv/json` for every original candidate, including purged and

@@ -10,12 +10,12 @@ fname2dt_zoomf6(path)=nothing
 include(joinpath(@__DIR__,"../../src/localization.jl"))
 end
 
-@testset "packaged independent A/B GCC presets" begin
+@testset "packaged independent A/B method-matched presets" begin
     L=CalibratedLegacyTest; C=ClickerCalibration
-    for (device,setter) in (("A",L.set_device__ophk_acoustic_D3_clicker_A),("B",L.set_device__ophk_acoustic_D3_clicker_B))
+    for (device,setter,method) in (("A",L.set_device__ophk_acoustic_D3_clicker_A,"gcc"),("B",L.set_device__ophk_acoustic_D3_clicker_B,"srp"))
         calibration=setter()
         @test calibration["device"]==device
-        @test calibration["method"]=="gcc"
+        @test calibration["method"]==method
         @test calibration["fit_status"]=="fitted_weak_identifiability"
         @test L.impulsive_band_pass==[1000,Inf]
         @test L.imsize==(1520,2704)

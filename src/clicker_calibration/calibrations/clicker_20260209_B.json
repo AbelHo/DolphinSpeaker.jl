@@ -1,25 +1,25 @@
 {
-  "method": "gcc",
+  "method": "srp",
   "model": "centered_pinhole",
-  "sound_speed_m_s": 1599.999999892194,
+  "sound_speed_m_s": 1400.9984517742441,
   "hashes": {
     "event_snippets.f64": "7d2dc13d6544526f63c6ed77480b4910adc3b5d7166cbac662802b4d184e9669",
-    "annotations.csv": "dda980b38c25e07daaf708172cf90fbb5e0c26ac0506f8f25644cb65bbff5da0",
+    "annotations.csv": "38e49587d38012120cfdbffe423ae1469d41ad3b3f4e8dd6c19137a861fc64da",
     "source/prepare.jl": "46c778b6021ff762fa9bfe33b17e84d537d5936304bf4eeca9136b5b867605ff",
     "source/method_refinement.jl": "fef3befdc165c2ce86e467e3cf5c87f05ba3041cf613456b53d3ae6644e86b55",
-    "estimator_review.csv": "5431753cbf03ceab35331a7478860f1f1b77be2e5f70b0b52b759a239caf0960",
-    "annotations.complete.json": "84524ec2419058e094e8b5293675613cb270f4f414be52667d4dd4ec3a52a036",
+    "estimator_review.csv": "e61fd40cbd0ff34099648dc5a973669e9365360e45b54f2c7b9ac7ed7c9ce680",
+    "annotations.complete.json": "aca3abc76d3867fa128ae6ea2d298915654ef4ac4dbc1bb5a10d626ff8791b14",
     "source/srp_review.jl": "bfc26d970ade528d8e375c23ac69e0ea6ef9481ddede6376223fe67b7c7a797e",
     "events.csv": "2d58a0eacdeb9a700815c72d24295196cdd812deb75398c44630cc7dbb2d1b3c",
-    "plan_sha256": "ddb2b05c7e56dc593a70e2f6242bd84be7431c78f5f06e803e8ea670144c82c5",
-    "predictions.csv": "eacd7a35c9d07149a3fc4607da70674815b43610b926f56879c9c3744d91a2d8",
+    "plan_sha256": "8806f73c5c1b3c15fb0ee0c24071585561f62584de5f9d4f7da08f2ff275951f",
+    "predictions.csv": "0a8c5a9090300ed63894994980672ab1968a1536df0587e66d9eff9744822637",
     "source/physical_fit.jl": "ea429cbc34fbdac3f96044f6acec4256988fae3314185f36cb54021306bf3b8d",
-    "estimator_review.json": "3f01280bbf9de1568ef2580a57b7bbe8e2ea0f6891a707161e6f36a76447a4d8",
-    "fit_report.json": "2f602a57a5150c706419c4aa9a3b3314e96d443832aa87ab93e1f232c93a607a",
+    "estimator_review.json": "d44a9dc7d83bfc9f5dbc93b13dd6c7e4cdee30bb18037d8329d935d8a03eee5f",
+    "fit_report.json": "fcf2b4b68a9c47c925fadaa379945109e7001b1fdf979166fcd913ccb57f3bce",
     "source/support.jl": "2ff5ed1fce35a7848f844692ddb0704746972b55352c9d64ed18f1ce7d620335",
     "frames.csv": "656a1675d44a1767ef54a90dee40ecdde60e9e54036ba8ce17562e005df8ba9a",
-    "heldout_evaluation.json": "ff2899fa5f30d050dbc2300352ff86cd72c680d50583a0df1fc3d343f8cb4faf",
-    "calibration.json": "dad91e0f3c1633aeed18523e42c58753d14a8d67f061bdea422b112ca2a4da4a"
+    "heldout_evaluation.json": "4e6241141422395f8d262a9b1b067205317883ae0db22877f959b9e0ce983718",
+    "calibration.json": "17fd2cc2cea924106bbcd3a30e62dd17b2e61cbd7b18f5567a095783c5b1f8e7"
   },
   "limits": {
     "principal_offset_fraction": [
@@ -65,25 +65,45 @@
   },
   "numeric_precision": "Float64",
   "fov_degrees": [
-    86.81863085380449,
-    63.7776326765801
+    78.7705125031093,
+    149.9999348143909
   ],
   "estimator_spec": {
-    "method": "gcc",
+    "method": "srp",
     "srp_review_source_sha256": "bfc26d970ade528d8e375c23ac69e0ea6ef9481ddede6376223fe67b7c7a797e",
     "output": "raw reference-relative sample delays; fitted offsets and rotation applied later by project_tdoas exactly once",
-    "function": "prep_gcc",
+    "function": "review_srp_phat",
     "prepare_source_sha256": "46c778b6021ff762fa9bfe33b17e84d537d5936304bf4eeca9136b5b867605ff",
     "parameters": {
-      "pair_reconciliation": "exact preparation constrained all-pair least squares on D3 physical-lag hexagon",
-      "interp": 8,
+      "delay_sign": "positive means channel later than reference, dt_i=-(r_i-r_ref) dot u /1540 * fs",
+      "lag_limit": "sensor pair distance/c*fs + 2 samples; ceil lag*8, capped at Nup/2-1",
+      "sound_speed_m_s": 1540.0,
+      "grid_deg": 1.0,
+      "original_functions": [
+        "gcc_curve",
+        "curve_at",
+        "get_tdoa_srp"
+      ],
+      "grid_equation": "u,v in -1:sind(1):1, u^2+v^2<=1; positive array z branch",
+      "lag_interpolation": "original curve_at linear interpolation with endpoint range guard; grid steering always physically feasible",
       "band_hz": [
         1000.0,
         "0.98*fs/2"
       ],
-      "reference": 3,
-      "guide": "nearest envelope peak among peaks >=0.7 strongest",
-      "c_min_m_s": 1400.0
+      "geometry": "D3 equilateral side0.18m; selected physical3,4,5; ref selected3/physical5",
+      "weighting": "PHAT; epsilon=1e-12*maximum(abs,cross_spectrum)+floatmin(Float64)",
+      "fft": "DSP.nextfastfft(2L); R=X*conj(Y); high-frequency spectrum zero padding to N*8; original normalized irfft",
+      "refinement": "21x21 offsets range(-sind(1),sind(1)); strict > updates around coarse winner",
+      "refine": 10,
+      "snippets": "read_event_snippet(...;verify=true): exact preparation-filtered cache bytes; original HP1kHz fourth-order filtfilt; inclusive -300:700 window; exact cached clipping/cross-file context retained",
+      "projection": "Every method uses frozen evaluation_calibration through project_tdoas once; its relative-delay correction and rotation are applied once. No method-specific fit or heldout tuning.",
+      "departure_from_original": "Silent/nonfinite/missing-channel snippets are explicit invalid estimates rather than arbitrary first-grid directions. Valid nonzero finite snippets use original fixed formulation.",
+      "score": "mean of three normalized pair curves at winning physical direction; diagnostic, not probability or sound-speed truth",
+      "original_source_sha256": "c35143f112a31dafd2cfdcbefa14f291c87377a93077d61a5aa34baae886f663",
+      "interp": 8,
+      "schema_version": "clicker-estimator-review/1.0",
+      "taper": 0.0,
+      "original_source": "source_snapshot/src/localization.jl"
     },
     "sample_rate_hz": 192000.0,
     "input": "Float64 samples x selected physical3,4,5; already fourth-order zero-phase HP1000 filtered, matching preparation",
@@ -95,60 +115,61 @@
   },
   "camera": {
     "cy": 759.5,
-    "fx": 1429.2343729371007,
-    "fy": 1221.5224615118348,
+    "fx": 1646.8155501419167,
+    "fy": 203.64184961476113,
     "k1": 0.0,
     "k2": 0.0,
     "cx": 1351.5
   },
-  "selection_sha256": "761800f5ba292f67e38f7d60ec2f92806c0ad360a7e6ea39da4af26abe156979",
-  "evaluation_sha256": "516678dcec6dae283a2628fea97707b40cf9d67c4bdcd91785e2124946a85834",
+  "selection_sha256": "5ba475592fbfb3cdbb81433251c5f8dcee786f7738b71738e389cd18126a4dc9",
+  "evaluation_sha256": "04102ca6c959f6436db4c8eabf9fdaaf647185987fb7988abedd69dc6fc70795",
   "physical_channels": [
     3,
     4,
     5
   ],
-  "refinement_plan_sha256": "ddb2b05c7e56dc593a70e2f6242bd84be7431c78f5f06e803e8ea670144c82c5",
+  "refinement_plan_sha256": "8806f73c5c1b3c15fb0ee0c24071585561f62584de5f9d4f7da08f2ff275951f",
   "rotation_array_to_camera": [
     [
-      0.9941183774356508,
-      -0.0319030710149228,
-      -0.10349321574154371
+      0.9755450172205044,
+      0.10114142204983513,
+      -0.19514695007092225
     ],
     [
-      0.03430742360526761,
-      0.9991792799540209,
-      0.02153525472645043
+      -0.005425842994196743,
+      0.8986505375636759,
+      0.4386317037838449
     ],
     [
-      0.10272123602389939,
-      -0.024959178079038823,
-      0.994396996726831
+      0.2197327458619862,
+      -0.426846136309389,
+      0.8772228316190239
     ]
   ],
   "rotation_euler_xyz_rad": [
-    -0.02509454343617529,
-    -0.10290274566519206,
-    0.03449671028045057
+    -0.45286058530822204,
+    -0.22154051260787608,
+    -0.005561800789611332
   ],
   "deployment_fit_scope": "selected method, all frozen eligible annotations after frozen training selection and reused evaluation; in-sample deployment errors",
   "width": 2704,
   "reference_channel": 3,
   "relative_delay_offsets_s": [
-    1.0464947983117593e-5,
-    1.890485754073018e-6,
+    2.62596659574373e-5,
+    -3.062989946731821e-5,
     0.0
   ],
   "parameter_bound_hits_normalized": [
-    1
+    1,
+    6
   ],
   "robust_objective": "bounded smooth transform cap*rho/(cap+rho) of pseudo-Huber rho, cap set at residual max(8delta,0.05 image diagonal); invalid rays contribute fixed cap; definitely-impossible observations screened only from objective and retained in coverage",
   "optimization_convergence": {
-    "converged_runs": 5,
+    "converged_runs": 3,
     "n_runs": 7,
-    "best_start": 4,
-    "best_iterations": 1718,
-    "best_converged": true
+    "best_start": "BFGS_refinement",
+    "best_iterations": 1,
+    "best_converged": false
   },
   "schema_version": "clicker-physical-calibration/1.0",
   "geometry_m": [
