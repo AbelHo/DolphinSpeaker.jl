@@ -2,6 +2,7 @@
 """Render selected clicker frames using sealed annotations and two event predictions."""
 import argparse
 import collections
+from concurrent.futures import ProcessPoolExecutor
 import csv
 import hashlib
 import html
@@ -9,6 +10,7 @@ import json
 import math
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 
@@ -79,21 +81,31 @@ def render_frame(row, dst):
             for width, c in ((10,'black'),(5,color)):
                 draw.polygon([(x,y-23),(x+23,y),(x,y+23),(x-23,y)],outline=c,width=width)
     # Keep caption away from all image markers: choose the least occupied corner.
-    boxes = [(12,12,1300,260), (1404,12,2692,260), (12,1260,1300,1508), (1404,1260,2692,1508)]
+    f = ImageFont.truetype(FONT, 29); bold = ImageFont.truetype(BOLD, 31)
+    lines=[]
+    for method,label in (('terra','Terra circle'),('calibrated','Calibrated X'),('old','Old D3 diamond')):
+        status = row[method+'_status']; loc = row[method+'_location']
+        if method == 'old': status += '; physically feasible=' + row['old_physical_feasible']
+        words=f'{label}: {loc}; {status}'.split(); line=''
+        for word in words:
+            trial=(line+' '+word).strip()
+            if line and draw.textlength(trial,font=f)>1238:
+                lines.append((method,line)); line=word
+            else: line=trial
+        lines.append((method,line))
+    panel_height=100+42*len(lines)
+    boxes = [(12,12,1300,12+panel_height), (1404,12,2692,12+panel_height), (12,1508-panel_height,1300,1508), (1404,1508-panel_height,2692,1508)]
     points = [(number(row[m+'_x']),number(row[m+'_y'])) for m in COLORS if row[m+'_location']=='in image']
     def score(box):
         return sum(box[0]-45 <= x <= box[2]+45 and box[1]-45 <= y <= box[3]+45 for x,y in points)
     box = min(boxes,key=score)
     overlay = Image.new('RGBA',image.size); d = ImageDraw.Draw(overlay)
     d.rounded_rectangle(box, radius=12, fill=(0,0,0,220))
-    f = ImageFont.truetype(FONT, 29); bold = ImageFont.truetype(BOLD, 31)
     x0,y0=box[0]+20,box[1]+12
     d.text((x0,y0), f"{row['review_index']:05d}  {row['frame_id']}", font=bold, fill='white')
-    for i,(method,label) in enumerate((('terra','Terra circle'),('calibrated','Calibrated X'),('old','Old D3 diamond'))):
-        status = row[method+'_status']; loc = row[method+'_location']
-        if method == 'old': status += '; physically feasible=' + row['old_physical_feasible']
-        d.text((x0,y0+47+i*42), f'{label}: {loc}; {status}'[:86], font=f, fill=COLORS[method])
-    d.text((x0,y0+177), f"Sync: {row['sync_status']} | {row['frame_pts_s']} s", font=f, fill='white')
+    for i,(method,line) in enumerate(lines):
+        d.text((x0,y0+47+i*42), line, font=f, fill=COLORS[method])
+    d.text((x0,y0+47+len(lines)*42), f"Sync: {row['sync_status']} | {row['frame_pts_s']} s", font=f, fill='white')
     Image.alpha_composite(image.convert('RGBA'),overlay).convert('RGB').save(dst,compress_level=3)
 
 def plot(data, destination, full=False):
@@ -120,6 +132,12 @@ def main():
     selection=json.loads((source/'human_review_selection.json').read_text()); seal=json.loads((source/'annotations.complete.json').read_text())
     for key,path in [('frames_sha256',source/'frames.csv'),('annotations_sha256',source/'annotations.csv'),('human_review_selection_sha256',source/'human_review_selection.json')]:
         if seal[key] != digest(path): raise ValueError(f'Seal mismatch: {path}')
+    legacy_manifest=legacy.with_name('legacy_manifest.json')
+    replay=json.loads(legacy_manifest.read_text())
+    if replay['status'] != 'complete' or replay['csv_sha256'] != digest(legacy): raise ValueError('Legacy replay CSV does not match completed manifest')
+    replay_hashes={Path(k).name:v for k,v in replay['input_hashes'].items()}
+    for name in ('events.csv','frames.csv','annotations.csv','annotations.complete.json','human_review_selection.json','prepare_manifest.json','event_snippets.f64'):
+        if replay_hashes.get(name) != digest(source/name): raise ValueError(f'Legacy replay input mismatch: {name}')
     frames=rows(source/'frames.csv'); annotations=unique(rows(source/'annotations.csv'),'frame_id'); events=unique(rows(model/'inference_events.csv'),'frame_id'); old=unique(rows(legacy),'event_id')
     ids=selection['accepted_frame_ids']; accepted=set(ids)
     if len(ids)!=len(accepted): raise ValueError('Duplicate selected frame')
@@ -140,20 +158,24 @@ def main():
         row['image']=f"frames/{index:05d}_{fid}.png"; data.append(row)
     dest=args.destination
     dest.mkdir(parents=True,exist_ok=False); (dest/'frames').mkdir()
+    shutil.copyfile(legacy_manifest,dest/'legacy_manifest.json')
     with (dest/'positions.csv').open('w',newline='') as f:
         writer=csv.DictWriter(f,fieldnames=list(data[0])); writer.writeheader(); writer.writerows(data)
-    for row in data: render_frame(row,dest/row['image'])
+    workers=len(os.sched_getaffinity(0))
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(render_frame, data, (dest/row['image'] for row in data), chunksize=1))
     counts=plot(data,dest/'positions_2d'); plot(data,dest/'positions_2d_full_extent',True)
     with tempfile.TemporaryDirectory(prefix='clicker-video-') as t:
         for i,row in enumerate(data): (Path(t)/f'{i:05d}.png').symlink_to((dest/row['image']).resolve())
-        qualification=['ffmpeg','-hide_banner','-loglevel','error','-f','lavfi','-i',f'color=size={W}x{H}:rate=4','-frames:v','2','-c:v','h264_nvenc','-pix_fmt','yuv420p','-f','null','-']
+        qualification=['/usr/bin/ffmpeg','-hide_banner','-loglevel','error','-f','lavfi','-i',f'color=size={W}x{H}:rate=4','-frames:v','2','-c:v','h264_nvenc','-preset','p4','-cq','20','-b:v','0','-bf','0','-pix_fmt','yuv420p','-f','null','-']
         qualified=subprocess.run(qualification,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE).returncode == 0
         encoder='h264_nvenc' if qualified else 'libx264'
-        command=['ffmpeg','-hide_banner','-loglevel','error','-y','-framerate','4','-i',f'{t}/%05d.png','-c:v',encoder,'-pix_fmt','yuv420p','-movflags','+faststart',str(dest/'comparison_4fps.mp4')]
+        options=['-preset','p4','-cq','20','-b:v','0','-bf','0'] if qualified else ['-threads','0']
+        command=['/usr/bin/ffmpeg','-hide_banner','-loglevel','error','-y','-framerate','4','-i',f'{t}/%05d.png','-c:v',encoder,*options,'-pix_fmt','yuv420p','-movflags','+faststart',str(dest/'comparison_4fps.mp4')]
         subprocess.run(command,check=True)
-    probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-count_frames','-select_streams','v:0','-show_entries','stream=width,height,r_frame_rate,nb_read_frames,duration,codec_name,pix_fmt','-of','json',str(dest/'comparison_4fps.mp4')]))['streams'][0]
+    probe=json.loads(subprocess.check_output(['/usr/bin/ffprobe','-v','error','-count_frames','-select_streams','v:0','-show_entries','stream=width,height,r_frame_rate,nb_read_frames,duration,codec_name,pix_fmt','-of','json',str(dest/'comparison_4fps.mp4')]))['streams'][0]
     if probe['r_frame_rate']!='4/1' or int(probe['nb_read_frames'])!=len(data) or (probe['width'],probe['height'])!=(W,H) or abs(float(probe['duration'])-len(data)/4)>0.001: raise ValueError(f'Video verification failed: {probe}')
-    manifest=dict(device=d,frame_count=len(data),order='original review gallery order',review_index_first=data[0]['review_index'],review_index_last=data[-1]['review_index'],counts=counts,video=probe,encoding_command=command,description='Descriptive comparison using the in-sample deployment model. Silent 4 fps montage, not real-time or audio-synchronized. Old solver may report finite estimates for physically impossible delays.',input_sha256={str(p):digest(p) for p in [source/'frames.csv',source/'annotations.csv',source/'annotations.complete.json',source/'human_review_selection.json',model/'inference_events.csv',legacy]},outputs={'positions.csv':digest(dest/'positions.csv'),'positions_2d.png':digest(dest/'positions_2d.png'),'comparison_4fps.mp4':digest(dest/'comparison_4fps.mp4')})
+    manifest=dict(device=d,frame_count=len(data),order='original review gallery order',review_index_first=data[0]['review_index'],review_index_last=data[-1]['review_index'],counts=counts,video=probe,encoding_backend=encoder,render_workers=workers,encoding_command=command,description='Descriptive comparison using the in-sample deployment model. Silent 4 fps montage, not real-time or audio-synchronized. Old solver may report finite estimates for physically impossible delays.',input_sha256={str(p):digest(p) for p in [Path(__file__),source/'frames.csv',source/'annotations.csv',source/'annotations.complete.json',source/'human_review_selection.json',model/'calibration.json',model/'inference_events.csv',legacy,legacy_manifest]},outputs={'legacy_manifest.json':digest(dest/'legacy_manifest.json'),'positions.csv':digest(dest/'positions.csv'),'positions_2d.png':digest(dest/'positions_2d.png'),'comparison_4fps.mp4':digest(dest/'comparison_4fps.mp4')})
     (dest/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     (dest/'index.html').write_text(f'''<!doctype html><meta charset="utf-8"><title>{d} three-way clicker review</title><style>body{{font:18px system-ui;max-width:1100px;margin:40px auto;line-height:1.5}} img{{max-width:100%}}</style><h1>{d} three-way clicker review</h1><p>{html.escape(manifest['description'])}</p><p>Coordinates outside the image are retained in the CSV and full extent plot. Frame captions show missing and outside positions and recorded status.</p><ul><li><a href="comparison_4fps.mp4">Silent 4 fps montage</a></li><li><a href="positions.csv">Positions and statuses</a></li><li><a href="positions_2d_full_extent.png">Full extent plot</a></li><li><a href="manifest.json">Manifest</a></li></ul><img src="positions_2d.png" alt="Position comparison"><h2>Frames</h2>'''+''.join(f'<p><a href="{html.escape(r["image"])}">{r["review_index"]:05d} {html.escape(r["frame_id"])}</a></p>' for r in data))
     print(json.dumps(manifest,indent=2))
