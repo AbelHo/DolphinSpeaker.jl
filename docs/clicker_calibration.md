@@ -481,3 +481,29 @@ and RMSE1755.38 px, with8 outside-image estimates; reused-evaluation median is
 visible. The final parameters include c1562.177 m/s and FOV75.8906/56.1657 degrees,
 but weak identifiability remains. These are exploratory fits to233 low-precision
 Terra estimates, not independently measured sound speed or confirmed accuracy.
+
+
+## Native provisional-observation policy for B
+
+B's sealed469 rows contain2 visible air observations,296 uncertain observations
+(234 coordinate-bearing across all media), and171 absent rows. Its calibration
+must not silently convert uncertain visual estimates into confirmed positions.
+`predeclare_observation_policy(DEVICE_OUTPUT;
+policy=:terra_estimated_underwater_coordinates, reason=...)` records an explicit
+provisional policy before any fit. It binds the unchanged annotations, completion,
+events, frames and fitter source, declares `human_confirmed=false`, and admits
+only original underwater visible/uncertain coordinates with finite positive
+original radii. All timing, physical, purge and shared-frame exclusions remain.
+The shared loader applies this same policy to the first fit, estimator comparison
+and refinement. Original visibility/radii/admission are included in evidence;
+policy contents and hash are retained in the baseline calibration/report/frozen
+evaluation. Without this sidecar, the fitter stays strict visible-only.
+
+The main workflow accepts `observation_policy` as a scalar or device-keyed
+mapping. Existing source/input/settings/product mismatches require a new run
+version; historical fits are never overwritten. Prepare/SRP/projection code is
+unchanged, so A's stored inference contract remains valid. The normal-optimization,
+automatic-thread native suite passed139/139 checks. The earlier normal-resource
+85-check suite also passed; the old compiler crashes were not reproduced in these
+bounded checks. B's provisional-policy fit has not yet been launched at this
+checkpoint.

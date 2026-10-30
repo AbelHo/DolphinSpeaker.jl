@@ -540,6 +540,76 @@ function _pf_diagnostics(q,data,width,height,model; profiles=true,maxiters=1200,
         "uncertainty"=>"30-second-block cluster sandwich with frame/uncertainty and pseudo-Huber weights; Gauss-Newton linearization, conditional on model and fixed front branch, approximate, unreliable with <4 blocks or rank loss. Null directions are not assigned finite confidence intervals. c, FOV, rotation and relative delays can trade off; speed profiles refit nuisances on training only.")
 end
 
+# This opt-in policy describes provisional observations, never revised annotations.
+function _pf_policy_inputs(output_dir)
+    paths=Dict("events_sha256"=>"events.csv","annotations_sha256"=>"annotations.csv",
+        "frames_sha256"=>"frames.csv","annotations_complete_sha256"=>"annotations.complete.json")
+    hashes=Dict(key=>sha256_file(joinpath(output_dir,name)) for (key,name) in paths)
+    completion=read_json(joinpath(output_dir,"annotations.complete.json"))
+    for key in ("frames_sha256","annotations_sha256")
+        get(completion,key,nothing)==hashes[key] || throw(ArgumentError("annotation completion hash mismatch: $key"))
+    end
+    return hashes
+end
+
+function _pf_validate_observation_policy(policy,hashes)
+    get(policy,"schema_version",nothing)=="clicker-fit-observation-policy/1.0" || throw(ArgumentError("unknown fit observation policy schema"))
+    get(policy,"policy",nothing)=="terra_estimated_underwater_coordinates" || throw(ArgumentError("unknown fit observation policy"))
+    get(policy,"human_confirmed",nothing) === false || throw(ArgumentError("observation policy must not claim human confirmation"))
+    get(policy,"provisional_visual_estimates",nothing) === true || throw(ArgumentError("observation policy must declare provisional visual estimates"))
+    get(policy,"allowed_visibility",nothing)==["visible","uncertain"] || throw(ArgumentError("observation policy visibility rule changed"))
+    get(policy,"required_medium",nothing)=="underwater" || throw(ArgumentError("observation policy medium rule changed"))
+    get(policy,"require_positive_finite_original_radius",nothing) === true || throw(ArgumentError("observation policy radius rule changed"))
+    get(policy,"policy_source_sha256",nothing)==sha256_file(@__FILE__) || throw(ArgumentError("observation policy source changed"))
+    isempty(strip(_pf_text(get(policy,"reason",nothing)))) && throw(ArgumentError("observation policy needs an explicit reason"))
+    for key in ("events_sha256","annotations_sha256","frames_sha256","annotations_complete_sha256")
+        get(get(policy,"hashes",Dict()),key,nothing)==hashes[key] || throw(ArgumentError("observation policy input changed: $key"))
+    end
+    return policy
+end
+
+"""
+    predeclare_observation_policy(output_dir;
+        policy=:terra_estimated_underwater_coordinates, reason) -> Dict
+
+Opt in before any first fit to original visible/uncertain underwater coordinate
+estimates with finite positive original radii. Labels and coordinates stay intact;
+this is a provisional visual-observation policy with human_confirmed=false.
+The sealed annotation/table hashes and this source are bound. Existing policies
+resume only when valid; existing fit products prohibit a new declaration.
+"""
+function predeclare_observation_policy(output_dir;policy=:terra_estimated_underwater_coordinates,reason)
+    string(policy)=="terra_estimated_underwater_coordinates" || throw(ArgumentError("unsupported observation policy"))
+    isempty(strip(string(reason))) && throw(ArgumentError("explicit observation policy reason required"))
+    hashes=_pf_policy_inputs(output_dir)
+    path=joinpath(output_dir,"fit_observation_policy.json")
+    if isfile(path)
+        existing=_pf_validate_observation_policy(read_json(path),hashes)
+        existing["reason"]==string(reason) || throw(ArgumentError("existing observation policy reason differs"))
+        return existing
+    end
+    any(isfile(joinpath(output_dir,name)) for name in ("calibration.json","fit_report.json","predictions.csv","heldout_evaluation.json")) &&
+        throw(ArgumentError("declare observation policy in a fresh fit directory before fitting"))
+    declaration=Dict("schema_version"=>"clicker-fit-observation-policy/1.0","policy"=>string(policy),
+        "human_confirmed"=>false,"provisional_visual_estimates"=>true,
+        "allowed_visibility"=>["visible","uncertain"],"required_medium"=>"underwater",
+        "require_positive_finite_original_radius"=>true,"reason"=>string(reason),"hashes"=>hashes,
+        "policy_source_sha256"=>sha256_file(@__FILE__),"declared_at_utc"=>string(Dates.now(Dates.UTC))*"Z",
+        "limitations"=>"Original Terra housing-center estimates and radii are provisional visual estimates, not human-confirmed positions or calibrated confidence intervals. No labels/coordinates are changed; sync, geometry, purge and shared-frame exclusions still apply.")
+    _pf_validate_observation_policy(declaration,hashes)
+    write_json(path,declaration)
+    return declaration
+end
+
+function _pf_observation_evidence(input)
+    return Dict("policy"=>input.observation_policy,
+        "policy_sha256"=>get(input.hashes,"fit_observation_policy_sha256",nothing),
+        "interpretation"=>input.observation_policy===nothing ? "strict original visible observations" : "provisional original visual estimates; human_confirmed=false",
+        "events"=>[Dict("event_id"=>_pf_text(input.events.event_id[i]),"frame_id"=>_pf_text(input.events.frame_id[i]),
+            "original_visibility"=>input.original_visibility[i],"original_uncertainty_px"=>input.original_uncertainty[i],
+            "observation_admission"=>input.observation_admission[i],"eligibility_status"=>input.reason[i],"split"=>input.split[i]) for i in eachindex(input.reason)])
+end
+
 function _pf_load(output_dir,method)
     event_path=joinpath(output_dir,"events.csv"); annotation_path=joinpath(output_dir,"annotations.csv")
     frames_path=joinpath(output_dir,"frames.csv"); complete_path=joinpath(output_dir,"annotations.complete.json")
@@ -555,6 +625,9 @@ function _pf_load(output_dir,method)
     for key in ("frames_sha256","annotations_sha256")
         get(completion,key,nothing) == hashes[key] || throw(ArgumentError("annotation completion hash mismatch: $key"))
     end
+    policy_path=joinpath(output_dir,"fit_observation_policy.json")
+    observation_policy=isfile(policy_path) ? _pf_validate_observation_policy(read_json(policy_path),hashes) : nothing
+    observation_policy===nothing || (hashes["fit_observation_policy_sha256"]=sha256_file(policy_path))
     events=CSV.read(event_path,DataFrame;stringtype=String)
     annotations=CSV.read(annotation_path,DataFrame;stringtype=String)
     frames=CSV.read(frames_path,DataFrame;stringtype=String)
@@ -568,6 +641,8 @@ function _pf_load(output_dir,method)
     widths=Int[]; heights=Int[]; rows=Int[]; blocks=Int[]; frame_ids=String[]; xs=Float64[]; ys=Float64[]; uncertainty=Float64[]
     tau=Vector{Vector{Float64}}(); reason=fill("",nrow(events)); split=fill("ineligible",nrow(events))
     annotated_x=fill(NaN,nrow(events)); annotated_y=fill(NaN,nrow(events))
+    original_visibility=fill("",nrow(events)); original_uncertainty=fill(NaN,nrow(events))
+    observation_admission=fill("no_annotation",nrow(events))
     for (i,row) in enumerate(eachrow(events))
         frame=_pf_text(row.frame_id)
         if !haskey(annotation_map,frame)
@@ -575,13 +650,28 @@ function _pf_load(output_dir,method)
         end
         ann=annotation_map[frame]
         annotated_x[i]=_pf_number(ann.x); annotated_y[i]=_pf_number(ann.y)
+        original_visibility[i]=_pf_text(ann.visibility);original_uncertainty[i]=_pf_number(ann.uncertainty_px)
+        allowed=original_visibility[i] == "visible" || (observation_policy!==nothing && original_visibility[i] == "uncertain")
+        valid_radius=_pf_finite(ann.uncertainty_px) && ann.uncertainty_px > 0
+        valid_bounds=_pf_finite(row.width) && _pf_finite(row.height) && row.width >= 2 && row.height >= 2 &&
+            _pf_finite(ann.x) && _pf_finite(ann.y) && 0 <= ann.x < row.width && 0 <= ann.y < row.height
+        # Annotation admission describes only the declared visual rule. Acoustic
+        # synchronization, timing purges and physics remain separate eligibility.
+        observation_admission[i]=!allowed ? "visibility_not_admitted" :
+            _pf_text(ann.medium)!="underwater" ? "medium_"*_pf_text(ann.medium) :
+            (!_pf_finite(ann.x) || !_pf_finite(ann.y)) ? "missing_or_nonfinite_coordinates" :
+            observation_policy!==nothing && !valid_radius ? "invalid_original_uncertainty_radius" :
+            !valid_bounds ? "invalid_image_or_annotation_bounds" :
+            observation_policy===nothing ? "strict_visible" : "provisional_"*original_visibility[i]
         if _pf_text(row.sync_status) != "mapped"
             reason[i]="sync_"*_pf_text(row.sync_status); continue
         elseif _pf_text(ann.medium) != "underwater"
             reason[i]="medium_"*_pf_text(ann.medium); continue
-        elseif _pf_text(ann.visibility) != "visible" || !_pf_finite(ann.x) || !_pf_finite(ann.y)
+        elseif !allowed || !_pf_finite(ann.x) || !_pf_finite(ann.y)
             reason[i]="annotation_"*_pf_text(ann.visibility); continue
-        elseif !_pf_finite(row.width) || !_pf_finite(row.height) || row.width < 2 || row.height < 2 || !(0 <= ann.x < row.width && 0 <= ann.y < row.height)
+        elseif observation_policy!==nothing && !valid_radius
+            reason[i]="invalid_original_uncertainty_radius"; continue
+        elseif !valid_bounds
             reason[i]="invalid_image_or_annotation_bounds"; continue
         elseif !_pf_finite(row.fs) || row.fs <= 0 || !_pf_finite(row.recording_time_s) || row.recording_time_s < 0
             reason[i]="invalid_time_or_fs"; continue
@@ -596,7 +686,7 @@ function _pf_load(output_dir,method)
         end
         block=floor(Int,t/30.0)
         push!(rows,i);push!(blocks,block);push!(frame_ids,frame);push!(xs,Float64(ann.x));push!(ys,Float64(ann.y))
-        push!(uncertainty,max(1.0,_pf_number(ann.uncertainty_px,1.0)))
+        push!(uncertainty,observation_policy===nothing ? max(1.0,_pf_number(ann.uncertainty_px,1.0)) : Float64(ann.uncertainty_px))
         push!(tau,Float64.(delays[1:2])./Float64(row.fs));push!(widths,Int(row.width));push!(heights,Int(row.height))
         split[i]=mod(block,5) == 4 ? "heldout" : "train"; reason[i]="eligible"
     end
@@ -621,7 +711,9 @@ function _pf_load(output_dir,method)
         event_row=rows[keep],frame=frame_ids[keep],inverse_baseline=inv(baseline))
     return (events=events,data=data,reason=reason,split=split,annotated_x=annotated_x,annotated_y=annotated_y,
         width=isempty(widths) ? 0 : first(widths),height=isempty(heights) ? 0 : first(heights),
-        device=isempty(events.device) ? "" : _pf_text(first(events.device)),hashes=hashes)
+        device=isempty(events.device) ? "" : _pf_text(first(events.device)),hashes=hashes,
+        observation_policy=observation_policy,original_visibility=original_visibility,
+        original_uncertainty=original_uncertainty,observation_admission=observation_admission)
 end
 
 function _pf_method_comparisons(events,data,calibration)
@@ -645,7 +737,9 @@ end
 
 function _pf_predictions(input,calibration,evaluation_calibration)
     table=DataFrame(event_id=input.events.event_id,frame_id=input.events.frame_id,
-        split=input.split,eligibility_status=input.reason,annotation_x=input.annotated_x,annotation_y=input.annotated_y)
+        split=input.split,eligibility_status=input.reason,annotation_x=input.annotated_x,annotation_y=input.annotated_y,
+        original_visibility=input.original_visibility,original_uncertainty_px=input.original_uncertainty,
+        observation_admission=input.observation_admission)
     for (prefix,cal) in (("final",calibration),("evaluation",evaluation_calibration))
         x=fill(NaN,nrow(input.events));y=copy(x);error=copy(x);valid=falses(length(x));inside=falses(length(x));status=fill("",length(x))
         for (i,row) in enumerate(eachrow(input.events))
@@ -678,7 +772,9 @@ end
                diagnostics_profiles=true) -> Dict
 
 Native Julia Optim Float64 fit from events.csv and user/vision annotations.csv.
-Only medium="underwater" and visibility="visible" finite annotations qualify;
+Absent an explicit fit_observation_policy.json, only medium="underwater" and
+visibility="visible" finite annotations qualify. An authenticated opt-in policy
+may admit original uncertain coordinates with finite positive original radii;
 air/mixed/unknown media cannot be fitted with an underwater sound-speed model.
 Requires a hash-valid annotations.complete.json; annotation generation must not
 use this model. Baseline first fit is always minmax2. Outer evaluation holds out
@@ -699,14 +795,17 @@ function fit_device(output_dir; method="minmax2",resume=true,nstarts=6,maxiters=
             "robust_delta_px"=>robust_delta_px,"allow_extended"=>allow_extended,"diagnostics_profiles"=>diagnostics_profiles)
         calibration_path=joinpath(output_dir,"calibration.json"); report_path=joinpath(output_dir,"fit_report.json")
         prediction_path=joinpath(output_dir,"predictions.csv"); frozen_path=joinpath(output_dir,"heldout_evaluation.json")
-        if resume && all(isfile,(calibration_path,report_path,prediction_path,frozen_path))
+        products=(calibration_path,report_path,prediction_path,frozen_path)
+        if any(isfile,products)
+            all(isfile,products) || throw(ArgumentError("partial existing fit products; use a fresh output directory"))
             report=read_json(report_path)
-            if get(report,"hashes",nothing) == input.hashes && get(report,"settings",nothing) == settings &&
-                    get(report,"calibration_sha256",nothing) == sha256_file(calibration_path) &&
-                    get(report,"predictions_sha256",nothing) == sha256_file(prediction_path) &&
-                    get(report,"heldout_evaluation_sha256",nothing) == sha256_file(frozen_path)
-                return report
+            get(report,"hashes",nothing)==input.hashes || throw(ArgumentError("existing fit input/source/policy hash mismatch; use a fresh output directory"))
+            get(report,"settings",nothing)==settings || throw(ArgumentError("existing fit settings mismatch; use a fresh output directory"))
+            for (key,path) in (("calibration_sha256",calibration_path),("predictions_sha256",prediction_path),("heldout_evaluation_sha256",frozen_path))
+                get(report,key,nothing)==sha256_file(path) || throw(ArgumentError("existing fit product hash mismatch: $key"))
             end
+            resume || throw(ArgumentError("existing fit products cannot be overwritten; use a fresh output directory"))
+            return report
         end
         data=input.data; train_indices=findall(i->input.split[data.event_row[i]] == "train",eachindex(data.x))
         heldout_indices=findall(i->input.split[data.event_row[i]] == "heldout",eachindex(data.x))
@@ -738,12 +837,15 @@ function fit_device(output_dir; method="minmax2",resume=true,nstarts=6,maxiters=
         frozen["uncalibrated_d3_baseline_spec"]=_pf_baseline_spec(width,height)
         frozen["physical_input_screen_training_only"]=_pf_screen_summary(train)
         frozen["paired_baseline_comparison_heldout"]=_pf_paired_baseline(heldout,evaluation_cal,width,height)
+        frozen["observation_policy"]=_pf_observation_evidence(input)
+        evaluation_cal["observation_policy"]=frozen["observation_policy"]
         write_json(frozen_path,frozen)
         frozen_sha=sha256_file(frozen_path)
         # Only now may heldout observations contribute to the deployment fit.
         final_fit=_pf_fit(data,width,height,model;nstarts=nstarts,maxiters=maxiters,delta=robust_delta_px,initial=evaluation_fit.q)
         calibration=_pf_calibration(final_fit.q,width,height,model;device=input.device,method=method)
         calibration["hashes"]=input.hashes;calibration["settings"]=settings
+        calibration["observation_policy"]=frozen["observation_policy"]
         calibration["heldout_evaluation_sha256"]=frozen_sha
         calibration["fit_status"]=get(diagnostics,"weak_identifiability",true) ? "fitted_weak_identifiability" : "fitted"
         calibration["evaluation_status"]=frozen["evaluation_status"]
@@ -769,6 +871,7 @@ function fit_device(output_dir; method="minmax2",resume=true,nstarts=6,maxiters=
                 "Pixel residuals and local uncertainty do not establish sound-speed truth; c/FOV/delay tradeoffs require coverage and profile inspection.",
                 "Final deployment model uses heldout labels after evaluation freeze; only evaluation_* predictions from training-only model provide heldout evidence.",
                 "No acoustic predictions are used to generate or choose annotations; annotation SHA changes invalidate dependent fits."])
+        report["observation_policy"]=frozen["observation_policy"]
         write_json(report_path,report)
         return report
     catch exception

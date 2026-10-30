@@ -172,6 +172,91 @@ end
     @test isnan(project_tdoas(cal,[960.0,0.0,0.0];fs=192000.).x)
 end
 
+function reseal_fixture(directory,events,annotations)
+    CSV.write(joinpath(directory,"events.csv"),events)
+    CSV.write(joinpath(directory,"annotations.csv"),annotations)
+    seal=read_json(joinpath(directory,"annotations.complete.json"))
+    seal["annotations_sha256"]=sha256_file(joinpath(directory,"annotations.csv"))
+    write_json(joinpath(directory,"annotations.complete.json"),seal)
+end
+
+@testset "Opt-in original provisional observations and conservative exclusions" begin
+    mktempdir() do directory
+        write_fixture(directory)
+        events=CSV.read(joinpath(directory,"events.csv"),DataFrame)
+        anns=CSV.read(joinpath(directory,"annotations.csv"),DataFrame)
+        anns.visibility .= "uncertain"
+        allowmissing!(anns,:uncertainty_px)
+        anns[4,:uncertainty_px]=0.5 # preserve original subpixel radius, no clamp
+        anns[8,:uncertainty_px]=missing
+        anns[9,:uncertainty_px]=0.0
+        anns[10,:uncertainty_px]=-2.0
+        anns[11,:uncertainty_px]=Inf
+        anns[12,:uncertainty_px]=NaN
+        anns[13,:visibility]="occluded"
+        anns[14,:visibility]="absent"
+        anns[15,:visibility]="excluded"
+        anns[16,:x]=1280.0
+        anns[17,:x]=NaN
+        anns[18,:visibility]="visible";anns[18,:uncertainty_px]=missing
+        events[120,:frame_id]=events[19,:frame_id] # shared train/heldout image
+        reseal_fixture(directory,events,anns)
+        originals=Dict(name=>sha256_file(joinpath(directory,name)) for name in
+            ("annotations.csv","annotations.complete.json","events.csv","frames.csv"))
+        strict=_pf_load(directory,"minmax2")
+        @test strict.data.event_row==[18] # legacy visible-radius default stays strict-compatible
+        @test strict.observation_policy===nothing
+        @test_throws ArgumentError predeclare_observation_policy(directory;policy=:unknown,reason="control")
+        @test_throws ArgumentError predeclare_observation_policy(directory;reason=" ")
+        declaration=predeclare_observation_policy(directory;reason="Synthetic provisional estimate control")
+        policy_path=joinpath(directory,"fit_observation_policy.json")
+        policy_sha=sha256_file(policy_path)
+        @test !declaration["human_confirmed"]
+        @test declaration["provisional_visual_estimates"]
+        @test predeclare_observation_policy(directory;reason=declaration["reason"])==declaration
+        @test sha256_file(policy_path)==policy_sha
+        @test_throws ArgumentError predeclare_observation_policy(directory;reason="changed")
+        input=_pf_load(directory,"minmax2")
+        @test input.hashes["fit_observation_policy_sha256"]==policy_sha
+        @test input.observation_policy==declaration
+        @test input.reason[1:3]==["boundary_purge","boundary_purge","sync_ambiguous"]
+        @test input.reason[4]=="eligible"
+        @test input.reason[5:7]==["medium_air","medium_mixed","medium_unknown"]
+        @test all(==("invalid_original_uncertainty_radius"),input.reason[8:12])
+        @test input.reason[13:15]==["annotation_occluded","annotation_absent","annotation_excluded"]
+        @test input.reason[16]=="invalid_image_or_annotation_bounds"
+        @test input.reason[17]=="annotation_uncertain"
+        @test input.reason[18]=="invalid_original_uncertainty_radius"
+        @test input.reason[19]==input.reason[120]=="shared_frame_across_outer_split"
+        @test input.original_visibility[4]=="uncertain"
+        @test input.original_uncertainty[4]==0.5
+        @test input.observation_admission[4]=="provisional_uncertain"
+        @test input.observation_admission[5:7]==["medium_air","medium_mixed","medium_unknown"]
+        @test input.observation_admission[16]=="invalid_image_or_annotation_bounds"
+        @test input.observation_admission[17]=="missing_or_nonfinite_coordinates"
+        # Valid visual estimates retain annotation admission independently of
+        # synchronization, purge and shared-frame eligibility exclusions.
+        @test all(==("provisional_uncertain"),input.observation_admission[[1,2,3,19,120]])
+        j=findfirst(==(4),input.data.event_row)
+        @test input.data.weight[j]==4.0
+        @test all(input.split[input.data.event_row[k]]==(input.data.block[k]%5==4 ? "heldout" : "train") for k in eachindex(input.data.x))
+        @test all(sha256_file(joinpath(directory,name))==hash for (name,hash) in originals)
+        original_policy=read(policy_path)
+        for (key,value) in (("human_confirmed",true),("required_medium","air"),
+                ("policy_source_sha256","wrong"),("require_positive_finite_original_radius",false))
+            bad=deepcopy(declaration);bad[key]=value;write_json(policy_path,bad)
+            @test_throws ArgumentError _pf_load(directory,"minmax2")
+        end
+        write(policy_path,original_policy)
+        for name in ("events.csv","frames.csv","annotations.complete.json","annotations.csv")
+            path=joinpath(directory,name);original=read(path);open(path,"a") do io;write(io,"\n");end
+            @test_throws ArgumentError _pf_load(directory,"minmax2")
+            write(path,original)
+        end
+        @test _pf_load(directory,"minmax2").hashes["fit_observation_policy_sha256"]==policy_sha
+    end
+end
+
 @testset "CSV pipeline, hash invalidation, frozen holdout and no annotation leakage" begin
     mktempdir() do directory
         # Keep intentional test failures out of shared operational incidents.
@@ -185,6 +270,8 @@ end
         @test isempty(intersect(input.data.frame[findall(i->input.split[input.data.event_row[i]]=="train",eachindex(input.data.x))],input.data.frame[findall(i->input.split[input.data.event_row[i]]=="heldout",eachindex(input.data.x))]))
         annotation_sha=sha256_file(joinpath(directory,"annotations.csv"))
         frames_sha=sha256_file(joinpath(directory,"frames.csv"))
+        declaration=predeclare_observation_policy(directory;reason="Synthetic fitted provisional-observation control")
+        policy_sha=sha256_file(joinpath(directory,"fit_observation_policy.json"))
         report=fit_device(directory;nstarts=2,maxiters=1800,allow_extended=false,diagnostics_profiles=false)
         @test all(isfile(joinpath(directory,name)) for name in ("calibration.json","predictions.csv","fit_report.json","heldout_evaluation.json"))
         @test sha256_file(joinpath(directory,"annotations.csv")) == annotation_sha
@@ -195,29 +282,61 @@ end
         @test !report["model_selection"]["uses_heldout"]
         frozen=read_json(joinpath(directory,"heldout_evaluation.json"))
         @test frozen["evaluation_status"] == "frozen_before_final_all_eligible_refit"
+        calibration=read_json(joinpath(directory,"calibration.json"))
+        @test report["hashes"]["fit_observation_policy_sha256"]==policy_sha
+        @test report["observation_policy"]["policy"]==declaration
+        @test report["observation_policy"]==frozen["observation_policy"]==calibration["observation_policy"]
+        @test frozen["evaluation_calibration"]["observation_policy"]==report["observation_policy"]
+        @test !report["observation_policy"]["policy"]["human_confirmed"]
         @test Set(keys(report["post_first_fit_method_comparisons_training_only"]["methods"])) == Set(["minmax2","minmax","gcc"])
         predictions=CSV.read(joinpath(directory,"predictions.csv"),DataFrame)
         @test nrow(predictions) == 120
         @test all(in(names(predictions)),["final_x","evaluation_x","final_error_px","evaluation_error_px","eligibility_status"])
         @test predictions.predicted_x == predictions.final_x
+        @test predictions.original_visibility[4]=="uncertain"
+        @test predictions.observation_admission[4]=="provisional_uncertain"
+        @test predictions.eligibility_status[4]=="eligible"
         @test predictions.baseline_y != predictions.evaluation_y
         @test report["uncalibrated_d3_baseline_spec"]["sound_speed_m_s"] == 1540.0
         @test report["paired_baseline_comparison_heldout"]["common_coverage"] == 1.0
         frozen_sha=sha256_file(joinpath(directory,"heldout_evaluation.json"))
         @test fit_device(directory;nstarts=2,maxiters=1800,allow_extended=false,diagnostics_profiles=false)["heldout_evaluation_sha256"] == frozen_sha
         @test sha256_file(joinpath(directory,"heldout_evaluation.json")) == frozen_sha
-        # Changing only heldout annotations cannot affect any training data,
-        # model-selection input or fitted evaluation parameters.
+        # Existing fits are immutable under settings, source, policy, product or
+        # sealed-input changes. A genuinely new fit requires a fresh directory.
+        @test_throws ArgumentError fit_device(directory;nstarts=1,maxiters=1800,allow_extended=false,diagnostics_profiles=false)
+        @test_throws ArgumentError fit_device(directory;nstarts=2,maxiters=1800,allow_extended=false,diagnostics_profiles=false,resume=false)
+        report_path=joinpath(directory,"fit_report.json");original_report=read(report_path)
+        forged=deepcopy(report);forged["hashes"]["physical_fit_source_sha256"]="old-source"
+        write_json(report_path,forged)
+        @test_throws ArgumentError fit_device(directory;nstarts=2,maxiters=1800,allow_extended=false,diagnostics_profiles=false)
+        write(report_path,original_report)
+        predictions_path=joinpath(directory,"predictions.csv");original_predictions=read(predictions_path)
+        open(predictions_path,"a") do io;write(io,"\n");end
+        @test_throws ArgumentError fit_device(directory;nstarts=2,maxiters=1800,allow_extended=false,diagnostics_profiles=false)
+        write(predictions_path,original_predictions)
+        # Changing only heldout annotations in a fresh directory cannot affect
+        # training parameters; old frozen products remain byte-identical.
+        mktempdir() do other
+            write_fixture(other;heldout_shift=10.0)
+            predeclare_observation_policy(other;reason=declaration["reason"])
+            changed=_pf_load(other,"minmax2");current=_pf_load(directory,"minmax2")
+            train=findall(i->current.split[current.data.event_row[i]]=="train",eachindex(current.data.x))
+            @test _pf_subset(current.data,train).x==_pf_subset(changed.data,train).x
+            @test _pf_subset(current.data,train).tau==_pf_subset(changed.data,train).tau
+            report2=fit_device(other;nstarts=2,maxiters=1800,allow_extended=false,diagnostics_profiles=false)
+            frozen2=read_json(joinpath(other,"heldout_evaluation.json"))
+            # Policy hashes differ because labels differ, numerical model does not.
+            cal1=copy(frozen["evaluation_calibration"]);cal2=copy(frozen2["evaluation_calibration"])
+            delete!(cal1,"observation_policy");delete!(cal2,"observation_policy")
+            @test cal1==cal2
+            @test report2["heldout_metrics"]["rmse_px"]>9.0
+            @test report2["hashes"]["annotations_sha256"]!=annotation_sha
+        end
+        @test sha256_file(joinpath(directory,"heldout_evaluation.json"))==frozen_sha
         write_fixture(directory;heldout_shift=10.0)
-        changed=_pf_load(directory,"minmax2")
-        train=findall(i->input.split[input.data.event_row[i]]=="train",eachindex(input.data.x))
-        @test _pf_subset(input.data,train).x == _pf_subset(changed.data,train).x
-        @test _pf_subset(input.data,train).tau == _pf_subset(changed.data,train).tau
-        report2=fit_device(directory;nstarts=2,maxiters=1800,allow_extended=false,diagnostics_profiles=false)
-        frozen2=read_json(joinpath(directory,"heldout_evaluation.json"))
-        @test frozen["evaluation_calibration"] == frozen2["evaluation_calibration"]
-        @test report2["heldout_metrics"]["rmse_px"] > 9.0
-        @test report2["hashes"]["annotations_sha256"] != annotation_sha
+        @test_throws ArgumentError fit_device(directory;nstarts=2,maxiters=1800,allow_extended=false,diagnostics_profiles=false)
+        @test sha256_file(joinpath(directory,"heldout_evaluation.json"))==frozen_sha
         # An annotation edit without a matching completion receipt fails closed.
         open(joinpath(directory,"annotations.csv"),"a") do io;write(io,"\n");end
         @test_throws ArgumentError fit_device(directory;nstarts=1,maxiters=10)

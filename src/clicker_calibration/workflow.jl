@@ -262,6 +262,7 @@ function run_clicker_calibration(input_root::AbstractString; devices=(:A,:B),out
     annotation_timeout_s=21600,python=nothing,telegram_sender=nothing,
     diagnostic_plots=true,plot_python=nothing,
     annotation_fit_policy=nothing,fit_input_root=nothing,
+    observation_policy=nothing,
     error_log=get(ENV,"CLICKER_ERROR_LOG",joinpath(pwd(),"docs","error.log")),
     prepare_options=NamedTuple(),fit_options=NamedTuple())
     stage in (:all,:prepare,:sync,:annotate,:fit,:review,:refine) || throw(ArgumentError("Unknown calibration stage"))
@@ -328,6 +329,12 @@ function run_clicker_calibration(input_root::AbstractString; devices=(:A,:B),out
                     parent=isnothing(fit_input_root) ? joinpath(output_dir,"fit_inputs") : abspath(fit_input_root)
                     fit_dest=joinpath(parent,name)
                     result["annotation_fit_policy"]=prepare_fit_annotation_input(dest,fit_dest;policy=policy,python=python)
+                end
+                observed=observation_policy isa AbstractDict ?
+                    get(observation_policy,name,get(observation_policy,Symbol(name),nothing)) : observation_policy
+                if !isnothing(observed) && stage in (:all,:fit,:review,:refine)
+                    result["observation_policy"]=predeclare_observation_policy(fit_dest;policy=observed,
+                        reason="Exploratory calibration from sealed Terra coordinate estimates with their original uncertainty weights; no human-confirmed positions are asserted.")
                 end
                 if stage in (:all,:fit)
                     result["fit"]=fit_device(fit_dest;resume=resume,fit_options...)

@@ -14,4 +14,5 @@ export load_calibration, request_annotations, render_review, run_estimator_revie
 export refine_calibration, estimate_method_tdoas
 export review_sync_eligibility, render_diagnostics
 export prepare_fit_annotation_input
+export predeclare_observation_policy
 end
