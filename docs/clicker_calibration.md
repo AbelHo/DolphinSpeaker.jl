@@ -1,5 +1,7 @@
 # A/B clicker calibration
 
+**[Quick start for a new dataset](clicker_calibration_quickstart.md)**
+
 The workflow is implemented directly in this Julia repository and was recovered
 after the 2026-10-30 machine restart. Persistent source is under
 `src/clicker_calibration`; dedicated tests
