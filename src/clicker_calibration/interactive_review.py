@@ -98,19 +98,13 @@ def figure_spec(payload):
             showlegend=False, hovertemplate=label + '<br>x=%{x:.2f}, y=%{y:.2f}<extra></extra>'))
     traces.append(dict(type='scatter', mode='lines', x=[], y=[],
         line=dict(color=METHODS[0][2], width=2), showlegend=False, hoverinfo='skip'))
-    n = len(events)
-    tick_every = max(1, math.ceil(n / 12))
-    steps = [dict(label=str(i) if i % tick_every == 0 or i == n else '',
-                  value=str(i), method='skip', args=[i]) for i in range(n + 1)]
-    layout = dict(autosize=True, height=680,
-        margin=dict(l=65, r=25, t=20, b=110), paper_bgcolor='white', plot_bgcolor='white',
+    layout = dict(autosize=True, height=620,
+        margin=dict(l=65, r=25, t=20, b=55), paper_bgcolor='white', plot_bgcolor='white',
         xaxis=dict(title='Image x (pixels)', range=[0, WIDTH], zeroline=False),
         yaxis=dict(title='Image y (pixels)', range=[HEIGHT, 0], scaleanchor='x',
                    scaleratio=1, zeroline=False),
         legend=dict(orientation='h', x=0, y=1.09),
         hovermode='closest', dragmode='pan', uirevision='clicker-review',
-        sliders=[dict(active=0, pad=dict(t=45), currentvalue=dict(visible=False),
-                      steps=steps, ticklen=3, minorticklen=0)],
         font=dict(family='system-ui, sans-serif', color='#172839'))
     return dict(data=traces, layout=layout)
 
@@ -119,7 +113,7 @@ SCRIPT = r'''
 const payload = JSON.parse(document.getElementById('review-data').textContent);
 const original = JSON.parse(document.getElementById('figure-data').textContent);
 const gd = document.getElementById('plot');
-let selected = 0, busy = false, pending = null;
+let selected = 0, requested = 0, busy = false, pending = null;
 const byId = id => document.getElementById(id);
 function bounds(points) {
   const valid = points.filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
@@ -155,11 +149,10 @@ async function render(index) {
     }
   }
   const ranges=rangeFor(event); layout.xaxis.range=ranges[0]; layout.yaxis.range=ranges[1];
-  layout.sliders[0].active=index;
   layout.uirevision=`${index}-${byId('view').value}`;
   await Plotly.react(gd,data,layout,{responsive:true,scrollZoom:true,displaylogo:false,
     toImageButtonOptions:{format:'png',filename:`${payload.device}_detection_${index}`}});
-  selected=index; byId('detection').value=index;
+  selected=index;
   byId('previous').disabled=index===0; byId('next').disabled=index===payload.events.length;
   byId('selection-label').textContent=event ? `Detection ${index} / ${payload.events.length} · image ${String(event.review_index).padStart(5,'0')}` : `0 · All ${payload.events.length} detections — no highlight`;
   byId('frame-id').textContent=event ? event.frame_id : 'Slide right to highlight a frame’s three points.';
@@ -180,6 +173,13 @@ async function render(index) {
 }
 function select(index) {
   pending=Math.max(0,Math.min(payload.events.length,Math.round(Number(index)||0)));
+  requested=pending;
+  // Keep the native control outside Plotly's redraw. Update it on the request,
+  // never from an older completed render while the pointer is still dragging.
+  byId('detection-slider').value=requested;
+  byId('detection').value=requested;
+  byId('slider-position').value=`${requested} / ${payload.events.length}`;
+  byId('detection-slider').setAttribute('aria-valuetext',requested ? `Detection ${requested}` : 'All detections, no highlight');
   if (busy) return;
   busy=true;
   (async()=>{
@@ -188,12 +188,12 @@ function select(index) {
   })().catch(error=>{byId('selection-label').textContent=`Plot error: ${error.message}`; console.error(error);});
 }
 Plotly.newPlot(gd,structuredClone(original.data),structuredClone(original.layout),{responsive:true,scrollZoom:true,displaylogo:false}).then(()=>{
-  gd.on('plotly_sliderchange',event=>select(Number(event.step.value)));
   gd.on('plotly_click',event=>{
     const index=event.points?.[0]?.customdata?.[0]; if (Number.isInteger(index)) select(index);
   });
   byId('detection').addEventListener('input',event=>select(event.target.value));
-  byId('previous').onclick=()=>select(selected-1); byId('next').onclick=()=>select(selected+1);
+  byId('detection-slider').addEventListener('input',event=>select(event.target.value));
+  byId('previous').onclick=()=>select(requested-1); byId('next').onclick=()=>select(requested+1);
   byId('reset').onclick=()=>select(0);
   for (const id of ['view','background','connections']) byId(id).onchange=()=>select(selected);
   window.clickerReview={select,get selected(){return selected;},get busy(){return busy;},payload};
@@ -211,12 +211,21 @@ def document(payload, figure):
                     for i, (_, label, color, _) in enumerate(METHODS))
     return f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{device} · interactive three-way clicker review</title><style>
+html{{scrollbar-gutter:stable}}
 body{{font:16px system-ui,sans-serif;color:#172839;background:#f4f7fa;margin:0;padding:22px}}
 main{{max-width:1800px;margin:auto}}h1{{font-size:25px;margin:0 0 8px}}p{{line-height:1.5}}a{{color:#075a9c}}
 .controls{{display:flex;flex-wrap:wrap;align-items:center;gap:14px;background:white;padding:14px;border-radius:10px}}
 button,select,input{{font:inherit;padding:7px}}input[type=number]{{width:80px}}input[type=checkbox]{{accent-color:#075a9c}}
 .grid{{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:18px;margin-top:16px}}
-#plot,.details{{background:white;border-radius:10px}}.details{{padding:18px;overflow-wrap:anywhere}}
+.plot-panel,.details{{background:white;border-radius:10px}}.plot-panel{{min-width:0}}.details{{padding:18px;overflow-wrap:anywhere}}
+.slider-control{{padding:8px 25px 24px 65px}}.slider-heading,.slider-endpoints{{display:flex;justify-content:space-between;gap:12px}}
+.slider-heading{{margin-bottom:8px}}.slider-endpoints{{font-size:13px;color:#536373}}
+#detection-slider{{display:block;box-sizing:border-box;width:100%;height:32px;padding:0;margin:0;appearance:none;background:transparent;cursor:pointer}}
+#detection-slider::-webkit-slider-runnable-track{{height:6px;background:#cbd5e1;border-radius:3px}}
+#detection-slider::-webkit-slider-thumb{{appearance:none;box-sizing:border-box;width:22px;height:22px;margin-top:-8px;border:2px solid white;border-radius:50%;background:#075a9c;box-shadow:0 0 0 1px #075a9c}}
+#detection-slider::-moz-range-track{{height:6px;background:#cbd5e1;border-radius:3px}}
+#detection-slider::-moz-range-thumb{{box-sizing:border-box;width:22px;height:22px;border:2px solid white;border-radius:50%;background:#075a9c}}
+#detection-slider:focus-visible{{outline:2px solid #075a9c;outline-offset:4px}}
 #selection-label{{font-weight:700;font-size:18px}}#frame-id{{font-weight:600}}#selected-image{{width:100%;height:auto;margin-top:14px}}
 table{{width:100%;border-collapse:collapse;font-size:13px}}td,th{{padding:8px 4px;border-bottom:1px solid #e2e8f0;text-align:left}}
 .warning{{color:#a34c00;font-weight:600}}.hint{{color:#536373;font-size:14px}}[hidden]{{display:none!important}}
@@ -230,9 +239,13 @@ Click a background point to select its detection. Scroll to zoom or drag to pan.
 <label>View <select id="view"><option value="follow">Follow highlighted set</option><option value="image">Image bounds</option><option value="all">All estimates</option></select></label>
 <label><input id="background" type="checkbox" checked>Other detections</label>
 <label><input id="connections" type="checkbox">Background lines</label></div>
-<div class="grid"><div id="plot"></div><aside class="details"><p id="selection-label">Loading plot…</p><p id="frame-id"></p><p id="event-id" class="hint"></p><p id="sync" class="hint"></p>
+<div class="grid"><div class="plot-panel"><div id="plot"></div><div class="slider-control">
+<div class="slider-heading"><label for="detection-slider">Detection slider</label><output id="slider-position" for="detection-slider">0 / {n}</output></div>
+<input id="detection-slider" type="range" min="0" max="{n}" step="1" value="0" aria-label="Highlight detection" aria-valuetext="All detections, no highlight">
+<div class="slider-endpoints"><span>0 · No highlight</span><span>{n} · Last detection</span></div>
+</div></div><aside class="details"><p id="selection-label">Loading plot…</p><p id="frame-id"></p><p id="event-id" class="hint"></p><p id="sync" class="hint"></p>
 <table id="point-table" hidden><thead><tr><th>Method</th><th>x</th><th>y</th><th>Status</th></tr></thead><tbody>{table}</tbody></table>
-<div id="preview" hidden><a id="frame-link" target="_blank" rel="noopener"><img id="selected-image" alt="Selected overlay frame"></a><p class="hint">Click the image for the original-resolution overlay.</p></div>
+<div id="preview" hidden><a id="frame-link" target="_blank" rel="noopener"><img id="selected-image" width="2704" height="1520" alt="Selected overlay frame"></a><p class="hint">Click the image for the original-resolution overlay.</p></div>
 <p class="hint">Amber circle: original Terra annotation. Red X: calibrated acoustic estimate. Cyan diamond: original D3 estimate. Missing points remain missing; off-image estimates retain their actual coordinates. Follow view fits the highlighted points.</p>
 <p class="hint">Descriptive comparison using deployment fits, including fitting data. Image coordinates use x right / y down.</p>
 <p><a href="index.html">Device results</a> · <a href="positions.csv">All positions (CSV)</a> · <a href="../index.html">A/B comparison</a></p></aside></div>
@@ -265,6 +278,7 @@ def export_interactive(directory):
                     slider_max=len(payload['events']), slider_zero='no highlight',
                     positions_sha256=csv_hash, html_sha256=digest(target),
                     generator_sha256=digest(__file__), plotly_version=plotly.__version__,
+                    slider_control='native HTML range outside Plotly redraw',
                     offline=True, image_links='relative to this directory')
     (directory / 'interactive_review.json').write_text(json.dumps(metadata, indent=2) + '\n')
     return metadata

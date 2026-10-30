@@ -1,5 +1,6 @@
 import importlib.util
 import json
+from html.parser import HTMLParser
 from pathlib import Path
 import unittest
 
@@ -23,10 +24,16 @@ class InteractiveReviewTests(unittest.TestCase):
     def test_slider_zero_and_one_step_per_detection(self):
         payload = review.review_payload([row(), row(460)], 'A')
         figure = review.figure_spec(payload)
-        steps = figure['layout']['sliders'][0]['steps']
-        self.assertEqual(figure['layout']['sliders'][0]['active'], 0)
-        self.assertEqual([step['value'] for step in steps], ['0', '1', '2'])
-        self.assertEqual([step['args'] for step in steps], [[0], [1], [2]])
+        class Inputs(HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                attributes = dict(attrs)
+                if tag == 'input' and attributes.get('id') == 'detection-slider':
+                    self.slider = attributes
+        parser = Inputs()
+        parser.feed(review.document(payload, figure))
+        self.assertEqual({k:parser.slider[k] for k in ('type','min','max','step','value')},
+                         dict(type='range',min='0',max='2',step='1',value='0'))
+        self.assertNotIn('sliders', figure['layout'])
         self.assertEqual([e['review_index'] for e in payload['events']], [459, 460])
         for trace in figure['data'][5:]:
             self.assertEqual(trace['x'], [])
@@ -60,7 +67,7 @@ class InteractiveReviewTests(unittest.TestCase):
         embedded = text.split('<script id="review-data" type="application/json">', 1)[1].split('</script>', 1)[0]
         self.assertEqual(json.loads(embedded), payload)
         self.assertNotIn('</script>', embedded)
-        self.assertIn('plotly_sliderchange', text)
+        self.assertIn("byId('detection-slider').addEventListener('input'", text)
         self.assertNotIn('<script src=', text)
 
 
