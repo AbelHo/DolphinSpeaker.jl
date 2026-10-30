@@ -6,6 +6,7 @@ function load_calibration(path::AbstractString; device=nothing)
     isnothing(device) || string(calibration["device"]) == string(device) || error("Calibration belongs to a different device")
     calibration["physical_channels"] == [3,4,5] || error("Unexpected physical channel mapping")
     calibration["reference_channel"] == 3 || error("Unexpected reference channel")
+    calibration["method"] in ("minmax2","gcc","srp") || error("Unsupported calibrated delay estimator")
     1400 <= calibration["sound_speed_m_s"] <= 1600 || error("Sound speed outside calibrated bounds")
     geometry=_pf_matrix(calibration["geometry_m"])
     size(geometry)==(3,3) && all(isfinite,geometry) && maximum(abs.(geometry.-clicker_geometry()))<1e-12 || error("Calibration geometry is not the confirmed D3 array")
@@ -28,10 +29,12 @@ function _workflow_python(python)
     isnothing(python) ? get(ENV, "CLICKER_PYTHON", "python3") : string(python)
 end
 
-function _workflow_annotation_tool(output_dir, action; python=nothing)
+function _workflow_annotation_tool(output_dir, action; python=nothing,model_dir=nothing)
     exe = _workflow_python(python)
     helper = joinpath(@__DIR__, "annotation_tools.py")
-    bytes = run_logged(`$exe $helper $action $output_dir`;
+    command=`$exe $helper $action $output_dir`
+    isnothing(model_dir) || (command=`$command --model-dir $model_dir`)
+    bytes = run_logged(command;
         operation="annotation $(action) $(basename(output_dir))", capture=true)
     return JSON.parse(String(bytes))
 end
@@ -150,8 +153,8 @@ function request_annotations(output_dir::AbstractString; annotator=:herdr, pytho
     return request
 end
 
-function render_review(output_dir::AbstractString; fitted=false,python=nothing)
-    _workflow_annotation_tool(output_dir,fitted ? "fit-gallery" : "gallery";python=python)
+function render_review(output_dir::AbstractString; fitted=false,python=nothing,model_dir=nothing)
+    _workflow_annotation_tool(output_dir,fitted ? "fit-gallery" : "gallery";python=python,model_dir=model_dir)
 end
 
 function _workflow_notify_annotation(output_dir,review;notify=:telegram,telegram_sender=nothing)
@@ -195,7 +198,7 @@ end
 
 Prepare, request independent Terra annotations, notify their review location,
 fit each device separately, and compare existing estimators after the first fit.
-Stages :prepare, :annotate, :fit, :review, and :all are independently resumable.
+Stages :prepare, :annotate, :fit, :review, :refine and :all are independently resumable.
 External CSV annotation is supported with annotator=:external. The only normal
 manual step is visual annotation; :all can wait for atomic completion manifests.
 Generated artifacts go under output_dir/A and output_dir/B. Source input is
@@ -207,7 +210,7 @@ function run_clicker_calibration(input_root::AbstractString; devices=(:A,:B),out
     annotation_timeout_s=21600,python=nothing,telegram_sender=nothing,
     error_log=get(ENV,"CLICKER_ERROR_LOG",joinpath(pwd(),"docs","error.log")),
     prepare_options=NamedTuple(),fit_options=NamedTuple())
-    stage in (:all,:prepare,:annotate,:fit,:review) || throw(ArgumentError("Unknown calibration stage"))
+    stage in (:all,:prepare,:annotate,:fit,:review,:refine) || throw(ArgumentError("Unknown calibration stage"))
     input_root=abspath(input_root);output_dir=abspath(output_dir)
     (output_dir == input_root || startswith(output_dir,input_root*"/")) && error("Output must be outside read-only source recordings")
     mkpath(output_dir)
@@ -264,6 +267,11 @@ function run_clicker_calibration(input_root::AbstractString; devices=(:A,:B),out
                 end
                 if stage in (:all,:review)
                     result["estimator_review"]=run_estimator_review(dest;resume=resume)
+                end
+                if stage in (:all,:refine)
+                    result["refinement"]=refine_calibration(dest;resume=resume)
+                    result["refined_review"]=render_review(dest;fitted=true,python=python,
+                        model_dir=joinpath(dest,"refinement_v1"))
                 end
                 result["status"]=stage==:annotate ? "annotated" : "complete"
                 filter!(!=(name),pending)

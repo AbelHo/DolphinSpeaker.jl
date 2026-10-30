@@ -88,6 +88,27 @@ class AnnotationContract(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "dimensions differ"):
             tools.validate(self.root, seal=True)
 
+    def test_refined_gallery_keeps_original_fit_and_reports_invalid_projection(self):
+        tools.validate(self.root, seal=True)
+        original = self.root / "calibration.json"
+        original.write_text('{"original_fit":true}')
+        digest = tools.sha(original)
+        model = self.root / "refinement_v1"
+        model.mkdir()
+        (model / "calibration.json").write_text('{"method":"gcc"}')
+        with (model / "predictions.csv").open("w", newline="") as f:
+            row = dict(frame_id="A-test-f1", predicted_x="NaN", predicted_y="NaN",
+                       predicted_status="impossible_tdoa", predicted_error_px="NaN", split="heldout")
+            writer = csv.DictWriter(f, fieldnames=row)
+            writer.writeheader()
+            writer.writerow(row)
+        result = tools.gallery(self.root, fitted=True, model_dir=model)
+        page = Path(result["gallery"])
+        self.assertIn("refined_review", page.parts)
+        self.assertIn("no physically feasible direction", page.read_text())
+        self.assertIn("error unavailable", page.read_text())
+        self.assertEqual(tools.sha(original), digest)
+
 
 if __name__ == "__main__":
     unittest.main()

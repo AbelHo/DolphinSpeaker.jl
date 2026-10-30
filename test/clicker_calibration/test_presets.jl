@@ -50,10 +50,30 @@ end
         @test L.c==1540
         @test L.default_c==1540
         @test L.default_getTDOA_func===L.get_tdoa_minmax
+        @test L.default_window==(-5000:10000)
         @test L.angle2px([0.0 0.0])==[1920.0 1080.0]
         @test L.angle2px([0.0 0.0];calibration=nothing)==[1920.0 1080.0]
         bad=deepcopy(ca);bad["rotation_array_to_camera"]=[[1.,0,0],[0,-1.,0],[0,0,1.]]
         C.write_json(pa,bad)
         @test_throws ErrorException C.load_calibration(pa;device="A")
+        # The selected fitted estimator must be the one used by legacy callers.
+        time=collect(0:1000).-300.0
+        waveform=hcat([exp.(-((time.-delay)./5).^2).*cos.(2pi*0.16.*(time.-delay)) for delay in (4.0,-2.0,0.0)]...)
+        for method in ("gcc","srp")
+            matched=deepcopy(ca);matched["method"]=method
+            matched["estimator_spec"]=C._mr_estimator_spec(method;fs=fs)
+            C.write_json(pa,matched);L.set_device__ophk_acoustic_D3_clicker_A(calibration_path=pa)
+            @test L.impulsive_band_pass==[1000,Inf]
+            @test L.default_window==(-300:700)
+            actual_angles,actual_delays=L.detection2angle(waveform,[301],permutedims(geometry);fs=fs)
+            expected_delays=C.estimate_method_tdoas(matched,waveform,[301];fs=fs)
+            @test actual_delays==expected_delays
+            direct=C.project_tdoas(matched,expected_delays;fs=fs)
+            expected=hcat(getproperty.(direct,:x),getproperty.(direct,:y))
+            @test L.angle2px(actual_angles)≈expected atol=1e-9
+            @test_throws ErrorException L.detection2angle(waveform,[301],permutedims(geometry);fs=96000)
+        end
+        L.set_device__calf_hk()
+        @test L.active_clicker_calibration()===nothing
     end
 end

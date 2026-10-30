@@ -5,7 +5,10 @@ using Optim, DSP, FFTW, WAV, Peaks
 include("support.jl")
 include("prepare.jl")
 include("physical_fit.jl")
+include("srp_review.jl")
+include("method_refinement.jl")
 include("workflow.jl")
 export run_clicker_calibration, prepare_device, fit_device, project_tdoas, project_angles
 export load_calibration, request_annotations, render_review, run_estimator_review
+export refine_calibration, estimate_method_tdoas
 end

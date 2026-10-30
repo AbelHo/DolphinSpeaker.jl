@@ -21,6 +21,7 @@ function clear_clicker_calibration!()
         global c=old.c
         old.default_c === nothing || (global default_c=old.default_c)
         old.tdoa === nothing || (global default_getTDOA_func=old.tdoa)
+        old.window === nothing || (global default_window=old.window)
     end
     global ACTIVE_CLICKER_CALIBRATION=nothing
     global CLICKER_CALIBRATION_RESTORE=nothing
@@ -37,6 +38,12 @@ function _clicker_minmax_tdoas(data, peaks; window,ref_channel=3)
     return result
 end
 
+function _clicker_method_tdoas(data,peaks;fs,window,ref_channel=3)
+    calibration=active_clicker_calibration()
+    calibration===nothing && error("No active method-matched calibration")
+    return _clicker_call(:estimate_method_tdoas,calibration,data,peaks;fs=fs,window=window,ref_channel=ref_channel)
+end
+
 function _set_clicker_calibration(device, path)
     if !isdefined(@__MODULE__,:ClickerCalibration)
         Base.include(@__MODULE__,joinpath(@__DIR__,"ClickerCalibration.jl"))
@@ -46,16 +53,18 @@ function _set_clicker_calibration(device, path)
     set_device__ophk_acoustic_D3_clicker()
     global CLICKER_CALIBRATION_RESTORE=(c=c,
         default_c=isdefined(@__MODULE__,:default_c) ? default_c : nothing,
-        tdoa=isdefined(@__MODULE__,:default_getTDOA_func) ? default_getTDOA_func : nothing)
+        tdoa=isdefined(@__MODULE__,:default_getTDOA_func) ? default_getTDOA_func : nothing,
+        window=isdefined(@__MODULE__,:default_window) ? default_window : nothing)
     global ACTIVE_CLICKER_CALIBRATION=calibration
     global c=calibration["sound_speed_m_s"]
     global default_c=c
     global ref_channel=3
+    global default_window=window_impulsive
     global imsize=(Int(calibration["height"]),Int(calibration["width"]))
     camera=calibration["camera"]
     global fov_angle=[rad2deg(2atan(imsize[2]/(2camera["fx"]))),
                       rad2deg(2atan(imsize[1]/(2camera["fy"]))),missing]
-    global default_getTDOA_func=_clicker_minmax_tdoas
+    global default_getTDOA_func=calibration["method"]=="minmax2" ? _clicker_minmax_tdoas : _clicker_method_tdoas
     global FILE_device_ID="ophk_acoustic_D3_clicker_$(device)"
     return calibration
 end

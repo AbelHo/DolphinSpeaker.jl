@@ -78,7 +78,7 @@ agent liveness on resume. `annotator=:external` instead prepares the prompt and
 returns until a complete external annotation CSV is available. The helper
 `annotation_tools.py seal DEVICE_OUTPUT` validates and seals such a CSV.
 
-Supported stages are `:prepare`, `:annotate`, `:fit`, `:review`, and `:all`.
+Supported stages are `:prepare`, `:annotate`, `:fit`, `:review`, `:refine`, and `:all`.
 `wait_annotations=false` returns immediately at the annotation boundary.
 Existing preparation is reused only when inputs/settings/software and outputs
 match. Annotation edits invalidate fits. The Telegram notification contains the
@@ -107,6 +107,10 @@ B setter are defined in `config.jl`. They configure the corrected peak method,
 sound speed, relative channel delays, camera rotation/projection and measured
 image dimensions. Localization and pixel conversion apply each correction once.
 Calling another existing device setter restores the uncalibrated behavior.
+Refined presets use their selected GCC or SRP estimator with the actual sample
+rate and trained window, preserving the clicker1 kHz high-pass preprocessing.
+The fitted delays and camera rotation are applied only in projection. Switching
+devices also restores the previous default localization window.
 The no-argument defaults point to the final A/B calibration JSONs beside the
 implementation; those files will be installed only after the real fits exist.
 
@@ -205,3 +209,18 @@ Selection and its training fit must be frozen before replay of block34, which is
 already inspected and therefore follow-up evidence rather than fresh confirmation.
 The original first-fit artifacts remain untouched; refined results have separate
 paths. B preparation continues independently.
+
+The refinement endpoint is `refine_calibration(DEVICE_OUTPUT)`, also available
+as `stage=:refine`; `stage=:all` runs it after the first-fit estimator review.
+For a new device it freezes the same fixed protocol and input identities before
+fitting. Results stay under `refinement_v1`, leaving the first fit intact.
+Refined galleries use the original annotation set with the separate refined
+model/predictions directory. Invalid projections are stated in each caption.
+
+Refinement synthetic controls passed67/67, including exact method-matched
+inference, the nine-training-point fold, immutable baseline/resume checks, and
+unchanged selection/training parameters when only evaluation labels change.
+The updated combined workflow/preset controls passed58 native assertions; the
+annotation renderer passed7 Python tests including separate refined-model
+rendering and explicit invalid-projection captions. These remain synthetic or
+integration evidence until the actual A refinement is evaluated.

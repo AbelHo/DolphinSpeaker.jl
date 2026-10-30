@@ -130,17 +130,20 @@ def cross(draw: ImageDraw.ImageDraw, xy: tuple[float, float], color: str, r: int
     draw.ellipse((x-r, y-r, x+r, y+r), outline=color, width=3)
 
 
-def gallery(directory: Path, *, fitted: bool = False) -> dict:
+def gallery(directory: Path, *, fitted: bool = False, model_dir: Path | None = None) -> dict:
     rows, manifest = validate(directory)
+    model_dir = directory if model_dir is None else model_dir
+    if not fitted and model_dir != directory:
+        raise ValueError("A model directory is only valid for a fitted gallery")
     revision = manifest["annotations_sha256"][:12]
     if fitted:
-        revision += "_" + sha(directory / "calibration.json")[:12]
-    name = "fit_review" if fitted else "annotation_review"
+        revision += "_" + sha(model_dir / "calibration.json")[:12]
+    name = ("refined_review" if model_dir != directory else "fit_review") if fitted else "annotation_review"
     out = directory / name / revision
     out.mkdir(parents=True, exist_ok=True)
     predictions: dict[str, list[dict]] = {}
     if fitted:
-        for p in read_csv(directory / "predictions.csv"):
+        for p in read_csv(model_dir / "predictions.csv"):
             predictions.setdefault(p["frame_id"], []).append(p)
     cards, thumbs = [], []
     for i, row in enumerate(rows):
@@ -174,7 +177,23 @@ def gallery(directory: Path, *, fitted: bool = False) -> dict:
         thumbs.append((im.copy(), row["frame_id"]))
         raw_link = os.path.relpath(row["resolved_image_path"], out)
         position = "" if point is None else f"({point[0]:.1f}, {point[1]:.1f}), ±{row['uncertainty_value']} px"
-        cards.append(f'<article data-status="{row["visibility"]}" data-medium="{row["medium"]}"><a href="{filename}" target="_blank"><img loading="lazy" src="{thumbnail}" alt="{html.escape(row["frame_id"])}"></a><div><b>{html.escape(row["frame_id"])}</b><p>{row["visibility"]} / {row["medium"]} {position}</p><p>{html.escape(row["note"])}</p><a href="{html.escape(raw_link, quote=True)}" target="_blank">Original image</a></div></article>')
+        fit_notes = []
+        if fitted:
+            for prediction in predictions.get(row["frame_id"], []):
+                status = prediction.get("final_status", prediction.get("predicted_status", "unknown"))
+                status = {"impossible_tdoa": "no physically feasible direction",
+                          "outside_image": "outside image", "behind_camera": "behind camera"}.get(status, status)
+                error = prediction.get("final_error_px", prediction.get("predicted_error_px", ""))
+                try:
+                    numeric_error = float(error)
+                    error_text = f"{numeric_error:.1f} px" if math.isfinite(numeric_error) else "unavailable"
+                except (ValueError, TypeError):
+                    error_text = "unavailable"
+                fit_notes.append(f'Final fit: {status}; error {error_text}; {prediction.get("split", "")}; {prediction.get("eligibility_status", "")}')
+            if not predictions.get(row["frame_id"]):
+                fit_notes.append("Not part of this fitted event population")
+        fit_caption = ''.join(f'<p class="legend">{html.escape(note)}</p>' for note in fit_notes)
+        cards.append(f'<article data-status="{row["visibility"]}" data-medium="{row["medium"]}"><a href="{filename}" target="_blank"><img loading="lazy" src="{thumbnail}" alt="{html.escape(row["frame_id"])}"></a><div><b>{html.escape(row["frame_id"])}</b><p>{row["visibility"]} / {row["medium"]} {position}</p><p>{html.escape(row["note"])}</p>{fit_caption}<a href="{html.escape(raw_link, quote=True)}" target="_blank">Original image</a></div></article>')
     counts = " · ".join(f"{k}: {v}" for k, v in manifest["counts"].items())
     title = f"Device {directory.name}: {'fit' if fitted else 'annotation'} review"
     body = f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{html.escape(title)}</title><style>body{{font:16px system-ui;margin:28px;background:#101822;color:#e8eff5}}header{{max-width:1100px}}a{{color:#74d8ff}}main{{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:18px}}article{{background:#1d2a38;border-radius:10px;overflow:hidden}}article img{{width:100%;display:block}}article div{{padding:14px}}button{{padding:8px 12px;margin:5px;border:0;border-radius:5px}}p{{line-height:1.5}}.legend{{color:#a9bccb}}</style></head><body><header><h1>{html.escape(title)}</h1><p>{counts}</p><p class="legend">Green: visible clicker annotation. Amber: uncertain annotation. Red: calibrated prediction. Blue: original baseline. Coordinates refer to the original image, with x right and y down.</p><p>Click an image for full resolution. Review version: {revision}. <a href="../../annotations.csv">Annotations CSV</a>. Send corrections by frame ID; refitting will preserve this version.</p><p><button onclick="filter('all')">All</button><button onclick="filter('underwater-visible')">Visible underwater</button><button onclick="filter('visible')">All visible</button><button onclick="filter('uncertain')">Uncertain</button><button onclick="filter('absent')">Absent</button><button onclick="filter('occluded')">Occluded</button></p></header><main>{''.join(cards)}</main><script>function filter(v){{document.querySelectorAll('article').forEach(e=>e.style.display=(v==='all'||(v==='underwater-visible'?e.dataset.status==='visible'&&e.dataset.medium==='underwater':e.dataset.status===v))?'':'none')}}</script></body></html>'''
@@ -190,6 +209,9 @@ def gallery(directory: Path, *, fitted: bool = False) -> dict:
         sheet.save(out / "overview.jpg",quality=90)
     result = {"gallery": str((out / "index.html").resolve()), "revision": revision,
               "overview": str((out / "overview.jpg").resolve()), **manifest}
+    if fitted:
+        result["model_directory"] = str(model_dir.resolve())
+        result["model_sha256"] = sha(model_dir / "calibration.json")
     atomic_json(directory / f"{name}.json", result)
     return result
 
@@ -198,11 +220,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("seal", "validate", "gallery", "fit-gallery"))
     parser.add_argument("directory", type=Path)
+    parser.add_argument("--model-dir", type=Path)
     args = parser.parse_args()
     if args.action in ("seal", "validate"):
         _, result = validate(args.directory, seal=args.action == "seal")
     else:
-        result = gallery(args.directory, fitted=args.action == "fit-gallery")
+        result = gallery(args.directory, fitted=args.action == "fit-gallery", model_dir=args.model_dir)
     print(json.dumps(result, sort_keys=True))
 
 

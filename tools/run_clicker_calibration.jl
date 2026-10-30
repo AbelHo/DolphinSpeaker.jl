@@ -2,7 +2,7 @@
 include(joinpath(@__DIR__,"..","src","clicker_calibration.jl"))
 
 function clicker_cli(args)
-    length(args)>=2 || error("Usage: julia --project=. tools/run_clicker_calibration.jl INPUT_ROOT OUTPUT_ROOT [--device=A|B|both] [--stage=prepare|annotate|fit|review|all] [--annotator=herdr|external] [--notify=telegram|none] [--no-wait]")
+    length(args)>=2 || error("Usage: julia --project=. tools/run_clicker_calibration.jl INPUT_ROOT OUTPUT_ROOT [--device=A|B|both] [--stage=prepare|annotate|fit|review|refine|all] [--annotator=herdr|external] [--notify=telegram|none] [--no-wait]")
     input,output=args[1:2]
     options=Dict("device"=>"both","stage"=>"all","annotator"=>"herdr","notify"=>"telegram")
     wait_annotations=true

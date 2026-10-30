@@ -226,7 +226,10 @@ end
 function detection2angle(data, pind_good, rx_vect; fs=fs, window=default_window, ref_channel=ref_channel, channels_relevant=get_relevant_channels(rx_vect),
 	getTDOA_func=default_getTDOA_func, solver_func=default_tdoa2dir_solver, cost_tdoa2ang=cost_tdoa2ang, return_residual=false)
     
-	tdoa = getTDOA_func( @view(data[:,channels_relevant]), pind_good ; window=window, ref_channel=ref_channel)
+    selected=@view(data[:,channels_relevant])
+    tdoa = getTDOA_func === _clicker_method_tdoas ?
+        getTDOA_func(selected,pind_good;window=window,ref_channel=ref_channel,fs=fs) :
+        getTDOA_func(selected,pind_good;window=window,ref_channel=ref_channel)
     tdoa2dir(tdoa, rx_vect, fs; solver_func=solver_func, cost_tdoa2ang=cost_tdoa2ang, return_residual=return_residual), tdoa
 	# nothing, tdoa
 end
