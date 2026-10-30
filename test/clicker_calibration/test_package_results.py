@@ -80,6 +80,34 @@ class PortableResults(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "separate"):
             pack.package_device(self.source, self.source / "delivery")
 
+    def test_later_review_video_keeps_existing_model_comparison(self):
+        model = self.root / "model"
+        model.mkdir()
+        calibration = dict(hashes={"annotations.csv": pack.sha(self.source / "annotations.csv")}, fit_status="fitted_weak_identifiability")
+        (model / "calibration.json").write_text(json.dumps(calibration))
+        with (model / "predictions.csv").open("w", newline="") as f:
+            p = dict(event_id="A-event", frame_id="A-frame", predicted_x=110, predicted_y=85, final_status="ok", final_error_px=11)
+            writer = csv.DictWriter(f, fieldnames=list(p)); writer.writeheader(); writer.writerow(p)
+        ann.gallery(self.source, fitted=True, model_dir=model)
+        first = pack.package_device(self.source, self.destination, model_dir=model)
+        media = self.root / "media"
+        generation = media / "generation"
+        generation.mkdir(parents=True)
+        video = generation / "terra_review_synchronized.mp4"
+        audio = generation / "synchronized_reference_ch5.wav"
+        video.write_bytes(b"completed-export-video-fixture")
+        audio.write_bytes(b"completed-export-audio-fixture")
+        export = dict(status="complete", settings={"annotation_only": True},
+                      inputs_sha256={str((self.source / "annotations.csv").resolve()): pack.sha(self.source / "annotations.csv")},
+                      video_path=str(video), reference_audio_path=str(audio),
+                      outputs_sha256={str(p.relative_to(media)): pack.sha(p) for p in (video, audio)})
+        (media / "export_manifest.json").write_text(json.dumps(export))
+        later = pack.package_device(self.source, self.destination, video_dir=media)
+        self.assertEqual(later["calibration_sha256"], first["calibration_sha256"])
+        self.assertEqual(later["comparison_gallery"], first["comparison_gallery"])
+        self.assertTrue((self.destination / later["review_video"]).is_file())
+        self.assertIn("Terra versus calibrated", (self.destination / "index.html").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

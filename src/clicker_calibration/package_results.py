@@ -165,6 +165,8 @@ def package_device(device_dir, destination_dir, *, model_dir=None, video_dir=Non
     prepared = read_json(source / "prepare_manifest.json")
     original_hashes = {str(Path(entry["path"]).resolve()): entry["sha256"] for entry in prepared["outputs"]}
     bundle = Bundle(destination, source)
+    if bundle.previous and bundle.previous.get("annotations_sha256") != annotation_sha:
+        raise ValueError("Changed annotations require a separate delivery revision")
     for path in sorted(source.iterdir()):
         if path.is_file() and path.suffix in {".json", ".csv", ".txt", ".f64"}:
             bundle.copy(path, "artifacts/" + path.name)
@@ -181,11 +183,12 @@ def package_device(device_dir, destination_dir, *, model_dir=None, video_dir=Non
             raise ValueError("Original frame has no preparation checksum")
         bundle.copy(original, f"frames/raw/{index:05d}{original.suffix}", expected)
     annotation_gallery = portable_gallery(bundle, source / "annotation_review.json", annotation_sha, frames, "terra")
-    comparison_gallery = video_link = audio_link = None
+    comparison_gallery = bundle.previous.get("comparison_gallery")
+    video_link = audio_link = None
     review_video_link = bundle.previous.get("review_video")
     comparison_video_link = bundle.previous.get("comparison_video")
-    model_sha = None
-    quality = "Annotation review ready; calibration and full video are pending."
+    model_sha = bundle.previous.get("calibration_sha256")
+    quality = bundle.previous.get("quality_message", "Annotation review ready; calibration and full video are pending.")
     if model is not None:
         calibration = read_json(model / "calibration.json")
         model_sha = sha(model / "calibration.json")
@@ -246,7 +249,7 @@ def package_device(device_dir, destination_dir, *, model_dir=None, video_dir=Non
         links.append((audio_link, "Lossless synchronized reference-channel review audio"))
     links.extend([("frames/raw/", "Original synchronized frames"), ("artifacts/", "Scientific inputs and reports")])
     items = "".join(f'<li><a href="{html.escape(path)}">{html.escape(label)}</a></li>' for path, label in links)
-    status = "complete" if final else "review_available"
+    status = "complete" if final or bundle.previous.get("status") == "complete" else "review_available"
     bundle.write("index.html", '<!doctype html><meta charset="utf-8"><title>Clicker calibration review</title>'
                  '<style>body{font:18px system-ui;max-width:1000px;margin:40px;line-height:1.6}li{margin:12px 0}</style>'
                  f'<h1>Device {html.escape(source.name)} — {status.replace("_", " ")}</h1><p>{html.escape(quality)}</p>'
@@ -255,11 +258,11 @@ def package_device(device_dir, destination_dir, *, model_dir=None, video_dir=Non
                  f'<ul>{items}</ul>')
     result = dict(schema_version="clicker-delivery-v1", status=status, source_directory=str(source),
                   destination=str(destination), annotations_sha256=annotation_sha, calibration_sha256=model_sha,
-                  source_model_directory=None if model is None else str(model), n_frames=len(frames),
+                  source_model_directory=bundle.previous.get("source_model_directory") if model is None else str(model), n_frames=len(frames),
                   annotation_gallery=annotation_gallery, comparison_gallery=comparison_gallery,
                   video=video_link, review_video=review_video_link, comparison_video=comparison_video_link,
                   review_audio=audio_link or bundle.previous.get("review_audio"), files_sha256=bundle.files,
-                  created_utc=datetime.now(timezone.utc).isoformat())
+                  quality_message=quality, created_utc=datetime.now(timezone.utc).isoformat())
     path = destination / "delivery_manifest.json"
     temporary = path.with_name(path.name + ".partial")
     temporary.write_text(json.dumps(result, indent=2) + "\n")
