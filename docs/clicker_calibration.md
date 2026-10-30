@@ -1,8 +1,8 @@
 # A/B clicker calibration
 
-Implementation is being restored and integrated directly in this Julia repository
-following the 2026-10-30 machine restart. The user authorized progressive scoped
-commits. Persistent source is under `src/clicker_calibration`; dedicated tests
+The workflow is implemented directly in this Julia repository and was recovered
+after the 2026-10-30 machine restart. Persistent source is under
+`src/clicker_calibration`; dedicated tests
 are under `test/clicker_calibration`. Generated evidence, runtime depots, scratch
 files, and outputs belong under ignored `calibration_runs/`, not `/tmp`.
 
@@ -11,7 +11,7 @@ inputs are `data/calf/Clicktest/clicker_20260209/A` and `B` on that drive.
 Source recordings remain read-only. Use physical channels 3–5, reference physical
 channel 5, and the confirmed 0.18 m D3 equilateral array.
 
-The planned native Julia entry point prepares exact timestamped click frames,
+The native Julia entry point prepares exact timestamped click frames,
 hands them to a gpt-6.1-terra/high Herdr annotator, produces review overlays and a
 Telegram notification, then fits physical parameters independently for A and B.
 Fitting continues during user review. Sound speed is fitted within 1400–1600 m/s;
@@ -28,9 +28,10 @@ recovered SHA-256 values, and changed include paths. Preparation and physical-fi
 sources match their last reported precrash hashes. Historical execution evidence
 does not substitute for the remaining post-recovery integration checks.
 
-Integration and the invalid-TDOA/SRP controls now pass. A real-data preparation
-is complete and Terra annotation is active; B preparation follows independently.
-Final A/B fitted parameters remain pending annotation and physical fitting.
+Integration and the invalid-TDOA/SRP controls pass. Both real-data preparations
+are complete. A has independent annotations, an initial fit and method-specific
+refinement; B annotation is in progress. A's results remain diagnostically weak,
+as detailed below; a successfully completed fit does not establish field accuracy.
 Native Julia had intermittent CSV/LLVM SIG11 failures before the machine crash;
 record any recurrence durably and use bounded checks before heavy computation.
 
@@ -78,7 +79,7 @@ agent liveness on resume. `annotator=:external` instead prepares the prompt and
 returns until a complete external annotation CSV is available. The helper
 `annotation_tools.py seal DEVICE_OUTPUT` validates and seals such a CSV.
 
-Supported stages are `:prepare`, `:annotate`, `:fit`, `:review`, `:refine`, and `:all`.
+Supported stages are `:prepare`, `:sync`, `:annotate`, `:fit`, `:review`, `:refine`, and `:all`.
 `wait_annotations=false` returns immediately at the annotation boundary.
 Existing preparation is reused only when inputs/settings/software and outputs
 match. Annotation edits invalidate fits. The Telegram notification contains the
@@ -99,6 +100,14 @@ stack and single-thread BLAS/OpenMP, and keeps Julia depot/scratch in this repo.
 The low-optimization flags are a runtime workaround, not a repair of the earlier
 native compiler failures. Generated annotation graphics need Python with Pillow;
 `CLICKER_PYTHON` selects it. No dependency installation occurs on import.
+Saved-result plots additionally require NumPy and Matplotlib in
+`CLICKER_PLOT_PYTHON` (default `python3`), independently of the Pillow interpreter.
+Plots run automatically after each fit and refinement; `diagnostic_plots=false`
+or CLI `--no-plots` disables only these plots. `render_diagnostics(DEVICE_OUTPUT;
+model_dir=...)` regenerates them without fitting. Automatic outputs are under
+`diagnostics/automatic`; explicitly selected waveform examples can use a separate
+output directory. Plots show spatial/time errors, speed profiles, and authenticated
+cached waveforms. Acoustic descriptors are descriptive and never exclude events.
 
 ## Apply a fitted device
 
@@ -162,8 +171,8 @@ not isolated kernel benchmarks.
 The first automated annotation handoff failed because Herdr requires lowercase
 agent names. Name generation now conforms to that rule; the real second handoff
 completed and launched `clickann-a-1029222739-tf01` with gpt-6.1-terra/high for
-all791 frames. The annotation agent has no acoustic prediction inputs. The
-gallery-ready Telegram message and fit will follow its complete validated CSV.
+all791 frames. The annotation agent had no acoustic prediction inputs. The
+gallery-ready Telegram message was delivered and the fits below are complete.
 
 ## A annotation and first-fit findings
 
@@ -208,7 +217,7 @@ model and fixed optimization settings. The nine-point fold is reported explicitl
 Selection and its training fit must be frozen before replay of block34, which is
 already inspected and therefore follow-up evidence rather than fresh confirmation.
 The original first-fit artifacts remain untouched; refined results have separate
-paths. B preparation continues independently.
+paths. B annotation proceeds independently.
 
 The refinement endpoint is `refine_calibration(DEVICE_OUTPUT)`, also available
 as `stage=:refine`; `stage=:all` runs it after the first-fit estimator review.
@@ -223,4 +232,97 @@ unchanged selection/training parameters when only evaluation labels change.
 The updated combined workflow/preset controls passed58 native assertions; the
 annotation renderer passed7 Python tests including separate refined-model
 rendering and explicit invalid-projection captions. These remain synthetic or
-integration evidence until the actual A refinement is evaluated.
+integration evidence and do not establish real-data accuracy.
+
+## A physical refinement results
+
+Job `refine_A_01` completed in 79.63 s with exit 0 and about 1.2 GB peak sampled
+RSS. All original first-fit and annotation inputs remain unchanged. Training-only
+equal-block validation selected GCC (163.42 px) over SRP (280.19 px). GCC scores
+for omitted blocks 33/35/40/41 were 82.30/445.95/62.07/63.37 px; omitting block35
+leaves only nine training points. All four GCC best fold fits converged, but all
+folds reached the sound-speed upper bound and camera pose varied by 22.14 degrees.
+
+| GCC physical model | Projected / eligible | In image | RMSE, px | Median, px |
+|---|---:|---:|---:|---:|
+| Selected model on training |23/23|23|323.99|43.53|
+| Selected model on reused block34 |16/16|11|2110.35|414.03|
+| Final all39-point refit, descriptive |39/39|34|1677.76|68.90|
+
+Five catastrophic evaluation events remain in all reports. The final fit improves
+the median over the same-method uncalibrated D3 baseline (111.35 px), but worsens
+RMSE (baseline952.49 px). This is not a reliable general localization calibration.
+The selected deployment parameters are c1600 m/s at the bound, horizontal/vertical
+FOV77.7691/58.5748 degrees, fx1676.477/fy1355.003 px, centered principal point,
+no radial distortion, and relative delays13.5516/2.55757/0 microseconds.
+Training-only nuisance-refitted speed objectives change by only about2.75% over
+1400–1600 m/s; c is weakly identified and is not a sound-speed measurement.
+
+The refined gallery is
+`A/refined_review/ada438af5848_6b04b7370952/index.html`. Saved plots and explicitly
+selected diagnostic waveforms are under `A/refinement_v1/diagnostics`.
+
+## B preparation and conservative synchronization review
+
+Job `prepare_B_01` completed with exit0 in6982.87 s and sampled peak RSS
+17,630,232,576 bytes. It produced469 candidate events and469 source frames,
+initially457 mapped plus12 ambiguous. Seventeen accepted waveform anchors cover
+both WAVs and all three chapters; offset is-9.641241734 s, drift65.340131 ppm,
+maximum residual146.3 microseconds. The annotation handoff uses the unchanged
+469 frame identities and gpt-6.1-terra.
+
+`review_sync_eligibility(DEVICE_OUTPUT)` compares saved waveform anchors after
+replacing coarse2 kHz chapter bases with sums of declared camera audio durations.
+It retains the larger old/new uncertainty, all original exclusions, and unchanged
+source images. It adds an exclusion if the counterfactual changes a source frame
+or crosses a frame boundary. It never uses annotation coordinates or fit errors.
+The full workflow runs this review before annotation/fitting; `stage=:sync` runs
+only this review without reprocessing recordings.
+
+The integrated native review applied no new A exclusions and three additional B
+ambiguities, leaving454 synchronization-stable B events before visibility and
+block filtering. These three retain their original central images. With zero
+additions, canonical preparation remains byte-identical. With additions, exact
+original events/manifest are preserved once under `preparation_raw`, canonical
+event status cells alone change, and the manifest records explicit postprocessing
+lineage and new event digest/count. `sync_eligibility.json` retains every mapping,
+uncertainty and reason. This is a conservative metadata sensitivity check, not
+new waveform evidence or independent physical clock truth.
+Its focused synthetic suite passed40/40 checks. Job
+`sync_eligibility_integrated_02` passed24 workflow controls and applied the actual
+A0/B3 changes with exit0 in68.08 s. All A canonical and refinement-plan inputs
+remain unchanged. B changed only the three status cells and manifest; immutable
+originals match their captured SHA256 values, and frames/cache/sync metadata remain
+unchanged. The per-file comparison is retained in
+`diagnostics/sync_eligibility_integration_check.json` under the run root.
+
+## Algorithm improvements and remaining evidence
+
+The implemented improvement is method-matched physical calibration: corrected
+extrema remain the original comparison, while training-block validation compares
+GCC and fixed SRP. Invalid rays retain explicit status and coverage; they never
+become clamped pixel locations. The refinement does not add optical flexibility
+to compensate for unreliable acoustic delays.
+
+A bounded next experiment would compare four predeclared global GCC frequency
+masks (current full band, 1–10, 1–20 and 1–30 kHz), retaining the current envelope
+guide, window, interpolation, physical limits, event population and fitting
+settings. Each candidate needs its own training-block fits; selection must finish
+before any evaluation replay. This experiment is recommended, not implemented or
+claimed to improve these recordings. A's already inspected evaluation block is
+hypothesis-generating evidence and cannot become a fresh validation set.
+
+The five catastrophic A evaluation events have energy centroids above30 kHz,
+but accurate training events also occur there. A centroid cutoff is therefore
+unjustified. Small pairwise-delay closure only checks additive consistency; it
+does not identify the visible sound source. Competing correlation peaks,
+fixed-subband disagreement and onset-versus-ringing delays could help distinguish
+cycle ambiguity and multipath. Other acoustic sources remain a separate unresolved
+possibility. None of these diagnostics currently rejects or relabels an event.
+
+For trustworthy physical parameters, collect clicker-confirmed events across
+more independent time blocks and image heights, with pauses separating emissions
+from other sources. Independently measured sound speed or additional array/pose
+constraints would reduce the speed/delay/camera tradeoff. Keep an independent
+recording for validation after estimator changes. The present narrow temporal and
+spatial coverage cannot establish a unique sound speed or general camera model.

@@ -86,6 +86,9 @@ in original pixels. Others may leave coordinates empty. Use a conservative
 uncertainty when the clicker's edges are blurred. Record brief ambiguity notes.
 annotator must identify gpt-6.1-terra. Retain inspection evidence/notes for all
 frames; never mark all absent without viewing them. Save progress atomically.
+Continue until every image is inspected, including across context compactions.
+Resume any existing pending checkpoint; a partial batch is not task completion.
+If parent messaging fails, save a local handoff note and continue annotation.
 
 When ALL rows are complete, atomically replace annotations.csv, then execute
 the Python helper with the argument vector [$python, $helper, "seal",
@@ -157,6 +160,19 @@ function render_review(output_dir::AbstractString; fitted=false,python=nothing,m
     _workflow_annotation_tool(output_dir,fitted ? "fit-gallery" : "gallery";python=python,model_dir=model_dir)
 end
 
+"""Render saved-result plots without changing fits, annotations, or eligibility."""
+function render_diagnostics(output_dir::AbstractString;model_dir=nothing,python=nothing)
+    exe=isnothing(python) ? get(ENV,"CLICKER_PLOT_PYTHON","python3") : string(python)
+    helper=joinpath(@__DIR__,"diagnostic_plots.py")
+    model=isnothing(model_dir) ? output_dir : model_dir
+    # Keep automatic uniform-time examples separate from explicit post-fit
+    # diagnostic selections made by a caller.
+    plots=joinpath(model,"diagnostics","automatic")
+    command=`$exe $helper $output_dir --model-dir $model --output-dir $plots`
+    bytes=run_logged(command;operation="calibration diagnostics $(basename(output_dir))",capture=true)
+    return JSON.parse(String(bytes))
+end
+
 function _workflow_notify_annotation(output_dir,review;notify=:telegram,telegram_sender=nothing)
     notify == :none && return Dict("status"=>"disabled")
     notify == :telegram || throw(ArgumentError("notify must be :telegram or :none"))
@@ -198,7 +214,7 @@ end
 
 Prepare, request independent Terra annotations, notify their review location,
 fit each device separately, and compare existing estimators after the first fit.
-Stages :prepare, :annotate, :fit, :review, :refine and :all are independently resumable.
+Stages :prepare, :sync, :annotate, :fit, :review, :refine and :all are independently resumable.
 External CSV annotation is supported with annotator=:external. The only normal
 manual step is visual annotation; :all can wait for atomic completion manifests.
 Generated artifacts go under output_dir/A and output_dir/B. Source input is
@@ -208,9 +224,10 @@ are loaded through the separate explicit device preset setters.
 function run_clicker_calibration(input_root::AbstractString; devices=(:A,:B),output_dir::AbstractString,
     annotator=:herdr,notify=:telegram,resume=true,stage=:all,wait_annotations=true,
     annotation_timeout_s=21600,python=nothing,telegram_sender=nothing,
+    diagnostic_plots=true,plot_python=nothing,
     error_log=get(ENV,"CLICKER_ERROR_LOG",joinpath(pwd(),"docs","error.log")),
     prepare_options=NamedTuple(),fit_options=NamedTuple())
-    stage in (:all,:prepare,:annotate,:fit,:review,:refine) || throw(ArgumentError("Unknown calibration stage"))
+    stage in (:all,:prepare,:sync,:annotate,:fit,:review,:refine) || throw(ArgumentError("Unknown calibration stage"))
     input_root=abspath(input_root);output_dir=abspath(output_dir)
     (output_dir == input_root || startswith(output_dir,input_root*"/")) && error("Output must be outside read-only source recordings")
     mkpath(output_dir)
@@ -237,6 +254,12 @@ function run_clicker_calibration(input_root::AbstractString; devices=(:A,:B),out
                     continue
                 end
             end
+            manifest_path=joinpath(dest,"prepare_manifest.json")
+            if isfile(manifest_path) && get(read_json(manifest_path),"status","")=="complete"
+                result["sync_eligibility"]=review_sync_eligibility(dest;resume=resume)
+            elseif stage==:sync
+                error("Timing review requires complete preparation for $name")
+            end
             if stage in (:all,:annotate)
                 result["annotations"]=request_annotations(dest;annotator=annotator,python=python,resume=resume)
                 if result["annotations"]["status"]=="no_frames"
@@ -245,7 +268,7 @@ function run_clicker_calibration(input_root::AbstractString; devices=(:A,:B),out
             end
             write_json(state_path,state)
         end
-        if stage == :prepare
+        if stage in (:prepare,:sync)
             state["status"]=all(get(v,"status","")!="needs_sync_or_preparation_review" for v in values(state["devices"])) ? "prepared" : "needs_review"
             write_json(state_path,state);return state
         end
@@ -264,6 +287,7 @@ function run_clicker_calibration(input_root::AbstractString; devices=(:A,:B),out
                 if stage in (:all,:fit)
                     result["fit"]=fit_device(dest;resume=resume,fit_options...)
                     result["fit_review"]=render_review(dest;fitted=true,python=python)
+                    diagnostic_plots && (result["fit_diagnostics"]=render_diagnostics(dest;python=plot_python))
                 end
                 if stage in (:all,:review)
                     result["estimator_review"]=run_estimator_review(dest;resume=resume)
@@ -272,6 +296,8 @@ function run_clicker_calibration(input_root::AbstractString; devices=(:A,:B),out
                     result["refinement"]=refine_calibration(dest;resume=resume)
                     result["refined_review"]=render_review(dest;fitted=true,python=python,
                         model_dir=joinpath(dest,"refinement_v1"))
+                    diagnostic_plots && (result["refinement_diagnostics"]=render_diagnostics(dest;
+                        model_dir=joinpath(dest,"refinement_v1"),python=plot_python))
                 end
                 result["status"]=stage==:annotate ? "annotated" : "complete"
                 filter!(!=(name),pending)

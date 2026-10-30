@@ -52,6 +52,8 @@ end
         state=C.run_clicker_calibration(source;devices=(:A,),output_dir=out,stage=:fit,
             annotator=:external,notify=:none,wait_annotations=false,error_log=joinpath(dir,"errors.jsonl"))
         @test state["status"]=="awaiting_annotations"
+        @test_throws ErrorException C.run_clicker_calibration(source;devices=(:A,),output_dir=out,
+            stage=:sync,notify=:none,error_log=joinpath(dir,"errors.jsonl"))
         @test_throws ErrorException C.run_clicker_calibration(source;output_dir=joinpath(source,"outputs"),notify=:none)
     end
 end
