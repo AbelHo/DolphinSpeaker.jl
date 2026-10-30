@@ -109,7 +109,7 @@ def _run(command, work, label, *, capture=False):
 
 
 def _probe(path, ffprobe, work, label):
-    data = _run([ffprobe, "-v", "error", "-threads", "1", "-select_streams", "v:0", "-show_frames", "-show_streams",
+    data = _run([ffprobe, "-v", "error", "-threads", "0", "-select_streams", "v:0", "-show_frames", "-show_streams",
                  "-show_entries", "stream=width,height,duration,time_base,nb_frames:frame=best_effort_timestamp_time,pkt_duration_time",
                  "-of", "json", path], work, label, capture=True)
     value = json.loads(data)
@@ -119,6 +119,153 @@ def _probe(path, ffprobe, work, label):
         raise ValueError(f"Missing/nonmonotone source frames: {path}")
     return dict(pts=pts, width=int(stream["width"]), height=int(stream["height"]),
                 duration=float(stream["duration"]), time_base=stream["time_base"])
+
+
+def _source_probe_saved(info, ffprobe, work, label):
+    """PTS belong to bytes already SHA-authenticated in _load; no full decode."""
+    raw=_run([ffprobe,"-v","error","-select_streams","v:0","-show_streams","-show_entries",
+              "stream=width,height,duration,time_base,nb_frames,pix_fmt,color_range","-of","json",info["path"]],work,label,capture=True)
+    stream=json.loads(raw)["streams"][0];pts=list(map(float,info["pts"]))
+    if not pts or any(not math.isfinite(x) for x in pts) or any(b<=a for a,b in zip(pts,pts[1:])):
+        raise ValueError("Saved source PTS missing/nonmonotone")
+    if (int(stream["width"]),int(stream["height"]))!=(int(info["width"]),int(info["height"])):
+        raise ValueError("Authenticated source geometry differs from saved metadata")
+    if stream.get("nb_frames") not in (None,"N/A") and int(stream["nb_frames"])!=len(pts):
+        raise ValueError("Authenticated source frame count differs from saved PTS")
+    if abs(float(stream["duration"])-float(info["duration_s"]))>2e-6:
+        raise ValueError("Authenticated source duration differs")
+    return dict(pts=pts,width=int(stream["width"]),height=int(stream["height"]),duration=float(stream["duration"]),
+                time_base=stream["time_base"],pix_fmt=stream.get("pix_fmt","yuv420p"),color_range=stream.get("color_range"),pts_origin="saved preparation PTS bound to freshly verified source media SHA256")
+
+
+def _cpu_count():
+    return max(1,len(os.sched_getaffinity(0)) if hasattr(os,"sched_getaffinity") else os.cpu_count() or 1)
+
+
+def _encode_options(resources,crf,preset):
+    if resources["encoder"]=="h264_nvenc":
+        mapped=preset if preset in {f"p{i}" for i in range(1,8)} else {
+            "ultrafast":"p1","superfast":"p2","veryfast":"p3","faster":"p3","fast":"p4",
+            "medium":"p5","slow":"p6","slower":"p7","veryslow":"p7"}.get(preset,"p4")
+        return ["-c:v","h264_nvenc","-preset",mapped,"-rc","vbr","-cq",crf,"-b:v","0","-bf","0"]
+    return ["-c:v","libx264","-threads",resources["cpu_threads"],"-crf",crf,"-preset",preset]
+
+
+def _decode_options(resources):
+    if resources["decoder"]=="cuda":
+        return ["-threads","1","-hwaccel","cuda","-hwaccel_output_format","cuda"]
+    if resources["decoder"]=="h264_cuvid":
+        return ["-threads","1","-hwaccel","cuda","-hwaccel_output_format","cuda","-c:v","h264_cuvid"]
+    return ["-threads",resources["cpu_threads"]]
+
+
+def _pixel_equal(first,second):
+    from PIL import Image
+    with Image.open(first) as a,Image.open(second) as b:
+        return np.array_equal(np.asarray(a.convert("RGB")),np.asarray(b.convert("RGB")))
+
+
+def _resources(ffmpeg,work,loaded,threads,encoder,decoder,crf,preset):
+    if encoder not in {"auto","cpu","nvenc"} or decoder not in {"auto","cpu","cuda","h264_cuvid"}:
+        raise ValueError("Unsupported requested CPU/GPU backend")
+    cpus=_cpu_count() if threads in (None,0) else int(threads)
+    if cpus<1:raise ValueError("threads must be auto/0 or a positive CPU count")
+    result=dict(cpu_available=_cpu_count(),cpu_threads=cpus,requested_threads=threads,requested_encoder=encoder,
+                requested_decoder=decoder,encoder="libx264",decoder="cpu",probes=[],fallbacks=[],
+                source_pts_preflight="saved exact PTS plus fresh media SHA and stream-header check",final_pts_validation="full output frame decode with CPU auto threads")
+    if encoder!="cpu":
+        command=[ffmpeg,"-v","error","-nostdin","-y","-f","lavfi","-i","testsrc2=size=320x240:rate=60000/1001",
+                 "-frames:v","6","-an","-c:v","h264_nvenc","-preset","p4","-rc","vbr","-cq",crf,"-b:v","0","-bf","0",
+                 "-fps_mode","passthrough","-enc_time_base","1:1000000","-video_track_timescale","1000000",work/"nvenc_probe.mp4"]
+        try:
+            _run(command,work,"probe_nvenc");result["encoder"]="h264_nvenc"
+            result["probes"].append(dict(kind="NVENC",passed=True,log="probe_nvenc.log"))
+        except RuntimeError as error:
+            result["probes"].append(dict(kind="NVENC",passed=False,error=str(error),log="probe_nvenc.log"))
+            if encoder=="nvenc":raise
+            result["fallbacks"].append("NVENC probe failed; explicit fallback to all-available CPU libx264; see probe_nvenc.log")
+    if result["encoder"]=="h264_nvenc" and decoder!="cpu":
+        attempts=[decoder] if decoder!="auto" else ["cuda","h264_cuvid"]
+        for option in attempts:
+            result["decoder"]=option
+            try:
+                for chapter,video in enumerate(loaded["videos"]):
+                    selected=video["events"][:1]
+                    event=selected[0] if selected else None
+                    target=event["source_pts_s"] if event else video["probe"]["pts"][0]
+                    sourcepng=work/f"decoder_{option}_{chapter}.png"
+                    if "pix_fmt" not in video["probe"]:
+                        video["probe"].update(_source_probe_saved(video["info"],str(Path(ffmpeg).with_name("ffprobe")),work,f"decoder_stream_header_{chapter}"))
+                    prefix="hwdownload,format=nv12,format="+video["probe"]["pix_fmt"]+","
+                    graph=prefix+f"settb=1/1000000,select='eq(pts,{round(target*1e6)})'"
+                    command=[ffmpeg,"-v","error","-nostdin","-y",*_decode_options(result),"-ss",max(0,target-0.5),"-t","1",
+                             "-copyts","-i",video["info"]["path"],"-vf",graph,"-frames:v","1","-c:v","png","-threads",cpus,sourcepng]
+                    label=f"probe_decoder_{option}_{chapter}";_run(command,work,label)
+                    if not sourcepng.is_file() or (event and not _pixel_equal(sourcepng,event["prepared_image_path"])):
+                        raise RuntimeError(f"{option} decoder target pixels do not exactly match prepared PNG")
+                    result["probes"].append(dict(kind=option,chapter=chapter,passed=True,pixel_exact=bool(event),log=label+".log"))
+                break
+            except RuntimeError as error:
+                result["probes"].append(dict(kind=option,passed=False,error=str(error)))
+                result["fallbacks"].append(f"{option} qualification failed: {error}")
+                result["decoder"]="cpu"
+                if decoder!="auto":raise
+    if result["decoder"]=="cpu":
+        result["decode_control_cpu_threads"]=cpus
+        if result["encoder"]=="h264_nvenc":result["fallbacks"].append("Using all-available CPU source decode with GPU NVENC encode; CUDA decoder unsupported or not pixel-exact")
+    else:
+        result["decode_control_cpu_threads"]=1
+        result["decode_control_semantics"]="Single CPU control thread required by NVDEC; decoding remains hardware/full GPU, not one CPU decoding worker"
+    result["gpu_used"]=result["encoder"]=="h264_nvenc" or result["decoder"]!="cpu"
+    if result["gpu_used"] and shutil.which("nvidia-smi"):
+        try:
+            result["gpu_inventory"]=_run([shutil.which("nvidia-smi"),"--query-gpu=name,driver_version,memory.total","--format=csv,noheader"],work,"gpu_inventory",capture=True).decode().strip()
+        except RuntimeError as error:
+            result["gpu_inventory_error"]=str(error)
+    result["encoder_options"]=list(map(str,_encode_options(result,crf,preset)))
+    _write_json(work/"resource_selection.json",result)
+    print(json.dumps(dict(resource_selection=result)),flush=True)
+    return result
+
+
+def _audio_gain(path):
+    with Path(path).open("rb") as stream:
+        header=stream.read(56)
+    if header[:4]!=b"RIFF" or header[48:52]!=b"data" or struct.unpack_from("<H",header,20)[0]!=3:
+        raise ValueError("Expected unscaled aligned Float32 reference WAV")
+    count=struct.unpack_from("<I",header,52)[0]//4
+    samples=np.memmap(path,dtype="<f4",mode="r",offset=56,shape=(count,))
+    peak=0.0
+    for first in range(0,count,48000*60):
+        values=samples[first:first+48000*60]
+        if not np.all(np.isfinite(values)):raise ValueError("Nonfinite review reference audio")
+        peak=max(peak,float(np.max(np.abs(values),initial=0)))
+    del samples
+    gain=min(512.0,0.6/peak) if peak else 1.0
+    return dict(constant_gain=gain,whole_reference_peak=peak,predicted_MP4_PCM_peak=peak*gain,
+                reference_WAV_unscaled=True,policy="min(512,0.6/whole-reference peak); constant gain, no limiter or scientific PCM mutation")
+
+
+def _decoded_audio_peak(path,ffmpeg,work,threads):
+    command=[ffmpeg,"-v","error","-nostdin","-threads",threads,"-i",path,"-map","0:a:0","-ac","1","-ar",RATE,"-f","f32le","pipe:1"]
+    peak=0.0;count=0
+    with (work/"verify_MP4_audio_peak.log").open("wb") as log:
+        log.write((json.dumps(list(map(str,command)))+"\n").encode())
+        child=subprocess.Popen(list(map(str,command)),stdout=subprocess.PIPE,stderr=log)
+        try:
+            while True:
+                block=child.stdout.read(48000*4)
+                if not block:break
+                if len(block)%4:raise ValueError("Partial decoded audible PCM")
+                values=np.frombuffer(block,dtype="<f4")
+                if not np.all(np.isfinite(values)):raise ValueError("Nonfinite AAC decoded sample")
+                peak=max(peak,float(np.max(np.abs(values),initial=0)));count+=len(values)
+            if child.wait():raise RuntimeError("MP4 audible audio decode failed; see verify_MP4_audio_peak.log")
+        finally:
+            child.stdout.close()
+            if child.poll() is None:child.kill();child.wait()
+    if peak>=1:raise ValueError(f"MP4 AAC decoded peak {peak} would clip; reference WAV remains unscaled")
+    return dict(aac_decoded_peak=peak,aac_decoded_samples=count,no_peak_clipping=True)
 
 
 def _quote_file(path):
@@ -415,6 +562,11 @@ def _load(device, model, output, ffmpeg, ffprobe, work,*,annotation_only=False):
     sources = [Path(info["path"]).resolve() for info in metadata["wav_files"] + metadata["videos"]]
     hashes = {str(path.resolve()): _sha(path) for path in dict.fromkeys(inputs + sources)}
     prepared = _json(device / "prepare_manifest.json")
+    recorded_outputs={str(Path(row["path"]).resolve()):row["sha256"] for row in prepared["outputs"]}
+    for name in ("events.csv","frames.csv","prepare_metadata.json","synchronization.json"):
+        path=str((device/name).resolve())
+        if recorded_outputs.get(path)!=hashes[path]:
+            raise ValueError(f"Prepared producer output SHA differs: {name}")
     recorded_sources = {str(Path(row["path"]).resolve()):row["sha256"] for row in prepared["request"]["inputs"]}
     if any(recorded_sources.get(str(path)) != hashes[str(path)] for path in sources):
         raise ValueError("Source media bytes differ from authenticated preparation")
@@ -482,7 +634,7 @@ def _load(device, model, output, ffmpeg, ffprobe, work,*,annotation_only=False):
     videos = []
     expected_pts = []
     for chapter, (info, base) in enumerate(zip(metadata["videos"], timing["bases"])):
-        probe = _probe(info["path"], ffprobe, work, f"probe_source_{chapter}")
+        probe = _source_probe_saved(info, ffprobe, work, f"probe_source_{chapter}")
         if len(probe["pts"]) != len(info["pts"]) or any(abs(a-float(b)) > 1.1e-6 for a,b in zip(probe["pts"],info["pts"])):
             raise ValueError("Source PTS/frame count differs from saved identities")
         if (probe["width"],probe["height"]) != (int(info["width"]),int(info["height"])):
@@ -516,7 +668,7 @@ def _load(device, model, output, ffmpeg, ffprobe, work,*,annotation_only=False):
                              accepted=accepted is None or frame["frame_id"] in accepted,sync_status=qc.get(identity),annotation_only=annotation_only)
         marks.update(event_id=identity,frame_id=frame["frame_id"],frame_index=index,
                      source_video=frame["video_file"],source_pts_s=video["probe"]["pts"][index],
-                     global_pts_s=video["base"]+video["local_pts"][index])
+                     global_pts_s=video["base"]+video["local_pts"][index],prepared_image_path=frame["image_path"])
         video["events"].append(marks)
     duration = max(v["base"] + v["probe"]["duration"]-float(v["info"].get("audio_start_s",0)) for v in videos)
     return dict(metadata=metadata, hashes=hashes, timing=timing, videos=videos,
@@ -524,7 +676,7 @@ def _load(device, model, output, ffmpeg, ffprobe, work,*,annotation_only=False):
 
 
 def export_video(device_dir, model_dir=None, output_dir=None, *, ffmpeg="/usr/bin/ffmpeg", ffprobe="/usr/bin/ffprobe",
-                 resume=True, threads=2, crf=20, preset="fast",annotation_only=False):
+                 resume=True, threads=0, crf=20, preset="fast",annotation_only=False,encoder="auto",decoder="auto"):
     """Export a source-bound atomic generation; never modifies input/model data.
     Return a manifest containing paths to the MP4, lossless float-review WAV,
     raw/overlay per-event PNGs and exact frame/timing plan. Full encodes must be
@@ -535,15 +687,17 @@ def export_video(device_dir, model_dir=None, output_dir=None, *, ffmpeg="/usr/bi
     if output_dir is None or (not annotation_only and model_dir is None):
         raise ValueError("output_dir is required; calibrated mode also requires model_dir")
     device=Path(device_dir).resolve();model=None if model_dir is None else Path(model_dir).resolve();output=Path(output_dir).resolve()
-    if not 1 <= threads <= 2:
-        raise ValueError("Review export supports one or two threads")
+    if threads is not None and int(threads)<0:
+        raise ValueError("threads must be auto/0 or a positive available CPU count")
     if output == device or (model is not None and output == model):
         raise ValueError("Use a separate media output directory")
     output.mkdir(parents=True,exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix=".export-work-",dir=output))
     try:
         loaded = _load(device,model,output,ffmpeg,ffprobe,work,annotation_only=annotation_only)
-        settings = dict(threads=threads,crf=crf,preset=preset,nominal_hold_s=HOLD,review_audio_fs=RATE,
+        resources=_resources(ffmpeg,work,loaded,threads,encoder,decoder,crf,preset)
+        threads=resources["cpu_threads"]
+        settings = dict(threads=threads,encoder=encoder,decoder=decoder,resource_backend={k:resources[k] for k in ("cpu_threads","encoder","decoder","encoder_options")},crf=crf,preset=preset,nominal_hold_s=HOLD,review_audio_fs=RATE,
                         exporter_sha256=_sha(__file__),ffmpeg=str(ffmpeg),ffprobe=str(ffprobe),numpy_version=np.__version__,
                         ffmpeg_sha256=_sha(shutil.which(str(ffmpeg)) or ffmpeg),ffprobe_sha256=_sha(shutil.which(str(ffprobe)) or ffprobe),annotation_only=annotation_only)
         manifest_path = output / "export_manifest.json"
@@ -558,6 +712,7 @@ def export_video(device_dir, model_dir=None, output_dir=None, *, ffmpeg="/usr/bi
         raw, source_audio = _source_audio(loaded["metadata"],output,work,ffmpeg,threads,loaded["hashes"])
         audio = write_affine_audio(raw,stage/"synchronized_reference_ch5.wav",loaded["duration"],
                                    loaded["timing"]["offset_s"],loaded["timing"]["scale"])
+        audio_gain=_audio_gain(stage/"synchronized_reference_ch5.wav")
         chapters = []
         frame_map = []
         for chapter, video in enumerate(loaded["videos"]):
@@ -572,17 +727,18 @@ def export_video(device_dir, model_dir=None, output_dir=None, *, ffmpeg="/usr/bi
                 decorated += "," + ",".join(extra)
             indices = sorted({row["frame_index"] for row in video["events"]})
             part = work / f"chapter_{chapter:02}.mp4"
-            command = [ffmpeg,"-v","error","-nostdin","-y","-threads",threads,"-filter_complex_threads",1,
+            command = [ffmpeg,"-v","error","-nostdin","-y",*_decode_options(resources),"-filter_complex_threads",threads,
                        "-copyts","-i",video["info"]["path"]]
-            normalize = f"settb=1/1000000,setpts=PTS-({float(video['info'].get('audio_start_s',0)):.9f})/TB"
+            download="hwdownload,format=nv12,format="+video["probe"].get("pix_fmt","yuv420p")+"," if resources["decoder"]!="cpu" else ""
+            normalize = download+f"settb=1/1000000,setpts=PTS-({float(video['info'].get('audio_start_s',0)):.9f})/TB"
             if indices:
                 select = "+".join(f"eq(n,{i})" for i in indices)
                 graph = (f"[0:v]{normalize},split=2[base][raw];[base]{decorated},split=2[v][overlay];"
                          f"[raw]select='{select}'[r];[overlay]select='{select}'[o]")
             else:
                 graph = f"[0:v]{normalize},{decorated}[v]"
-            command += ["-filter_complex",graph,"-map","[v]","-an","-c:v","libx264","-threads",threads,
-                        "-crf",crf,"-preset",preset,"-pix_fmt","yuv420p","-fps_mode","passthrough",
+            command += ["-filter_complex",graph,"-map","[v]","-an",*_encode_options(resources,crf,preset),
+                        "-pix_fmt","yuv420p","-fps_mode","passthrough",
                         "-enc_time_base","1:1000000","-video_track_timescale",1000000,part]
             if indices:
                 for label in ("r","o"):
@@ -593,6 +749,8 @@ def export_video(device_dir, model_dir=None, output_dir=None, *, ffmpeg="/usr/bi
             for number,index in enumerate(indices):
                 raw_png=work/f"{chapter}_r_{number:06}.png";overlay_png=work/f"{chapter}_o_{number:06}.png"
                 for event in (item for item in video["events"] if item["frame_index"]==index):
+                    if not _pixel_equal(raw_png,event["prepared_image_path"]):
+                        raise ValueError(f"Decoded target pixels changed: {event['event_id']}")
                     safe=hashlib.sha256(event["event_id"].encode()).hexdigest()[:8]
                     slug="".join(c if c.isalnum() or c in "-_." else "_" for c in event["event_id"])[:96]
                     name=f"ch{chapter:02}_f{index:08}_{slug}_{safe}.png"
@@ -607,8 +765,9 @@ def export_video(device_dir, model_dir=None, output_dir=None, *, ffmpeg="/usr/bi
         video_path=stage/("terra_review_synchronized.mp4" if annotation_only else "synchronized_annotated.mp4")
         _run([ffmpeg,"-v","error","-nostdin","-y","-threads",threads,"-f","concat","-safe","0","-i",listing,
               "-i",stage/"synchronized_reference_ch5.wav","-map","0:v:0","-map","1:a:0","-c:v","copy",
-              "-c:a","aac","-threads",threads,"-b:a","128k","-ar",RATE,"-ac",1,"-video_track_timescale",1000000,
+              "-af",f"volume={audio_gain['constant_gain']:.17g}","-c:a","aac","-threads",threads,"-b:a","128k","-ar",RATE,"-ac",1,"-video_track_timescale",1000000,
               "-movflags","+faststart",video_path],work,"mux_full_video")
+        audio_gain.update(_decoded_audio_peak(video_path,ffmpeg,work,threads))
         probe=_probe(video_path,ffprobe,work,"probe_output")
         expected=loaded["expected_pts"]
         if len(probe["pts"])!=len(expected):
@@ -621,6 +780,7 @@ def export_video(device_dir, model_dir=None, output_dir=None, *, ffmpeg="/usr/bi
                 raise ValueError(f"Input changed during export: {path}")
         _write_json(stage/"frame_manifest.json",dict(events=frame_map,unmapped=loaded["missing"]))
         _write_json(stage/"marker_plan.json",dict(timing=loaded["timing"],chapters=[dict(source=v["info"]["path"],events=v["events"]) for v in loaded["videos"]]))
+        _write_json(stage/"resource_selection.json",resources)
         (stage/"logs").mkdir()
         for log in work.glob("*.log"):
             shutil.copyfile(log,stage/"logs"/log.name)
@@ -633,7 +793,7 @@ def export_video(device_dir, model_dir=None, output_dir=None, *, ffmpeg="/usr/bi
                       reference_audio_path=str(output/generation/"synchronized_reference_ch5.wav"),
                       source_frames=len(expected),output_frames=len(probe["pts"]),maximum_pts_error_s=maximum_error,
                       video_duration_s=loaded["duration"],chapter_bases_s=loaded["timing"]["bases"],timing=loaded["timing"],
-                      review_audio=audio,source_audio_cache=source_audio,event_frame_pairs=len(frame_map),unmapped_events=loaded["missing"],
+                      review_audio=audio,review_audio_gain=audio_gain,resources=resources,source_audio_cache=source_audio,event_frame_pairs=len(frame_map),unmapped_events=loaded["missing"],
                       annotation_fit_policy_bridge=loaded["policy_bridge"],
                       display_semantics="Exact original target frame, never preceding frame; nominal120ms fixed-position hold capped at chapter end, ASS endpoint quantization<10ms; no trajectory interpolation. Rare sub10ms intervals use decoded-index filters.",
                       precision="Source frame index/PTS verified; microsecond encoding and concat timestamps, maximum2.1us acceptance tolerance; no CFR conversion, frame drop, frame duplication, shortest trimming, integer asetrate or atempo.",
@@ -651,7 +811,9 @@ def main(argv=None):
     parser.add_argument("device_dir");parser.add_argument("model_dir",nargs="?");parser.add_argument("output_dir",nargs="?")
     parser.add_argument("--annotation-only",action="store_true")
     parser.add_argument("--ffmpeg",default="/usr/bin/ffmpeg");parser.add_argument("--ffprobe",default="/usr/bin/ffprobe")
-    parser.add_argument("--threads",type=int,default=2);parser.add_argument("--crf",type=int,default=20)
+    parser.add_argument("--threads",type=int,default=0);parser.add_argument("--crf",type=int,default=20)
+    parser.add_argument("--encoder",choices=("auto","cpu","nvenc"),default="auto")
+    parser.add_argument("--decoder",choices=("auto","cpu","cuda","h264_cuvid"),default="auto")
     parser.add_argument("--preset",default="fast");parser.add_argument("--no-resume",action="store_true")
     args=vars(parser.parse_args(argv));args["resume"]=not args.pop("no_resume")
     if args["annotation_only"] and args["output_dir"] is None:

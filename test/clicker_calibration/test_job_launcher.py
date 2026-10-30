@@ -27,7 +27,7 @@ class JobLifecycle(unittest.TestCase):
     def test_nonzero_exit_is_durable(self):
         result = job.run_job([sys.executable, "-c", "raise RuntimeError('controlled failure')"],
                              self.root / "failed", timeout_s=5, rss_limit_gib=1,
-                             wake=False, error_log=self.root / "errors.log")
+                             wake=False, error_log=self.root / "errors.log", serialize=False)
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["exit_code"], 1)
         record = json.loads((self.root / "errors.log").read_text().splitlines()[0])
@@ -50,6 +50,7 @@ class JobLifecycle(unittest.TestCase):
     def test_wrapper_sigterm_stops_owned_session(self):
         target = self.root / "signal_job"
         wrapper = subprocess.Popen([sys.executable, str(SCRIPT), "--job-dir", str(target),
+                                    "--lightweight",
                                     "--timeout-s", "60", "--error-log", str(self.root/"signal_errors.log"),
                                     "--", sys.executable, "-c", "import time;time.sleep(60)"],
                                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -71,6 +72,35 @@ class JobLifecycle(unittest.TestCase):
         result = json.loads(receipt.read_text())
         self.assertEqual(result["exception_type"], "JobInterrupted")
         self.assertFalse(job.group_live(child_pid))
+
+    def test_full_cpu_environment_and_memory_default(self):
+        command = "import os,json;print(json.dumps({k:os.environ[k] for k in ['JULIA_NUM_THREADS','OPENBLAS_NUM_THREADS','OMP_NUM_THREADS','MKL_NUM_THREADS']}))"
+        result = job.run_job([sys.executable, "-c", command], self.root / "resources",
+                             timeout_s=5, rss_limit_gib=None, wake=False,
+                             error_log=self.root / "errors.log", serialize=False)
+        self.assertEqual(result["status"], "complete")
+        actual = json.loads((self.root / "resources/process.log").read_text())
+        self.assertEqual(set(actual.values()), {str(job.available_resources()[0])})
+        self.assertGreater(result["rss_limit_gib"], 0)
+
+    def test_heavy_commands_are_staggered(self):
+        # Two concurrently submitted commands must run one at a time, not each
+        # consume a fraction of the available machine under artificial caps.
+        workers = []
+        for i in range(2):
+            directory = self.root / f"queued{i}"
+            command = "import time,json;start=time.time();time.sleep(.6);print(json.dumps([start,time.time()]))"
+            workers.append((directory, subprocess.Popen([sys.executable, str(SCRIPT),
+                "--job-dir", str(directory), "--timeout-s", "5", "--error-log", str(self.root / "queue_errors.log"),
+                "--", sys.executable, "-c", command], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)))
+        intervals = []
+        for directory, worker in workers:
+            _, stderr = worker.communicate(timeout=15)
+            self.assertEqual(worker.returncode, 0, stderr.decode())
+            intervals.append(json.loads((directory / "process.log").read_text()))
+            self.assertTrue(json.loads((directory / "result.json").read_text())["serialized_heavy_job"])
+        intervals.sort()
+        self.assertLessEqual(intervals[0][1], intervals[1][0])
 
 
 if __name__ == "__main__":

@@ -89,7 +89,7 @@ review gallery and CSV paths; fitting continues without an approval pause.
 `tools/run_clicker_calibration.jl INPUT OUTPUT --device=A --stage=prepare`
 provides the same interface as a CLI. `tools/run_clicker_job.py --job-dir NEW_DIR
 --wake -- COMMAND...` adds persistent stdout/stderr, sampled process-tree RSS,
-timeout/28 GiB default RSS limits, native-crash logging, and completion wake-up.
+timeout/memory monitoring, native-crash logging, and completion wake-up.
 It holds the execution session through watcher delivery and cleans up the owned
 process group on failures or termination. Use a fresh job directory for each
 attempt; keep the calibration output directory stable for stage resume.
@@ -98,8 +98,10 @@ This machine's successful post-recovery Julia checks used:
 `--startup-file=no --compiled-modules=no --pkgimages=no --threads=1
 --gcthreads=1 -O0 --inline=no`. The job helper disables core dumps, sets a64 MiB
 stack and single-thread BLAS/OpenMP, and keeps Julia depot/scratch in this repo.
-The low-optimization flags are a runtime workaround, not a repair of the earlier
-native compiler failures. Generated annotation graphics need Python with Pillow;
+Those single-thread/low-optimization settings are historical recovery evidence,
+not the default for future jobs. The user now requires full available CPU/GPU
+capacity with heavy jobs staggered; normal Julia optimization is checked before
+the next fit. Generated annotation graphics need Python with Pillow;
 `CLICKER_PYTHON` selects it. No dependency installation occurs on import.
 Saved-result plots additionally require NumPy and Matplotlib in
 `CLICKER_PLOT_PYTHON` (default `python3`), independently of the Pillow interpreter.
@@ -430,3 +432,52 @@ matching comparison video. Raw/annotation/comparison images have a frame-index
 CSV, and rewritten presentation links resolve inside the bundle. Scientific
 tables and manifests remain byte-identical. Unowned or externally edited delivery
 files are never silently overwritten. Four focused packaging tests passed.
+
+
+## Resource policy and immediate review previews
+
+The user requires advance notice of actions and full available CPU/GPU resources
+for future runs. Heavy jobs are staggered rather than artificially throttled.
+`run_clicker_job.py` now sets Julia/BLAS/OpenMP thread availability from CPU
+affinity, uses available RAM at actual launch as a monitoring ceiling, and
+serializes heavy commands with a repository queue lock. `--lightweight` is for
+short checks, annotation waiting and orchestration; it does not limit CPU access.
+The job timeout starts after queue admission. Five launcher tests cover resources,
+nonoverlap, failure recording and descendant cleanup.
+
+This machine exposes28 logical CPUs and an RTX4090 with24 GB VRAM. The exporter
+defaults to automatic full-CPU selection and qualified NVENC/NVDEC. CUDA decoding
+requires one CPU control thread on this driver; the decoding itself uses the GPU.
+After download, the original full-range GoPro pixel format is preserved. GPU
+qualification matched prepared pixels exactly on all three A chapters; a native
+2704x1520 excerpt preserved59/59 frames and timestamps. Ten NTSC/GPU tests passed.
+Fresh media/output hashes authenticate saved source PTS without re-decoding all
+source frames during preflight; the final output still receives full timestamp
+and target-pixel verification. GPU failures are reported with explicit backend
+selection and probe logs. Old CPU-limited jobs were intentionally stopped for
+replacement; their outputs and interruption receipts remain available.
+
+Review MP4 audio receives one documented constant gain, bounded by512 and a0.6
+PCM peak. The aligned Float32 reference WAV remains unscaled. Decoded AAC peaks
+are checked for clipping. This supports listening to the quiet hydrophone signal
+without altering scientific source recordings.
+
+A and B quick review previews have been delivered under the requested results
+root at `A/quick_review/A_terra_quick_review.mp4` and
+`B/quick_review/B_terra_quick_review.mp4`. Each contains20 source excerpts,
+19.6867 seconds at1352x760, Terra markers/uncertainty and synchronized physical
+channel5 audio. All20 target frames matched prepared PNG pixels, with1180 output
+frames and zero measured AAC round-trip sample lag. B is explicitly provisional:
+its immutable checkpoint contains395 of469 individually inspected frames, and
+no final annotation seal or unreviewed labels were invented. The full recordings
+remain separate exports. `quick_review_preview.py` now also defaults to automatic
+GPU/all-CPU use; its one-event accelerated control passed.
+
+The corrected A uncertainty-weighted run completed in471.57 seconds before this
+resource-policy change. It used202 eligible events:163 training and39 reused
+evaluation. GCC was selected. Final all-event descriptive median error is44.31 px
+and RMSE1755.38 px, with8 outside-image estimates; reused-evaluation median is
+176.74 px and RMSE2564.63 px on35/39 projected points. These large failures remain
+visible. The final parameters include c1562.177 m/s and FOV75.8906/56.1657 degrees,
+but weak identifiability remains. These are exploratory fits to233 low-precision
+Terra estimates, not independently measured sound speed or confirmed accuracy.

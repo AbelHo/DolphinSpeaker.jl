@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -111,8 +112,18 @@ class JobInterrupted(KeyboardInterrupt):
     pass
 
 
+def available_resources() -> tuple[int, float]:
+    cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+    available = next((int(line.split()[1]) * 1024 for line in Path("/proc/meminfo").read_text().splitlines()
+                      if line.startswith("MemAvailable:")), None)
+    if available is None:
+        raise RuntimeError("Cannot determine available memory for the job limit")
+    return cpus, available / 1024**3
+
+
 def run_job(command: list[str], job_dir: Path, *, timeout_s: float,
-            rss_limit_gib: float, wake: bool, error_log: Path) -> dict:
+            rss_limit_gib: float | None, wake: bool, error_log: Path,
+            serialize: bool = True) -> dict:
     job_dir = job_dir.resolve()
     job_dir.mkdir(parents=True, exist_ok=False)
     scratch = job_dir / "scratch"
@@ -120,21 +131,27 @@ def run_job(command: list[str], job_dir: Path, *, timeout_s: float,
     repository = Path(__file__).resolve().parents[1]
     depot = repository / "calibration_runs/runtime/julia_depot"
     depot.mkdir(parents=True, exist_ok=True)
+    cpu_count, memory_available = available_resources()
     env = os.environ.copy()
     env.update(TMPDIR=str(scratch), JULIA_DEPOT_PATH=str(depot) + ":" + str(Path.home()/".julia"),
-               JULIA_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1",
-               MKL_NUM_THREADS="1", CLICKER_ERROR_LOG=str(error_log.resolve()))
+               JULIA_NUM_THREADS=str(cpu_count), OPENBLAS_NUM_THREADS=str(cpu_count), OMP_NUM_THREADS=str(cpu_count),
+               MKL_NUM_THREADS=str(cpu_count), CLICKER_ERROR_LOG=str(error_log.resolve()))
     python = repository / "dolphin-whisper/.venv/bin/python"
     if python.is_file():
         env.setdefault("CLICKER_PYTHON", str(python))
     receipt = dict(status="starting", command=command, started_utc=now(),
                    job_dir=str(job_dir), timeout_s=timeout_s, rss_limit_gib=rss_limit_gib,
+                   resource_policy="full available CPU; accelerator selected by workload; stagger heavy jobs",
+                   available_cpu_threads=cpu_count, available_memory_gib_at_submission=memory_available,
+                   serialized_heavy_job=serialize,
                    peak_sampled_tree_rss_bytes=0, wake_requested=wake)
     receipt_path = job_dir / "result.json"
     write_json(receipt_path, receipt)
     child = None
     wake_status = None
     started = time.monotonic()
+    submitted = started
+    queue_lock = None
     prior_handlers = {}
 
     def interrupted(signum, _frame):
@@ -143,6 +160,24 @@ def run_job(command: list[str], job_dir: Path, *, timeout_s: float,
     for signum in (signal.SIGTERM, signal.SIGINT):
         prior_handlers[signum] = signal.signal(signum, interrupted)
     try:
+        if serialize:
+            queue_lock = (repository / "calibration_runs/runtime/heavy_job.lock").open("a+")
+            receipt.update(status="queued", queued_utc=now())
+            write_json(receipt_path, receipt)
+            print(json.dumps(dict(status="queued", receipt=str(receipt_path))), flush=True)
+            while True:
+                try:
+                    fcntl.flock(queue_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    time.sleep(0.25)
+        receipt["queue_wait_s"] = time.monotonic() - submitted
+        started = time.monotonic()
+        receipt["started_utc"] = now()
+        if rss_limit_gib is None:
+            _, rss_limit_gib = available_resources()
+            receipt["rss_limit_gib"] = rss_limit_gib
+            receipt["memory_limit_basis"] = "MemAvailable at actual launch; monitoring limit, no memory throttling"
         with (job_dir / "process.log").open("wb", buffering=0) as log:
             child = subprocess.Popen(command, cwd=repository, env=env, stdout=log,
                                      stderr=subprocess.STDOUT, start_new_session=True,
@@ -206,7 +241,8 @@ def run_job(command: list[str], job_dir: Path, *, timeout_s: float,
                   process_log=str(process_log), child_output_tail=child_trace,
                   exit_code=receipt.get("exit_code"))
     finally:
-        receipt.update(completed_utc=now(), elapsed_s=time.monotonic()-started)
+        receipt.update(completed_utc=now(), elapsed_s=time.monotonic()-started,
+                       total_wall_s=time.monotonic()-submitted)
         write_json(receipt_path, receipt)
         # Keep the launching process alive through watcher delivery. This avoids
         # losing a fallback watcher when an enclosing execution session closes.
@@ -222,6 +258,9 @@ def run_job(command: list[str], job_dir: Path, *, timeout_s: float,
                 error = RuntimeError(f"Completion notification ended in {value}")
                 log_error(error_log, "calibration completion notification", error, status_path=str(wake_status))
             write_json(receipt_path, receipt)
+        if queue_lock is not None:
+            fcntl.flock(queue_lock.fileno(), fcntl.LOCK_UN)
+            queue_lock.close()
         for signum, handler in prior_handlers.items():
             signal.signal(signum, handler)
     print(json.dumps(receipt), flush=True)
@@ -232,16 +271,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--job-dir", type=Path, required=True)
     parser.add_argument("--timeout-s", type=float, default=7200)
-    parser.add_argument("--rss-limit-gib", type=float, default=28)
+    parser.add_argument("--rss-limit-gib", type=float, default=None,
+                        help="Optional explicit memory ceiling; default is available RAM at actual launch")
     parser.add_argument("--wake", action="store_true")
+    parser.add_argument("--lightweight", action="store_true",
+                        help="Do not acquire the heavy-job queue lock (short checks, annotations or orchestration only)")
     parser.add_argument("--error-log", type=Path, default=Path("docs/error.log"))
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
-    if not command or args.timeout_s <= 0 or args.rss_limit_gib <= 0:
+    if not command or args.timeout_s <= 0 or (args.rss_limit_gib is not None and args.rss_limit_gib <= 0):
         parser.error("An explicit command and positive limits are required")
     result = run_job(command, args.job_dir, timeout_s=args.timeout_s,
-                     rss_limit_gib=args.rss_limit_gib, wake=args.wake, error_log=args.error_log)
+                     rss_limit_gib=args.rss_limit_gib, wake=args.wake, error_log=args.error_log,
+                     serialize=not args.lightweight)
     return 0 if result["status"] == "complete" else 1
 
 

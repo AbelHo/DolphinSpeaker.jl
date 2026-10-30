@@ -31,11 +31,11 @@ def command(args, folder, label):
 
 
 def rgb(path, indices=None):
-    args = ["/usr/bin/ffmpeg", "-v", "error", "-threads", "1", "-i", str(path)]
+    args = ["/usr/bin/ffmpeg", "-v", "error", "-threads", "0", "-i", str(path)]
     if indices is not None:
         expression = "+".join(f"eq(n,{i})" for i in indices)
         args += ["-vf", f"select='{expression}'", "-fps_mode", "passthrough"]
-    data = subprocess.check_output(args + ["-threads", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"])
+    data = subprocess.check_output(args + ["-threads", "0", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"])
     return np.frombuffer(data, np.uint8).reshape(-1,120,160,3)
 
 
@@ -66,12 +66,12 @@ def fixture(root):
     videos=[]
     for i,(count,duration) in enumerate(zip([6,6,9],[.11,.12,.1])):
         raw=root/f"source_video{i}.mp4";path=root/f"chapter{i}.mp4";sound=root/f"camera{i}.wav"
-        command(["/usr/bin/ffmpeg","-v","error","-nostdin","-y","-f","lavfi","-i","color=c=gray:s=160x120:r=60",
-                 "-frames:v",count,"-an","-c:v","libx264","-threads","2","-pix_fmt","yuv420p","-video_track_timescale","1000000",raw],root,f"make_video{i}")
+        command(["/usr/bin/ffmpeg","-v","error","-nostdin","-y","-f","lavfi","-i","color=c=gray:s=160x120:r=60000/1001",
+                 "-frames:v",count,"-an","-c:v","libx264","-threads","0","-pix_fmt","yuv420p","-video_track_timescale","1000000",raw],root,f"make_video{i}")
         with wave.open(str(sound),"wb") as stream:
             stream.setnchannels(1);stream.setsampwidth(2);stream.setframerate(48000);stream.writeframes(bytes(round(duration*48000)*2))
-        command(["/usr/bin/ffmpeg","-v","error","-nostdin","-y","-threads","2","-i",raw,"-i",sound,
-                 "-c:v","copy","-c:a","aac","-threads","2","-video_track_timescale","1000000",path],root,f"mux_source{i}")
+        command(["/usr/bin/ffmpeg","-v","error","-nostdin","-y","-threads","0","-i",raw,"-i",sound,
+                 "-c:v","copy","-c:a","aac","-threads","0","-video_track_timescale","1000000",path],root,f"mux_source{i}")
         probe=VE._probe(path,"/usr/bin/ffprobe",root,f"fixture_probe{i}")
         videos.append(dict(path=str(path),pts=probe["pts"],width=160,height=120,duration_s=probe["duration"],
                            audio_duration_s=duration,audio_start_s=0,video_start_s=0,
@@ -81,8 +81,8 @@ def fixture(root):
     VE._write_json(device/"synchronization.json",dict(status="valid",offset_s=.02,scale=1.002))
     positions=[(0,2,35),(1,0,70),(2,2,35),(2,5,70),(2,8,105),(2,7,120)]
     original_image=root/"original.png"
-    command(["/usr/bin/ffmpeg","-v","error","-y","-threads","1","-i",videos[0]["path"],
-             "-frames:v","1","-threads","1",original_image],root,"original_png")
+    command(["/usr/bin/ffmpeg","-v","error","-y","-threads","0","-i",videos[0]["path"],
+             "-frames:v","1","-threads","0",original_image],root,"original_png")
     frames=[];events=[];annotations=[];predictions=[]
     bases=[0,.11,.23]
     for i,(chapter,index,x) in enumerate(positions):
@@ -131,7 +131,34 @@ class VideoExportTests(unittest.TestCase):
         cls.root=Path(tempfile.mkdtemp(prefix="video_export_",dir=parent))
         cls.device,cls.model,cls.output=fixture(cls.root)
         with patch.dict(os.environ,{"CLICKER_ERROR_LOG":str(cls.root/"expected_errors.jsonl")}):
-            cls.result=VE.export_video(cls.device,cls.model,cls.output,threads=2)
+            cls.result=VE.export_video(cls.device,cls.model,cls.output,threads=0)
+
+    def test_auto_resources_nvenc_mapping_and_reference_gain(self):
+        resources=self.result["resources"]
+        self.assertEqual(resources["cpu_threads"],VE._cpu_count())
+        self.assertGreater(resources["cpu_threads"],2)
+        self.assertIn(resources["encoder"],["h264_nvenc","libx264"])
+        if resources["encoder"]=="h264_nvenc":
+            flags=resources["encoder_options"]
+            self.assertIn("-cq",flags);self.assertIn("p4",flags);self.assertNotIn("-crf",flags)
+        audio=self.result["review_audio_gain"]
+        self.assertTrue(audio["reference_WAV_unscaled"])
+        self.assertAlmostEqual(audio["constant_gain"],min(512,0.6/audio["whole_reference_peak"]))
+        self.assertLessEqual(audio["predicted_MP4_PCM_peak"],0.600001)
+        self.assertTrue(audio["no_peak_clipping"])
+        self.assertLess(audio["aac_decoded_peak"],1.0)
+        for chapter in VE._json(self.output/self.result["generation"]/"marker_plan.json")["chapters"]:
+            self.assertTrue(chapter["events"])
+
+    def test_saved_pts_probe_uses_headers_not_full_source_decode(self):
+        metadata=VE._json(self.device/"prepare_metadata.json")
+        info=metadata["videos"][0]
+        header=VE._source_probe_saved(info,"/usr/bin/ffprobe",self.root,"saved_header_control")
+        self.assertEqual(header["pts"],info["pts"])
+        self.assertIn("freshly verified source media SHA256",header["pts_origin"])
+        text=(self.root/"saved_header_control.log").read_text()
+        self.assertNotIn("-show_frames",text)
+        self.assertNotIn("-threads",text)
 
     def test_frame_count_pts_target_and_previous(self):
         r=self.result
@@ -182,10 +209,10 @@ class VideoExportTests(unittest.TestCase):
 
     def test_resume_and_partial_output_rejection(self):
         before=VE._sha(self.output/"export_manifest.json")
-        r=VE.export_video(self.device,self.model,self.output,threads=2)
+        r=VE.export_video(self.device,self.model,self.output,threads=0)
         self.assertEqual(r,self.result);self.assertEqual(before,VE._sha(self.output/"export_manifest.json"))
         Path(r["video_path"]).unlink()
-        rerun=VE.export_video(self.device,self.model,self.output,threads=2)
+        rerun=VE.export_video(self.device,self.model,self.output,threads=0)
         self.assertNotEqual(rerun["generation"],r["generation"])
         self.assertTrue(Path(rerun["video_path"]).is_file());self.assertEqual(rerun["output_frames"],21)
 
@@ -197,7 +224,7 @@ class VideoExportTests(unittest.TestCase):
             value=VE._json(seal);value["annotations_sha256"]=VE._sha(ann);VE._write_json(seal,value)
             with patch.dict(os.environ,{"CLICKER_ERROR_LOG":str(self.root/"expected_errors.jsonl")}):
                 with self.assertRaisesRegex(ValueError,"current annotations"):
-                    VE.export_video(self.device,self.model,self.output,threads=2)
+                    VE.export_video(self.device,self.model,self.output,threads=0)
         finally:
             ann.write_bytes(old);seal.write_bytes(oldseal)
         metadata=VE._json(self.device/"prepare_metadata.json");sync=VE._json(self.device/"synchronization.json")
@@ -213,7 +240,7 @@ class VideoExportTests(unittest.TestCase):
         out=self.root/"fallback.mp4"
         graph=f"ass=filename='{VE._filter_path(ass)}',"+",".join(VE._fallback_filters(fallback))
         command(["/usr/bin/ffmpeg","-v","error","-y","-f","lavfi","-i","color=c=gray:s=160x120:r=200",
-                 "-frames:v","3","-vf",graph,"-c:v","libx264","-threads","2","-filter_threads","1",out],self.root,"fallback_encode")
+                 "-frames:v","3","-vf",graph,"-c:v","libx264","-threads","0","-filter_threads","1",out],self.root,"fallback_encode")
         images=rgb(out)
         self.assertFalse(colored(images[0],70,90,1));self.assertTrue(colored(images[1],70,90,1))
 
@@ -230,7 +257,7 @@ class VideoExportTests(unittest.TestCase):
         # No fake model/predictions are supplied or manufactured for this mode.
         import shutil
         shutil.rmtree(model)
-        result=VE.export_video(device,output_dir=output,annotation_only=True,threads=2)
+        result=VE.export_video(device,output_dir=output,annotation_only=True,threads=0)
         self.assertEqual(result["mode"],"annotation_only")
         self.assertEqual(Path(result["video_path"]).name,"terra_review_synchronized.mp4")
         self.assertEqual(result["output_frames"],21)
@@ -258,7 +285,7 @@ class VideoExportTests(unittest.TestCase):
         audio=np.frombuffer(Path(result["reference_audio_path"]).read_bytes(),dtype="<f4",offset=56)
         index=round(.263333*48000);found=index-12+int(np.argmax(abs(audio[index-12:index+13])))
         self.assertLessEqual(abs(found-index),1)
-        self.assertEqual(VE.export_video(device,output_dir=output,annotation_only=True,threads=2),result)
+        self.assertEqual(VE.export_video(device,output_dir=output,annotation_only=True,threads=0),result)
 
     def test_real_policy_validator_bridge_keeps_original_uncertain_amber(self):
         helper=ROOT/"src/clicker_calibration/fit_annotation_policy.py"
@@ -283,7 +310,7 @@ class VideoExportTests(unittest.TestCase):
             ["annotations.csv","annotations.complete.json","events.csv","frames.csv"]}))
         VE._write_json(model/"report.json",dict(outputs_sha256={name:VE._sha(model/name) for name in ["calibration.json","predictions.csv"]}))
         with patch.dict(os.environ,{"CLICKER_ERROR_LOG":str(root/"expected_errors.jsonl")}):
-            result=VE.export_video(original,model,output,threads=2)
+            result=VE.export_video(original,model,output,threads=0)
             self.assertTrue(result["annotation_fit_policy_bridge"]["valid"])
             self.assertEqual((original/"annotations.csv").read_bytes(),original_bytes)
             self.assertEqual(VE._rows(fit/"annotations.csv","frame_id")["frame0"]["visibility"],"visible")
@@ -296,7 +323,7 @@ class VideoExportTests(unittest.TestCase):
             # successful output as permission to bypass a changed policy.
             path=fit/"annotation_fit_policy.json";saved=path.read_bytes()
             path.write_bytes(saved+b"\n")
-            with self.assertRaises(ValueError):VE.export_video(original,model,output,threads=2)
+            with self.assertRaises(ValueError):VE.export_video(original,model,output,threads=0)
 
 
 if __name__=="__main__":
