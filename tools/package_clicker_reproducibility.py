@@ -101,8 +101,8 @@ def code_paths(repository, head):
         code_kind = suffix in CODE_SUFFIXES or name in {"LICENSE", "LICENSE.md"} or (root in {"test", "tests"} and suffix in {".png", ".jpg", ".svg"})
         if include and code_kind and suffix not in MEDIA_SUFFIXES and not credential_name(name):
             selected.append(name)
-    if not {"Project.toml", "Manifest.toml", "tools/package_clicker_reproducibility.py"} <= set(selected):
-        raise ValueError("Commit Project/Manifest and the reproducibility packager before packaging")
+    if not {"Project.toml", "tools/package_clicker_reproducibility.py"} <= set(selected):
+        raise ValueError("Commit Project.toml and the reproducibility packager before packaging")
     return sorted(selected)
 
 
@@ -292,7 +292,9 @@ def package_reproducibility(repository, results_dir, *, devices, run_roots=None,
     devices maps A/B to {original_dir, model_dir}; run_roots/history_dirs map
     explicit labels to directories. History is always marked superseded. Only
     tracked HEAD code/tests/docs are snapshotted; selected worktree differences
-    fail. Frozen model and media-exporter sources are recovered by exact SHA-256
+    fail. The required actual runtime Manifest.toml is separately preserved under
+    environment/, including when intentionally ignored/untracked; it is never
+    force-added to Git or represented as committed source. Frozen model and media-exporter sources are recovered by exact SHA-256
     from bounded Git history. Missing source versions fail, never substitute.
     Repeat inputs reuse the verified generation; foreign output edits fail.
     """
@@ -327,8 +329,8 @@ def package_reproducibility(repository, results_dir, *, devices, run_roots=None,
         if expected is not None and actual != expected:
             raise ValueError(f"Worktree/source bytes differ from committed or bound content: {path}")
         if SECRET.search(data):
-            if category == "committed_code":
-                raise ValueError(f"Credential-like content in selected committed code; refusing publication: {path}")
+            if category in {"committed_code", "runtime_environment"}:
+                raise ValueError(f"Credential-like content in required code/environment; refusing publication: {path}")
             excluded.append(dict(path=str(path), reason="credential-like content; bytes not copied"))
             return
         if target in entries:
@@ -337,12 +339,28 @@ def package_reproducibility(repository, results_dir, *, devices, run_roots=None,
         snapshots[str(path)] = (before, actual)
         total += len(data)
 
-    for name in code_paths(repository, head):
+    committed_paths = code_paths(repository, head)
+    for name in committed_paths:
         blob = git(repository, "show", f"{head}:{name}").stdout
         add(repository / name, "code/" + name, "committed_code", expected=digest(blob))
     tool = repository / "tools/package_clicker_reproducibility.py"
     if sha(tool) != sha(Path(__file__)):
         raise ValueError("Executing packager differs from the committed repository copy")
+    runtime_manifest = repository / "Manifest.toml"
+    if not runtime_manifest.is_file():
+        raise FileNotFoundError(f"Actual runtime Manifest.toml is required: {runtime_manifest}")
+    add(runtime_manifest, "environment/Manifest.toml", "runtime_environment")
+    tracked_manifest = "Manifest.toml" in committed_paths
+    environment = dict(
+        schema_version="clicker-runtime-environment-v1", source_path=str(runtime_manifest),
+        snapshot="environment/Manifest.toml", manifest_sha256=entries["environment/Manifest.toml"]["sha256"],
+        project_sha256=entries["code/Project.toml"]["sha256"], git_head=head,
+        git_tracked_at_head=tracked_manifest,
+        git_ignored=git(repository, "check-ignore", "-q", "--", "Manifest.toml", check=False).returncode == 0,
+        provenance="tracked_current_runtime_environment" if tracked_manifest else "untracked_runtime_environment",
+        committed_manifest_sha256=entries["code/Manifest.toml"]["sha256"] if tracked_manifest else None,
+        historical_execution_environment_asserted=False,
+        interpretation="Actual current runtime environment captured at packaging, not proof of historical fit environments. Compare saved calibration software versions and historical execution receipts.")
     latest = {}
     for name, locations in sorted(devices.items()):
         original = Path(locations["original_dir"]).resolve(strict=True)
@@ -396,12 +414,13 @@ def package_reproducibility(repository, results_dir, *, devices, run_roots=None,
         versions.setdefault(owner, []).append(dict(path=path, sha256=expected, commit=commit, snapshot=target))
     configuration = dict(repository=str(repository), git_head=head, devices={k: {n: str(Path(v).resolve()) for n, v in d.items()} for k, d in sorted(devices.items())},
                          run_roots={k: str(Path(v).resolve()) for k, v in sorted(run_roots.items())},
-                         superseded_history={k: str(Path(v).resolve()) for k, v in sorted(history_dirs.items())})
+                         superseded_history={k: str(Path(v).resolve()) for k, v in sorted(history_dirs.items())},
+                         runtime_environment=environment)
     identity = digest(json_bytes(dict(configuration=configuration, files=entries, excluded=excluded, source_versions=versions)))
     generation = "generation_" + identity[:20]
     if previous and previous["generation"] == generation:
         return {**previous, "root": str(root), "reused": True}
-    summary = dict(schema_version=SCHEMA, git_head=head, latest=latest,
+    summary = dict(schema_version=SCHEMA, git_head=head, runtime_environment=environment, latest=latest,
                    history={name: {"source_directory": str(Path(path).resolve()), "status": "superseded_not_current_accuracy"} for name, path in sorted(history_dirs.items())},
                    source_versions=versions, quality="Provisional physical fits to visual estimates; weak identifiability, bounds, coverage and original uncertainty remain material.",
                    exclusions="No input recordings, full videos, private depots, scratch, credential files, or detected credential-bearing logs. Copied canonical bytes are never redacted or transformed.")
@@ -420,8 +439,14 @@ not the current calibration or independent accuracy evidence.
 
 To reproduce in a NEW writable workspace:
 
-1. Copy `code/` to that workspace; use its Project.toml and Manifest.toml.
-   Compare the recorded Julia/package versions in each saved calibration.
+1. Copy `code/` to that workspace, then place `environment/Manifest.toml`
+   alongside `code/`'s Project.toml in the new workspace. The environment copy
+   is the actual current runtime Manifest, even when ignored/untracked in Git;
+   `environment/provenance.json` records that distinction and its exact SHA.
+   `code/` remains strictly HEAD, including its Manifest only if committed.
+   This current environment is not asserted to reproduce every historical fit:
+   compare the recorded Julia/package versions and execution receipts for each
+   saved calibration before reproducing older numerical results.
 2. For an existing scientific model, overlay the exact files listed for its
    device in `source_versions.json` from `frozen_sources/`. Do not silently use
    current fitter bytes for older A results. Historical exporter versions are
@@ -443,6 +468,7 @@ The current pointer is `../manifest.json`; each generation contains its own
 device delivery bundles and videos remain outside this reproducibility folder.
 """
     generated = {"summary.json": json_bytes(summary), "source_versions.json": json_bytes(versions),
+                 "environment/provenance.json": json_bytes(environment),
                  "REPRODUCE.md": instructions.encode()}
     root.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".staging-", dir=root))

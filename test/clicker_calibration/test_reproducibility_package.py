@@ -124,6 +124,11 @@ class ReproducibilityPackageTests(unittest.TestCase):
         for relative, expected in manifest["files_sha256"].items():
             self.assertEqual(package.sha(gen / relative), expected)
         self.assertEqual((gen / "code/Project.toml").read_bytes(), (self.repo / "Project.toml").read_bytes())
+        self.assertEqual((gen / "code/Manifest.toml").read_bytes(), (self.repo / "Manifest.toml").read_bytes())
+        self.assertEqual((gen / "environment/Manifest.toml").read_bytes(), (self.repo / "Manifest.toml").read_bytes())
+        environment = package.read_json(gen / "environment/provenance.json")
+        self.assertTrue(environment["git_tracked_at_head"])
+        self.assertEqual(environment["provenance"], "tracked_current_runtime_environment")
         self.assertEqual((gen / "code/test/fixtures/delays.csv").read_bytes(), (self.repo / "test/fixtures/delays.csv").read_bytes())
         self.assertEqual((gen / "latest/A/original/annotations.csv").read_bytes(), original_bytes)
         self.assertEqual((gen / "superseded_history/A1/predictions.csv").read_bytes(), (self.history / "predictions.csv").read_bytes())
@@ -182,8 +187,43 @@ class ReproducibilityPackageTests(unittest.TestCase):
         self.g("checkout", "--", "src/clicker_calibration/prepare.jl")
         self.g("rm", "--cached", "tools/package_clicker_reproducibility.py")
         self.g("commit", "-qm", "packager is not committed")
-        with self.assertRaisesRegex(ValueError, "Commit Project/Manifest"):
+        with self.assertRaisesRegex(ValueError, "Commit Project.toml"):
             self.run_package()
+
+    def ignore_manifest(self):
+        self.g("rm", "--cached", "Manifest.toml")
+        write(self.repo / ".gitignore", "Manifest.toml\n")
+        self.g("add", ".gitignore")
+        self.g("commit", "-qm", "runtime manifest intentionally ignored")
+        self.head = self.g("rev-parse", "HEAD").strip()
+
+    def test_ignored_runtime_manifest_is_preserved_outside_head_snapshot(self):
+        self.ignore_manifest()
+        write(self.repo / "Manifest.toml", 'julia_version = "1.12.6"\n# actual ignored runtime environment\n')
+        before = self.g("status", "--porcelain", "--ignored")
+        original = (self.repo / "Manifest.toml").read_bytes()
+        result = self.run_package()
+        gen = self.generation(result)
+        self.assertFalse((gen / "code/Manifest.toml").exists())
+        self.assertEqual((gen / "environment/Manifest.toml").read_bytes(), original)
+        environment = package.read_json(gen / "environment/provenance.json")
+        self.assertFalse(environment["git_tracked_at_head"])
+        self.assertTrue(environment["git_ignored"])
+        self.assertEqual(environment["provenance"], "untracked_runtime_environment")
+        self.assertFalse(environment["historical_execution_environment_asserted"])
+        self.assertIsNone(environment["committed_manifest_sha256"])
+        self.assertEqual(environment["manifest_sha256"], package.sha(self.repo / "Manifest.toml"))
+        self.assertEqual(package.read_json(gen / "summary.json")["runtime_environment"], environment)
+        self.assertIn("environment/Manifest.toml", (gen / "REPRODUCE.md").read_text())
+        self.assertEqual(self.g("status", "--porcelain", "--ignored"), before)
+        self.assertEqual((self.repo / "Manifest.toml").read_bytes(), original)
+
+    def test_missing_untracked_runtime_manifest_still_fails(self):
+        self.ignore_manifest()
+        (self.repo / "Manifest.toml").unlink()
+        with self.assertRaisesRegex(FileNotFoundError, "Actual runtime Manifest.toml is required"):
+            self.run_package()
+        self.assertFalse((self.results / "reproducibility/manifest.json").exists())
 
     def test_missing_frozen_source_and_bounded_history_fail_without_substitution(self):
         with self.assertRaisesRegex(ValueError, "Cannot recover frozen source"):

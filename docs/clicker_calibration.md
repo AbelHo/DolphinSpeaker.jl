@@ -176,7 +176,9 @@ generation containing `REPRODUCE.md`, `summary.json`, source versions recovered
 by exact checksum from Git, and a checksum inventory. Historical A fitter and
 historical media-exporter bytes are retained separately from current code.
 Original recordings, duplicate full movies and private runtime directories are
-not copied into that archive. The packager passed 12 synthetic Git/file controls.
+not copied into that archive. The repository's ignored `Manifest.toml` is retained
+separately as runtime environment metadata; the code snapshot remains strictly
+committed source. The packager passed 14 synthetic Git/file controls.
 
 A uses the user's inclusive gallery selection 00459–00701: 233 uncertain point
 estimates, 10 unlocalizable selected frames and 548 excluded frames. Its separate
