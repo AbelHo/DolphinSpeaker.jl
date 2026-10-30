@@ -134,7 +134,7 @@ def main():
         if o['frame_id'] != fid: raise ValueError('Legacy event/frame identity mismatch')
         raw=Path(frame['image_path']).resolve()
         if raw_hashes.get(str(raw)) != digest(raw): raise ValueError(f'Raw frame checksum mismatch: {raw}')
-        row=dict(review_index=index, frame_id=fid,event_id=e['event_id'],source_video=frame['video_file'],source_frame_index=frame['frame_index'],frame_pts_s=frame['frame_pts_s'],raw_image=frame['image_path'],sync_status=e['sync_status'],sync_error_s=e['sync_error_s'],terra_x=a['x'],terra_y=a['y'],terra_status=a['visibility'],medium=a['medium'],uncertainty_px=a['uncertainty_px'],annotation_note=a['note'],calibrated_x=e['final_x'],calibrated_y=e['final_y'],calibrated_status=e['final_status'],calibrated_valid=e['final_valid'],calibrated_estimator_status=e['estimator_status'])
+        row=dict(review_index=index, frame_id=fid,event_id=e['event_id'],source_video=frame['video_file'],source_frame_index=frame['frame_index'],frame_pts_s=frame['frame_pts_s'],raw_image=frame['image_path'],sync_status=e['sync_status'],sync_error_s=e['sync_error_s'],eligibility_status=e['eligibility_status'],terra_x=a['x'],terra_y=a['y'],terra_status=a['visibility'],medium=a['medium'],uncertainty_px=a['uncertainty_px'],annotation_note=a['note'],calibrated_x=e['final_x'],calibrated_y=e['final_y'],calibrated_status=e['final_status'],calibrated_valid=e['final_valid'],calibrated_estimator_status=e['estimator_status'])
         row.update({k:o[k] for k in o if k.startswith('old_')})
         for m in COLORS: row[m+'_location']=location(row[m+'_x'],row[m+'_y'])
         row['image']=f"frames/{index:05d}_{fid}.png"; data.append(row)
