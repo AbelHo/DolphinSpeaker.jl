@@ -160,6 +160,24 @@ predictions. Impossible or outside-image rays are retained as statuses and never
 clamped to the image edge. Markers hold for 120 ms for review, without trajectory
 interpolation. Movies retain every original video frame and exact chapter timing.
 
+All four full movies are complete. Both A movies retain 81,636 source frames;
+both B movies retain 81,639. Maximum measured output/source PTS difference is
+2.28e-13 seconds, within the 2.1 microsecond acceptance bound. Every exported
+target frame was checked against the prepared source PNG; decoded review audio
+passed the clipping check. B publishes exactly 179 event-image pairs and records
+the other 290 as user-scope omissions. Representative final overlay frames were
+also inspected for readable labels and distinct uncertainty/acoustic markers.
+These checks establish media identity and rendering, not localization accuracy.
+
+`tools/package_clicker_reproducibility.py` packages the committed code/tests,
+Project/Manifest, numerical artifacts, run receipts/logs and superseded numerical
+history into `results/reproducibility`. Its `manifest.json` points to a versioned
+generation containing `REPRODUCE.md`, `summary.json`, source versions recovered
+by exact checksum from Git, and a checksum inventory. Historical A fitter and
+historical media-exporter bytes are retained separately from current code.
+Original recordings, duplicate full movies and private runtime directories are
+not copied into that archive. The packager passed 12 synthetic Git/file controls.
+
 A uses the user's inclusive gallery selection 00459–00701: 233 uncertain point
 estimates, 10 unlocalizable selected frames and 548 excluded frames. Its separate
 fit-input adapter preserves original truth and explicitly admits those estimates.
@@ -595,9 +613,11 @@ version; historical fits are never overwritten. Prepare/SRP/projection code is
 unchanged, so A's stored inference contract remains valid. The normal-optimization,
 automatic-thread native suite passed139/139 checks. The earlier normal-resource
 85-check suite also passed; the old compiler crashes were not reproduced in these
-bounded checks. B's real provisional-policy fit/review/refinement subsequently
-completed in 212.37 seconds using all 28 available CPU threads. Its original
-annotations remain unchanged. The one-call full-workflow orchestration passed
+bounded checks. B's first provisional-policy fit/review/refinement completed in
+212.37 seconds. The later user-selected 00140–00318 revision completed in 236.60
+seconds with full CPU availability, preserving the selected Terra records exactly.
+Its full two-video delivery completed in 2194.40 seconds using NVDEC/NVENC and
+all 28 available CPU threads. The one-call full-workflow orchestration passed
 78 native controls; all-event projection passed 49, packaged presets passed 48,
 and the presentation-source integration passed 5 focused Python controls alongside
 the existing 10 video, 8 annotation and 5 packaging tests.
