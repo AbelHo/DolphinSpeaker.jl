@@ -10,6 +10,24 @@ fname2dt_zoomf6(path)=nothing
 include(joinpath(@__DIR__,"../../src/localization.jl"))
 end
 
+@testset "packaged independent A/B GCC presets" begin
+    L=CalibratedLegacyTest; C=ClickerCalibration
+    for (device,setter) in (("A",L.set_device__ophk_acoustic_D3_clicker_A),("B",L.set_device__ophk_acoustic_D3_clicker_B))
+        calibration=setter()
+        @test calibration["device"]==device
+        @test calibration["method"]=="gcc"
+        @test calibration["fit_status"]=="fitted_weak_identifiability"
+        @test L.impulsive_band_pass==[1000,Inf]
+        @test L.imsize==(1520,2704)
+        tdoas=[0.0 0.0 0.0]
+        angles=L.tdoa2dir(tdoas,permutedims(C.clicker_geometry()),192000.0)
+        expected=only(C.project_tdoas(calibration,tdoas;fs=192000.0))
+        @test L.angle2px(angles)≈[expected.x expected.y] atol=1e-9
+    end
+    L.set_device__ophk_acoustic_D3_clicker()
+    @test L.active_clicker_calibration()===nothing
+end
+
 @testset "calibrated presets apply delay/camera corrections exactly once" begin
     mktempdir() do dir
         L=CalibratedLegacyTest; C=ClickerCalibration

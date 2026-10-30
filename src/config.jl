@@ -167,12 +167,12 @@ function set_device__ophk_acoustic_D3_clicker()
     global OVERLAY_RADIUS = 20
 end
 
-"""Activate A's fitted physical calibration. Pass calibration_path for a new run."""
+"""Activate A's provisional 2026-02-09 GCC fit; review docs/clicker_calibration.md for errors and scope. Override calibration_path for a new run."""
 function set_device__ophk_acoustic_D3_clicker_A(;calibration_path=joinpath(@__DIR__,"clicker_calibration","calibrations","clicker_20260209_A.json"))
     _set_clicker_calibration("A",calibration_path)
 end
 
-"""Activate B's fitted physical calibration. Pass calibration_path for a new run."""
+"""Activate B's provisional 2026-02-09 GCC fit; review docs/clicker_calibration.md for errors and scope. Override calibration_path for a new run."""
 function set_device__ophk_acoustic_D3_clicker_B(;calibration_path=joinpath(@__DIR__,"clicker_calibration","calibrations","clicker_20260209_B.json"))
     _set_clicker_calibration("B",calibration_path)
 end

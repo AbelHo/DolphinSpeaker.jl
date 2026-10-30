@@ -547,11 +547,20 @@ def _load(device, model, output, ffmpeg, ffprobe, work,*,annotation_only=False):
     events = _rows(device / "events.csv", "event_id")
     frames = _rows(device / "frames.csv", "frame_id")
     annotations = _rows(device / "annotations.csv", "frame_id")
-    predictions = {} if annotation_only else _rows(model / "predictions.csv", "event_id")
+    prediction_provenance = None
+    if annotation_only:
+        predictions = {}
+    else:
+        spec = importlib.util.spec_from_file_location("clicker_prediction_source", Path(__file__).with_name("prediction_source.py"))
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        prediction_path, prediction_provenance = helper.resolve_predictions(device, model)
+        predictions = _rows(prediction_path, "event_id")
     calibration = None if annotation_only else _json(model / "calibration.json")
     inputs = [device / name for name in ("prepare_manifest.json", "prepare_metadata.json", "synchronization.json", "events.csv", "frames.csv", "annotations.csv", "annotations.complete.json")]
     if not annotation_only:
         inputs += [model / "calibration.json", model / "predictions.csv"]
+        inputs += [Path(path) for path in prediction_provenance["tracking_paths"]]
     for name in ("sync_eligibility.json", "human_review_selection.json"):
         if (device / name).exists():
             inputs.append(device / name)
@@ -672,7 +681,8 @@ def _load(device, model, output, ffmpeg, ffprobe, work,*,annotation_only=False):
         video["events"].append(marks)
     duration = max(v["base"] + v["probe"]["duration"]-float(v["info"].get("audio_start_s",0)) for v in videos)
     return dict(metadata=metadata, hashes=hashes, timing=timing, videos=videos,
-                expected_pts=expected_pts, duration=duration, missing=missing,policy_bridge=policy_bridge)
+                expected_pts=expected_pts, duration=duration, missing=missing,policy_bridge=policy_bridge,
+                prediction_provenance=prediction_provenance)
 
 
 def export_video(device_dir, model_dir=None, output_dir=None, *, ffmpeg="/usr/bin/ffmpeg", ffprobe="/usr/bin/ffprobe",

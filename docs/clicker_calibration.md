@@ -16,8 +16,11 @@ hands them to a gpt-6.1-terra/high Herdr annotator, produces review overlays and
 Telegram notification, then fits physical parameters independently for A and B.
 Fitting continues during user review. Sound speed is fitted within 1400–1600 m/s;
 the camera model includes alignment, focal lengths and supported optical terms,
-plus relative channel delays. Only visible underwater annotations with valid
-synchronization enter fitting. An empirical pixel correction is not requested.
+plus relative channel delays. The default policy admits only visible underwater
+annotations with valid synchronization. Explicit provisional-coordinate policies
+also admit localizable uncertain points with their original uncertainty weights;
+the original Terra labels are never changed. An empirical pixel correction is
+not applied.
 
 ## Recovery checkpoint
 
@@ -29,8 +32,8 @@ sources match their last reported precrash hashes. Historical execution evidence
 does not substitute for the remaining post-recovery integration checks.
 
 Integration and the invalid-TDOA/SRP controls pass. Both real-data preparations
-are complete. A has independent annotations, an initial fit and method-specific
-refinement; B annotation is in progress. A's results remain diagnostically weak,
+are complete. Both have sealed independent annotations, initial fits and
+method-specific refinements. Their results remain diagnostically weak,
 as detailed below; a successfully completed fit does not establish field accuracy.
 Native Julia had intermittent CSV/LLVM SIG11 failures before the machine crash;
 record any recurrence durably and use bounded checks before heavy computation.
@@ -94,14 +97,14 @@ It holds the execution session through watcher delivery and cleans up the owned
 process group on failures or termination. Use a fresh job directory for each
 attempt; keep the calibration output directory stable for stage resume.
 
-This machine's successful post-recovery Julia checks used:
-`--startup-file=no --compiled-modules=no --pkgimages=no --threads=1
---gcthreads=1 -O0 --inline=no`. The job helper disables core dumps, sets a64 MiB
-stack and single-thread BLAS/OpenMP, and keeps Julia depot/scratch in this repo.
-Those single-thread/low-optimization settings are historical recovery evidence,
-not the default for future jobs. The user now requires full available CPU/GPU
-capacity with heavy jobs staggered; normal Julia optimization is checked before
-the next fit. Generated annotation graphics need Python with Pillow;
+New runs use `--startup-file=no --compiled-modules=no --pkgimages=no
+--threads=auto -O2`. Both the 139-assertion native policy suite and actual B fit
+passed with these settings. The job helper disables core dumps, sets a 64 MiB
+stack, uses all available CPU threads for Julia/BLAS/OpenMP, and retains runtime
+files in this repo. Heavy jobs share a queue lock. Videos use qualified NVDEC
+and NVENC on the RTX 4090, with all available CPU cores for supporting work.
+Historical O0/single-thread crash-recovery flags are no longer the defaults.
+Generated annotation graphics need Python with Pillow;
 `CLICKER_PYTHON` selects it. No dependency installation occurs on import.
 Saved-result plots additionally require NumPy and Matplotlib in
 `CLICKER_PLOT_PYTHON` (default `python3`), independently of the Pillow interpreter.
@@ -123,8 +126,60 @@ Refined presets use their selected GCC or SRP estimator with the actual sample
 rate and trained window, preserving the clicker1 kHz high-pass preprocessing.
 The fitted delays and camera rotation are applied only in projection. Switching
 devices also restores the previous default localization window.
-The no-argument defaults point to the final A/B calibration JSONs beside the
-implementation; those files will be installed only after the real fits exist.
+The no-argument defaults load separate committed A/B GCC calibration JSONs from
+this recording. These are provisional fits with substantial outliers, not a
+validated accuracy guarantee or transferable parameters for another mounting.
+
+## Current A/B results
+
+Final delivery root: `/media/spin/anas2/data/calf/Clicktest/clicker_20260209/results`.
+Each device index links the full Terra-only synchronized hydrophone review movie,
+individual raw/Terra/comparison frames, the calibrated comparison movie when
+complete, and preserved numerical artifacts. Green/amber markers are original
+Terra points and their uncertainty circles; red markers are calibrated acoustic
+predictions. Impossible or outside-image rays are retained as statuses and never
+clamped to the image edge. Markers hold for 120 ms for review, without trajectory
+interpolation. Movies retain every original video frame and exact chapter timing.
+
+A uses the user's inclusive gallery selection 00459–00701: 233 uncertain point
+estimates, 10 unlocalizable selected frames and 548 excluded frames. Its separate
+fit-input adapter preserves original truth and explicitly admits those estimates.
+B retains its original labels and uses the declared
+`terra_estimated_underwater_coordinates` observation policy; these are provisional
+visual estimates, not human-confirmed positions. The same timing and temporal
+purge rules apply to both.
+
+| Result | A | B |
+|---|---:|---:|
+| Candidate events retained | 791 | 469 |
+| Fitting cohort (train / reused evaluation) | 202 (163 / 39) | 200 (160 / 40) |
+| Selected estimator | GCC | GCC |
+| Training-block GCC / SRP score (px; lower better) | 247.09 / 302.96 | 301.42 / 408.77 |
+| Reused evaluation projected / eligible | 35 / 39 | 40 / 40 |
+| Reused evaluation median / RMSE (px) | 176.74 / 2564.63 | 132.30 / 2007.23 |
+| Deployment descriptive median / RMSE (px) | 44.31 / 1755.38 | 43.11 / 911.42 |
+| Deployment effective sound speed (m/s) | 1562.18 | 1600.00 (bound) |
+| Deployment horizontal / vertical FOV (degrees) | 75.89 / 56.17 | 86.82 / 63.78 |
+
+Errors are original-resolution Euclidean pixels on projected rays; denominator
+coverage is reported separately and includes invalid events. Reused evaluation
+was already inspected, so it is descriptive evidence rather than an untouched
+confirmation set. Both models report `fitted_weak_identifiability`; small median
+errors do not cancel the severe outliers or establish a physical sound speed.
+
+`project_calibration_events(original_dir, model_dir)` additionally writes
+`inference_events.csv/json` for every original candidate, including purged and
+unannotated events. It uses the frozen selected model and original delay data,
+joins visual truth only after projection, and never changes fit metrics. Media
+consumers authenticate these sidecars and retain the frozen cohort CSV separately.
+
+The implemented improvement is method-matched GCC/SRP fitting selected only on
+training blocks, with invalidity and coverage preserved. Further work should
+collect independently confirmed clicks over more poses/heights, constrain camera
+and array geometry or sound speed independently, and validate on a new recording.
+Frequency-band GCC comparisons are a possible next experiment, requiring a new
+training-only selection plan; residuals or spectral heuristics alone must not be
+used to declare which events really came from the clicker.
 
 ## Checks after recovery
 

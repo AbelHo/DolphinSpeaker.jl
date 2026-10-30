@@ -10,6 +10,7 @@ import argparse
 import csv
 import hashlib
 import html
+import importlib.util
 import json
 import math
 import os
@@ -159,14 +160,21 @@ def gallery(directory: Path, *, fitted: bool = False, model_dir: Path | None = N
     if not fitted and model_dir != directory:
         raise ValueError("A model directory is only valid for a fitted gallery")
     revision = manifest["annotations_sha256"][:12]
+    prediction_provenance = None
     if fitted:
+        spec = importlib.util.spec_from_file_location("clicker_prediction_source", Path(__file__).with_name("prediction_source.py"))
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        prediction_path, prediction_provenance = helper.resolve_predictions(directory, model_dir)
         revision += "_" + sha(model_dir / "calibration.json")[:12]
+        if prediction_provenance["scope"] == "all_original_events":
+            revision += "_" + prediction_provenance["csv_sha256"][:12]
     name = ("refined_review" if model_dir != directory else "fit_review") if fitted else "annotation_review"
     out = directory / name / revision
     out.mkdir(parents=True, exist_ok=True)
     predictions: dict[str, list[dict]] = {}
     if fitted:
-        for p in read_csv(model_dir / "predictions.csv"):
+        for p in read_csv(prediction_path):
             predictions.setdefault(p["frame_id"], []).append(p)
     cards, thumbs = [], []
     for i, row in enumerate(rows):
@@ -181,6 +189,10 @@ def gallery(directory: Path, *, fitted: bool = False, model_dir: Path | None = N
                 x, y = point
                 draw.ellipse((x-u, y-u, x+u, y+u), outline=color, width=2)
         for p in predictions.get(row["frame_id"], []):
+            if (row["medium"] != "underwater" or row["visibility"] == "excluded"
+                    or p.get("sync_status", "mapped") != "mapped"
+                    or str(p.get("predicted_valid", p.get("final_valid", "true"))).lower() != "true"):
+                continue
             for keys, color in [(("predicted_x", "predicted_y"), "#ff557d")]:
                 try:
                     xy = tuple(float(p[k]) for k in keys)
@@ -236,6 +248,7 @@ def gallery(directory: Path, *, fitted: bool = False, model_dir: Path | None = N
     if fitted:
         result["model_directory"] = str(model_dir.resolve())
         result["model_sha256"] = sha(model_dir / "calibration.json")
+        result["prediction_provenance"] = prediction_provenance
     atomic_json(directory / f"{name}.json", result)
     return result
 

@@ -1,0 +1,171 @@
+{
+  "method": "gcc",
+  "model": "centered_pinhole",
+  "sound_speed_m_s": 1562.1772453709063,
+  "hashes": {
+    "event_snippets.f64": "86558e39f34d783870111e54db7e4633e63aea64c6efab1bbb490a23aae2dc5a",
+    "annotations.csv": "af638c52a2e64fa86533bf9e9a48ce15c918dcfdd1c5adaf559de963b5fdcf2c",
+    "source/prepare.jl": "46c778b6021ff762fa9bfe33b17e84d537d5936304bf4eeca9136b5b867605ff",
+    "source/method_refinement.jl": "fef3befdc165c2ce86e467e3cf5c87f05ba3041cf613456b53d3ae6644e86b55",
+    "estimator_review.csv": "6db146c940c49e222f0e738635dada03b94f1c1d001c7774a50887ccd15ef9d9",
+    "annotations.complete.json": "40d243eaf124001bd504de8dc545d6defad5dd43b272c6c7dc8334de71b9f9ba",
+    "source/srp_review.jl": "bfc26d970ade528d8e375c23ac69e0ea6ef9481ddede6376223fe67b7c7a797e",
+    "events.csv": "e4c5a687e17ebaae35d8d1617ef0d7f578dbfd289b39ad96f470871a1b54ae70",
+    "plan_sha256": "dfffe6ebc6d56804e32b3db4dd384cb9ce25323cdf3c345eb91cf951ba46c642",
+    "predictions.csv": "69d5d93962c4f3011f23966b85d8dd9effd051e807e7805e20159a8510a4ccfd",
+    "source/physical_fit.jl": "be55e1bfc136ef0614448a797a6e0f185856e58d4330e31bc873482dfc63e373",
+    "estimator_review.json": "a6f8b6b3d4152abbdfe6906ed5b77988a08a680186f691f776f0bdbf960e6c15",
+    "fit_report.json": "a1e44ad5701bc339a2cbce33cf6d02717317a16817a7a4b50cd5f0dac9c1c9af",
+    "source/support.jl": "2ff5ed1fce35a7848f844692ddb0704746972b55352c9d64ed18f1ce7d620335",
+    "frames.csv": "4ce87705c34b849f22007480ada69e027d1c535a148f9d404fc36e2ea8c5ec40",
+    "heldout_evaluation.json": "aab0699d5ed76dcdc0621004947988d88368d252246bd2cba2f9a7f928a6e1db",
+    "calibration.json": "725667f99e0335930d2c827853ac8d521b01ac815771c6b4e1302951cc725dd1"
+  },
+  "limits": {
+    "principal_offset_fraction": [
+      -0.1,
+      0.1
+    ],
+    "fov_degrees": [
+      20.0,
+      150.0
+    ],
+    "relative_delay_offsets_s": [
+      -0.0001,
+      0.0001
+    ],
+    "sound_speed_m_s": [
+      1400.0,
+      1600.0
+    ],
+    "k1": [
+      -0.3,
+      0.3
+    ]
+  },
+  "reference_physical_channel": 5,
+  "height": 1520,
+  "software": {
+    "CSV": "0.10.17",
+    "optimizer": "native Julia Optim.NelderMead deterministic starts, finite-difference Optim.BFGS refinement",
+    "DataFrames": "1.8.2",
+    "Julia": "1.12.6",
+    "Optim": "1.13.3"
+  },
+  "device": "A",
+  "source_model_spec": {
+    "geometry_layout": "rows selected physical3,4,5; columns array x,y,z metres",
+    "rotation": "SO(3), Rz*Ry*Rx; array to camera; both x right,y up,z forward",
+    "caveat": "Far-field planar direction-only model. Array cannot resolve front/back or range; near-field curvature, refraction and propagation paths are unmodelled.",
+    "angle_equation": "u=[sin(az)*cos(el), sin(el), cos(az)*cos(el)]",
+    "front_branch": "array +z only; camera Z>0; impossible TDOAs invalid without clamping",
+    "pixel_origin": "zero; centered principal point ((width-1)/2,(height-1)/2)",
+    "projection": "x=cx+fx*X/Z*(1+k1*r2+k2*r2^2); y=cy-fy*Y/Z*(1+k1*r2+k2*r2^2)",
+    "tdoa_equation": "dt_i=-(r_i-r_ref) dot u / sound_speed + relative_delay_offset_i"
+  },
+  "numeric_precision": "Float64",
+  "fov_degrees": [
+    75.89057967784491,
+    56.16569583535652
+  ],
+  "estimator_spec": {
+    "method": "gcc",
+    "srp_review_source_sha256": "bfc26d970ade528d8e375c23ac69e0ea6ef9481ddede6376223fe67b7c7a797e",
+    "output": "raw reference-relative sample delays; fitted offsets and rotation applied later by project_tdoas exactly once",
+    "function": "prep_gcc",
+    "prepare_source_sha256": "46c778b6021ff762fa9bfe33b17e84d537d5936304bf4eeca9136b5b867605ff",
+    "parameters": {
+      "pair_reconciliation": "exact preparation constrained all-pair least squares on D3 physical-lag hexagon",
+      "interp": 8,
+      "band_hz": [
+        1000.0,
+        "0.98*fs/2"
+      ],
+      "reference": 3,
+      "guide": "nearest envelope peak among peaks >=0.7 strongest",
+      "c_min_m_s": 1400.0
+    },
+    "sample_rate_hz": 192000.0,
+    "input": "Float64 samples x selected physical3,4,5; already fourth-order zero-phase HP1000 filtered, matching preparation",
+    "reference_channel": 3,
+    "window_samples_inclusive": [
+      -300,
+      700
+    ]
+  },
+  "camera": {
+    "cy": 759.5,
+    "fx": 1733.8912041859883,
+    "fy": 1424.379613244877,
+    "k1": 0.0,
+    "k2": 0.0,
+    "cx": 1351.5
+  },
+  "selection_sha256": "b9bf19f65c3549544a1ee45f877b6c84fca35443835b1033bc8cb653d327c04c",
+  "evaluation_sha256": "53367200c449f8c35092e0560cd12587430e8ceabc383de186db6a7c88e5f502",
+  "physical_channels": [
+    3,
+    4,
+    5
+  ],
+  "refinement_plan_sha256": "dfffe6ebc6d56804e32b3db4dd384cb9ce25323cdf3c345eb91cf951ba46c642",
+  "rotation_array_to_camera": [
+    [
+      0.9999211907672034,
+      -0.0045434439734601244,
+      -0.011703391455383882
+    ],
+    [
+      0.004463390069085661,
+      0.9999665272836161,
+      -0.0068572925733446245
+    ],
+    [
+      0.01173415543569758,
+      0.006804515354181275,
+      0.9999079998514891
+    ]
+  ],
+  "rotation_euler_xyz_rad": [
+    0.006805036382535982,
+    -0.011734424732483737,
+    0.0044637122068383545
+  ],
+  "deployment_fit_scope": "selected method, all frozen eligible annotations after frozen training selection and reused evaluation; in-sample deployment errors",
+  "width": 2704,
+  "reference_channel": 3,
+  "relative_delay_offsets_s": [
+    1.1134685226208215e-6,
+    5.1884054652118113e-8,
+    0.0
+  ],
+  "parameter_bound_hits_normalized": [],
+  "robust_objective": "bounded smooth transform cap*rho/(cap+rho) of pseudo-Huber rho, cap set at residual max(8delta,0.05 image diagonal); invalid rays contribute fixed cap; definitely-impossible observations screened only from objective and retained in coverage",
+  "optimization_convergence": {
+    "converged_runs": 7,
+    "n_runs": 7,
+    "best_start": "BFGS_refinement",
+    "best_iterations": 12,
+    "best_converged": true
+  },
+  "schema_version": "clicker-physical-calibration/1.0",
+  "geometry_m": [
+    [
+      0.09000000000000001,
+      -0.05196152422706631,
+      0.0
+    ],
+    [
+      6.363451432349441e-18,
+      0.10392304845413264,
+      0.0
+    ],
+    [
+      -0.09,
+      -0.05196152422706633,
+      0.0
+    ]
+  ],
+  "fit_status": "fitted_weak_identifiability"
+}
+
