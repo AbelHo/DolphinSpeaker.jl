@@ -18,6 +18,7 @@ os.environ.setdefault('MPLCONFIGDIR', '/tmp/clicker-matplotlib')
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -113,16 +114,26 @@ def plot(data, destination, full=False):
     labels={'terra':'Terra','calibrated':'Calibrated','old':'Old D3'}
     markers={'terra':'o','calibrated':'x','old':'D'}
     counts={}
+    for row in data:
+        points = [(float(row[m+'_x']),float(row[m+'_y'])) for m in COLORS
+                  if row[m+'_location'] != 'missing']
+        if len(points) >= 2:
+            ax.plot([p[0] for p in points], [p[1] for p in points],
+                    color='#59636e', alpha=.18, linewidth=.7, zorder=1)
     for method in COLORS:
         counts[method]=dict(collections.Counter(r[method+'_location'] for r in data))
         selected=[r for r in data if r[method+'_location'] != 'missing' and (full or r[method+'_location']=='in image')]
         ax.scatter([float(r[method+'_x']) for r in selected], [float(r[method+'_y']) for r in selected],
-                   c=COLORS[method], marker=markers[method], s=28, alpha=.65, label=f"{labels[method]}: in {counts[method].get('in image',0)}, outside {counts[method].get('outside image',0)}, missing {counts[method].get('missing',0)}")
+                   c=COLORS[method], marker=markers[method], s=28, alpha=.65, zorder=2, label=f"{labels[method]}: in {counts[method].get('in image',0)}, outside {counts[method].get('outside image',0)}, missing {counts[method].get('missing',0)}")
     if not full: ax.set_xlim(0,W); ax.set_ylim(H,0)
     else: ax.invert_yaxis(); ax.axvline(0,color='gray'); ax.axvline(W,color='gray'); ax.axhline(0,color='gray'); ax.axhline(H,color='gray')
     ax.set_aspect('equal',adjustable='box'); ax.set_xlabel('Image x (pixels)'); ax.set_ylabel('Image y (pixels)')
     ax.set_title('Click-frame positions — descriptive in-sample deployment model' + (' (full extent)' if full else ''))
-    ax.grid(alpha=.2); ax.legend(loc='upper center',bbox_to_anchor=(.5,-.12), ncol=1, fontsize=9)
+    ax.grid(alpha=.2)
+    handles, labels = ax.get_legend_handles_labels()
+    handles.append(Line2D([0],[0],color='#59636e',alpha=.5,linewidth=1))
+    labels.append('Same frame: Terra → calibrated → old (available points)')
+    ax.legend(handles,labels,loc='upper center',bbox_to_anchor=(.5,-.12), ncol=1, fontsize=9)
     fig.tight_layout(); fig.savefig(destination.with_suffix('.png'),dpi=160,bbox_inches='tight'); fig.savefig(destination.with_suffix('.svg'),bbox_inches='tight'); plt.close(fig)
     return counts
 
