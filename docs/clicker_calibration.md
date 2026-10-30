@@ -373,3 +373,60 @@ The revision helper passed12 synthetic tests; annotation validation/rendering
 passed8 tests including selection enforcement and stale-selection detection.
 Actual revision creation and native annotation handoff completed successfully;
 the A timing review again added zero exclusions.
+
+### Revised A uncertainty and explicit fit eligibility
+
+Terra sealed the corrected A revision with233 estimated housing-center points,
+10 unlocalizable selected frames, and548 user exclusions. All243 selected frames
+carry the original `uncertain` visibility label; typical radii are35–50 px. The
+initial strict fit stopped without saving a model because it accepts only visible
+annotations. Its failure is recorded in `v2/jobs/finish_A_revision_01`.
+
+The explicit `user_confirmed_uncertain_coordinates` policy permits fitting finite
+points in the authenticated user-confirmed interval with their unchanged
+uncertainty weights. It does not turn them into new Terra truth. A separate
+`20261030_v2_fit/A` directory contains the compatibility input for the unchanged
+visible-only fitter, plus `terra_visibility`, eligibility reasons, exact original
+truth archives and `annotation_fit_policy.json`. Missing coordinates and all
+original exclusions remain excluded. All human galleries and videos continue
+to read the unmodified v2 annotations, displaying uncertain estimates in amber.
+
+Use `annotation_fit_policy=:user_confirmed_uncertain_coordinates` with
+`fit_input_root=...` in `run_clicker_calibration`; a device-keyed dictionary can
+apply it only to A. The default remains strict. The policy requires a sealed
+human selection and never infers coordinates or reduces uncertainty. Its14
+synthetic tests include233/10/548 eligibility and a strict export-side proof that
+every original coordinate/radius is unchanged. This is an exploratory fit to
+low-precision visual estimates, not independent ground-truth qualification.
+
+### Synchronized review videos and portable delivery
+
+`video_export.py --annotation-only DEVICE_OUTPUT MEDIA_OUTPUT` produces
+`terra_review_synchronized.mp4` and a lossless Float32 mono48 kHz
+`synchronized_reference_ch5.wav`, without requiring a calibration model. This
+initial review video displays Terra locations/uncertainty circles and synchronized
+hydrophone sound, with no acoustic-prediction markers. The calibrated mode takes
+`DEVICE_OUTPUT MODEL_OUTPUT MEDIA_OUTPUT` and adds red acoustic estimates.
+
+The exporter retains every source video frame and exact chapter gaps, using
+declared audio-duration chapter bases and the saved exact-base timing review.
+Output frame count and every PTS are checked. Markers start on their source frame;
+a labeled120 ms hold makes them readable without interpolating motion. Invalid,
+outside-image, ambiguous-sync and user-excluded estimates are not clamped into
+apparently valid locations. The soundtrack uses raw physical channel5, gapless
+WAV sample counts and explicit affine sample-time interpolation. It is audible-
+band review media; original192 kHz scientific recordings remain unchanged.
+
+Eight short synthetic end-to-end tests passed, covering source-frame timing,
+chapter gaps, exact uncertainty-outline pixels, synchronized known impulses
+within one48 kHz sample, annotation-only mode, invalid predictions, resumability,
+and the real uncertainty-policy validator. Full recording exports are separate
+jobs and are not established by these short fixtures.
+
+`package_results.py DEVICE_OUTPUT RESULTS_DEVICE_DIR` copies the initial review,
+original frames and scientific artifacts into a portable bundle.
+`--model-dir MODEL --video-dir MEDIA --final` additionally requires a completed
+matching comparison video. Raw/annotation/comparison images have a frame-index
+CSV, and rewritten presentation links resolve inside the bundle. Scientific
+tables and manifests remain byte-identical. Unowned or externally edited delivery
+files are never silently overwritten. Four focused packaging tests passed.

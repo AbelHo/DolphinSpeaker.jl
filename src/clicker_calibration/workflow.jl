@@ -195,6 +195,20 @@ function render_diagnostics(output_dir::AbstractString;model_dir=nothing,python=
     return JSON.parse(String(bytes))
 end
 
+"""Prepare or validate explicit fit eligibility without changing Terra annotations."""
+function prepare_fit_annotation_input(original_dir,fit_dir;policy,python=nothing)
+    string(policy)=="user_confirmed_uncertain_coordinates" || error("Unsupported fit annotation policy")
+    selection=read_json(joinpath(original_dir,"human_review_selection.json"))
+    reason="User-confirmed clicker selection: "*string(selection["reason"])*
+        "; include finite estimated coordinates with their original uncertainty weights; retain original Terra labels for review."
+    exe=_workflow_python(python);helper=joinpath(@__DIR__,"fit_annotation_policy.py")
+    command=isdir(fit_dir) ? `$exe $helper validate $original_dir $fit_dir` :
+        `$exe $helper create $original_dir $fit_dir --policy-name $(string(policy)) --reason $reason`
+    result=JSON.parse(String(run_logged(command;operation="explicit annotation fit policy $(basename(original_dir))",capture=true)))
+    get(result,"valid",false) || error("Fit annotation policy validation did not succeed")
+    return result
+end
+
 function _workflow_notify_annotation(output_dir,review;notify=:telegram,telegram_sender=nothing)
     notify == :none && return Dict("status"=>"disabled")
     notify == :telegram || throw(ArgumentError("notify must be :telegram or :none"))
@@ -247,6 +261,7 @@ function run_clicker_calibration(input_root::AbstractString; devices=(:A,:B),out
     annotator=:herdr,notify=:telegram,resume=true,stage=:all,wait_annotations=true,
     annotation_timeout_s=21600,python=nothing,telegram_sender=nothing,
     diagnostic_plots=true,plot_python=nothing,
+    annotation_fit_policy=nothing,fit_input_root=nothing,
     error_log=get(ENV,"CLICKER_ERROR_LOG",joinpath(pwd(),"docs","error.log")),
     prepare_options=NamedTuple(),fit_options=NamedTuple())
     stage in (:all,:prepare,:sync,:annotate,:fit,:review,:refine) || throw(ArgumentError("Unknown calibration stage"))
@@ -306,20 +321,29 @@ function run_clicker_calibration(input_root::AbstractString; devices=(:A,:B),out
                 _workflow_annotation_tool(dest,"validate";python=python)
                 result["annotation_review"]=render_review(dest;python=python)
                 result["annotation_notification"]=_workflow_notify_annotation(dest,result["annotation_review"];notify=notify,telegram_sender=telegram_sender)
+                policy=annotation_fit_policy isa AbstractDict ?
+                    get(annotation_fit_policy,name,get(annotation_fit_policy,Symbol(name),nothing)) : annotation_fit_policy
+                fit_dest=dest
+                if !isnothing(policy) && stage in (:all,:fit,:review,:refine)
+                    parent=isnothing(fit_input_root) ? joinpath(output_dir,"fit_inputs") : abspath(fit_input_root)
+                    fit_dest=joinpath(parent,name)
+                    result["annotation_fit_policy"]=prepare_fit_annotation_input(dest,fit_dest;policy=policy,python=python)
+                end
                 if stage in (:all,:fit)
-                    result["fit"]=fit_device(dest;resume=resume,fit_options...)
-                    result["fit_review"]=render_review(dest;fitted=true,python=python)
-                    diagnostic_plots && (result["fit_diagnostics"]=render_diagnostics(dest;python=plot_python))
+                    result["fit"]=fit_device(fit_dest;resume=resume,fit_options...)
+                    result["fit_review"]=render_review(dest;fitted=true,python=python,
+                        model_dir=fit_dest==dest ? nothing : fit_dest)
+                    diagnostic_plots && (result["fit_diagnostics"]=render_diagnostics(fit_dest;python=plot_python))
                 end
                 if stage in (:all,:review)
-                    result["estimator_review"]=run_estimator_review(dest;resume=resume)
+                    result["estimator_review"]=run_estimator_review(fit_dest;resume=resume)
                 end
                 if stage in (:all,:refine)
-                    result["refinement"]=refine_calibration(dest;resume=resume)
+                    result["refinement"]=refine_calibration(fit_dest;resume=resume)
                     result["refined_review"]=render_review(dest;fitted=true,python=python,
-                        model_dir=joinpath(dest,"refinement_v1"))
-                    diagnostic_plots && (result["refinement_diagnostics"]=render_diagnostics(dest;
-                        model_dir=joinpath(dest,"refinement_v1"),python=plot_python))
+                        model_dir=joinpath(fit_dest,"refinement_v1"))
+                    diagnostic_plots && (result["refinement_diagnostics"]=render_diagnostics(fit_dest;
+                        model_dir=joinpath(fit_dest,"refinement_v1"),python=plot_python))
                 end
                 result["status"]=stage==:annotate ? "annotated" : "complete"
                 filter!(!=(name),pending)
