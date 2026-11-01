@@ -33,6 +33,7 @@ same(L,snap)=L.active_clicker_calibration()===nothing && all(getglobal(L,n)===v 
         @test same(L,before)
     end
     @test L.with_clicker_calibration(()->42,"A")==42
+    @test L.with_clicker_calibration(()->L.active_clicker_calibration()["device"],:B)=="B"
 end
 
 @testset "calibrated presets apply delay/camera corrections exactly once" begin

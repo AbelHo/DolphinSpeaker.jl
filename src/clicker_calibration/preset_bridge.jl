@@ -71,11 +71,12 @@ end
 """
     with_clicker_calibration(f, device; calibration_path=_clicker_default_path(device))
 
-Run `f()` with clicker `device` ("A" or "B") active, then restore every global the activation
+Run `f()` with clicker `device` ("A"/"B" or :A/:B) active, then restore every global the activation
 changed. Returns `f()`'s value. Blocks nest and are exception safe; a bad path changes nothing.
 Run calibrated work inside the block, leave no tasks running after it, and do not call `set_device__*` inside it.
 """
-function with_clicker_calibration(f,device::AbstractString;calibration_path=_clicker_default_path(device))
+function with_clicker_calibration(f,device::Union{AbstractString,Symbol};calibration_path=_clicker_default_path(device))
+    device=string(device)  # accept :A/:B as used by run_full_clicker_calibration
     _ensure_clicker_module()
     calibration=_clicker_call(:load_calibration,calibration_path;device=device)  # validate before touching any global
     before=_clicker_global_snapshot()

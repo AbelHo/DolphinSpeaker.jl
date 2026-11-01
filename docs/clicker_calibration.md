@@ -165,7 +165,13 @@ Usage rules:
 
 - Run calibrated work inside the block.
 - Don't leave tasks running after the block ends; they would see the restored settings.
-- Don't call `set_device__*` inside it; the D3 geometry check would throw.
+- Don't call `set_device__*` inside it. Nothing detects this: a D3 setter keeps the same
+  geometry, so the calibration stays active on top of the new settings, and globals the
+  setter changed that activation did not touch are not restored after the block.
+- Only `tdoa2dir`/`angle2px` are calibrated: `angle2px(tdoa2dir_ls(...))` (e.g.
+  `run_multitdoa.jl`) would project uncalibrated angles through the calibrated camera,
+  and a custom `getTDOA_func` passed to `detection2angle` gets the fitted delay offsets
+  of the calibration's own estimator. Keep such code outside the block.
 
 The no-argument defaults load separate committed A GCC and B SRP calibration JSONs from
 this recording. These are provisional fits with substantial outliers, not a
