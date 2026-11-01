@@ -67,10 +67,10 @@ predictions, the dimension-corrected original D3 baseline, and estimator coverag
 
 ## Run and resume
 
-The standalone entry point avoids the legacy script include chain:
+From the package (the main path; the calibration code loads lazily on first use):
 
 ```julia
-include("src/clicker_calibration.jl")
+using DolphinSpeaker
 run_full_clicker_calibration(
     "/media/spin/anas2/data/calf/Clicktest/clicker_20260209";
     output_dir=joinpath(pwd(), "calibration_runs/clicker_20260209/new_run"),
@@ -79,6 +79,10 @@ run_full_clicker_calibration(
     observation_policy=:terra_estimated_underwater_coordinates,
 )
 ```
+
+The lightweight alternative, used by `tools/run_clicker_calibration.jl`, avoids loading
+the package and the legacy script include chain: replace `using DolphinSpeaker` with
+`include("src/clicker_calibration.jl")`; the call is identical.
 
 This call delivers Terra-overlay images and a full synchronized hydrophone movie
 before fitting, then creates the fitted comparison images/movie and portable

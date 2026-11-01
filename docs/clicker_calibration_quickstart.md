@@ -40,3 +40,5 @@ Find synchronized videos, frames and fitted parameters there. Check fit errors b
 [`calibration_path`](clicker_calibration.md#apply-a-fitted-device).
 
 [Full reference](clicker_calibration.md)
+
+From Julia, `using DolphinSpeaker; run_full_clicker_calibration(...)` runs the same order; see [Run and resume](clicker_calibration.md#run-and-resume).
