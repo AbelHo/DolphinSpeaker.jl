@@ -52,8 +52,12 @@ end
         direct=C.project_tdoas(ca,tdoas;fs=fs)
         expected=hcat(getproperty.(direct,:x),getproperty.(direct,:y))
         @test L.angle2px(recovered)≈expected atol=1e-9
-        @test L.angle2pxd(rad2deg.(recovered))≈expected atol=1e-9
-        @test L.tdoa2dir_ls(tdoas,permutedims(geometry),fs)≈angles atol=1e-12
+        # angle2pxd and tdoa2dir_ls are not on the pipeline path: they stay uncalibrated while a calibration is active.
+        # (tdoa2dir_ls on a non-planar array falls back to tdoa2dir, which would hit the D3 geometry check.)
+        plain=rad2deg.(recovered) ./ [L.fov_angle[1]/2 -L.fov_angle[2]/2] .* [L.imsize[2]/2 L.imsize[1]/2] .+ [L.imsize[2]/2 L.imsize[1]/2]
+        @test L.angle2pxd(rad2deg.(recovered))==plain
+        @test !isapprox(L.angle2pxd(rad2deg.(recovered)),expected;atol=1e-3)
+        @test !isapprox(L.tdoa2dir_ls(tdoas,permutedims(geometry),fs),angles;atol=1e-6)
         @test L.angle2px(recovered,L.fov_angle,(760,1352))≈expected./2 atol=1e-9
         @test all(isnan,L.tdoa2dir([900.0 0 0],permutedims(geometry),fs))
         @test_throws ArgumentError L.tdoa2dir(tdoas,permutedims(geometry).*2,fs)

@@ -38,10 +38,13 @@ function _clicker_minmax_tdoas(data, peaks; window,ref_channel=3)
     return result
 end
 
-function _clicker_method_tdoas(data,peaks;fs,window,ref_channel=3)
+# D3/Zoom F6 runs at 192 kHz, the same default as _mr_estimator_spec and prep_gcc.
+_clicker_sample_rate(cal)=Float64(get(get(cal,"estimator_spec",Dict()),"sample_rate_hz",192000.0))
+
+function _clicker_method_tdoas(data,peaks;window,ref_channel=3)
     calibration=active_clicker_calibration()
     calibration===nothing && error("No active method-matched calibration")
-    return _clicker_call(:estimate_method_tdoas,calibration,data,peaks;fs=fs,window=window,ref_channel=ref_channel)
+    return _clicker_call(:estimate_method_tdoas,calibration,data,peaks;fs=_clicker_sample_rate(calibration),window=window,ref_channel=ref_channel)
 end
 
 function _set_clicker_calibration(device, path)
@@ -70,6 +73,7 @@ function _set_clicker_calibration(device, path)
 end
 
 function calibrated_tdoa2dir(tdoas,receivers,fs,calibration;return_residual=false)
+    Float64(fs)==_clicker_sample_rate(calibration) || error("sample rate differs from active clicker calibration")
     geometry=reduce(vcat,[permutedims(Float64.(row)) for row in calibration["geometry_m"]])
     size(receivers)==(3,3) && maximum(abs.(receivers.-permutedims(geometry)))<1e-12 ||
         throw(ArgumentError("Receiver geometry differs from the active calibration"))
