@@ -72,6 +72,14 @@ function run_logged(cmd::Cmd; operation, capture::Bool=false)
     end
 end
 
+"""
+    exercise_error_logging!(path)
+
+Manual pre-launch check of the durable error log; nothing in the calibration workflow calls it.
+It appends an intentional marker record, verifies it persisted, moves it to `error_archive.log`, and
+then **rewrites** the whole log at `path` without the marker. Run it only before any worker starts,
+since concurrent appends during the rewrite would be lost.
+"""
 function exercise_error_logging!(path::AbstractString)
     CALIBRATION_ERROR_LOG[] = abspath(path)
     marker = "clicker-calibration-error-control-" * string(getpid())
