@@ -1,0 +1,20 @@
+Source commit: d22056c39b949ee5bead6ddd3b9644e4261ab267
+Julia 1.12.6; Optim 1.13.3; LsqFit 0.15.1; ForwardDiff 1.4.6
+Polarity example: old peak indices = [19, 21, 23]; fixed = [10, 11, 12]
+Old minmax at file boundary: BoundsError
+Projection az=20 el=0: linear=(2055.000, 760.000), pinhole=(1964.255, 760.000), delta=(90.745, 0.000) px
+Projection az=30 el=0: linear=(2397.500, 760.000), pinhole=(2312.641, 760.000), delta=(84.859, 0.000) px
+Projection az=30 el=20: linear=(2397.500, 201.801), pinhole=(2312.641, 139.306), delta=(84.859, 62.495) px
+Planar front/back cost: 0.0, 0.0
+After c=1480: default cost=0.000000, explicit c=1480 cost=0.330876 samples^2
+Impossible delays: uv norm=5.145; optimizer still returns finite angles, residual=6117.702 samples^2
+D3 0.18 m baseline at 192 kHz: max lag=22.442 samples; broadside one-sample angle=2.554 degrees
+t=0: exporter frame=1; zero-based renderer uses frame 1 at 0.033333 s; image exporter uses 0.000000 s
+Early frame rounding example: two rounds = 1; one round = 2
+Duplicate-frame montage: source rows = [100, 100, 200]; montage = [100, 200]; ordinal join maps montage index 1 to source frame 100
+Camera callback: correct output length = 16; LsqFit callback order yields length = 14
+Direct camera curve_fit: DimensionMismatch
+ForwardDiff after correcting callback order: MethodError
+Rodrigues Jacobian at zero: ForwardDiff norm=NaN; central-difference norm=2.449490
+Full camera fitter on exact synthetic pairs: ErrorException
+All bounded review checks reproduced the reported behavior. No field-accuracy test was run.
