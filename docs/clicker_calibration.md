@@ -138,15 +138,31 @@ cached waveforms. Acoustic descriptors are descriptive and never exclude events.
 
 ## Apply a fitted device
 
-`set_device__ophk_acoustic_D3_clicker_A(calibration_path=...)` and the equivalent
-B setter are defined in `config.jl`. They configure the corrected peak method,
-sound speed, relative channel delays, camera rotation/projection and measured
-image dimensions. Localization and pixel conversion apply each correction once.
-Calling another existing device setter restores the uncalibrated behavior.
-Refined presets use their selected GCC or SRP estimator with the actual sample
-rate and trained window, preserving the clicker1 kHz high-pass preprocessing.
-The fitted delays and camera rotation are applied only in projection. Switching
-devices also restores the previous default localization window.
+```julia
+using DolphinSpeaker
+with_clicker_calibration("A") do          # or "B"; calibration_path=... overrides the committed JSON
+    # detection2angle, tdoa2dir, angle2px, ... use the calibrated device here
+end
+```
+
+`with_clicker_calibration(f, device; calibration_path=...)` activates the corrected
+peak method, sound speed, relative channel delays, camera rotation/projection and
+measured image dimensions for the duration of `f()`, returns `f()`'s value, then
+restores every global the activation changed (also after an exception, and for
+nested blocks). A bad `calibration_path` fails before anything changes.
+No `set_device__*` setter is involved or modified.
+Localization and pixel conversion apply each correction once, and only in
+`tdoa2dir` and `angle2px`; `angle2pxd` and `tdoa2dir_ls` stay uncalibrated.
+Refined presets use their selected GCC or SRP estimator with the calibration's
+sample rate and trained window, preserving the clicker1 kHz high-pass preprocessing.
+The fitted delays and camera rotation are applied only in projection.
+
+Usage rules:
+
+- Run calibrated work inside the block.
+- Don't leave tasks running after the block ends; they would see the restored settings.
+- Don't call `set_device__*` inside it; the D3 geometry check would throw.
+
 The no-argument defaults load separate committed A GCC and B SRP calibration JSONs from
 this recording. These are provisional fits with substantial outliers, not a
 validated accuracy guarantee or transferable parameters for another mounting.

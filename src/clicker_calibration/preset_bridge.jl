@@ -1,7 +1,6 @@
 # Included by config.jl. Definitions only: calibrated parameters load on request.
 if !isdefined(@__MODULE__, :ACTIVE_CLICKER_CALIBRATION)
     ACTIVE_CLICKER_CALIBRATION = nothing
-    CLICKER_CALIBRATION_RESTORE = nothing
 end
 
 active_clicker_calibration() = ACTIVE_CLICKER_CALIBRATION
@@ -13,19 +12,6 @@ function _clicker_call(name::Symbol,args...;kwargs...)
         module_value=getfield(@__MODULE__,:ClickerCalibration)
         getfield(module_value,name)(args...;kwargs...)
     end
-end
-
-function clear_clicker_calibration!()
-    if CLICKER_CALIBRATION_RESTORE !== nothing
-        old=CLICKER_CALIBRATION_RESTORE
-        global c=old.c
-        old.default_c === nothing || (global default_c=old.default_c)
-        old.tdoa === nothing || (global default_getTDOA_func=old.tdoa)
-        old.window === nothing || (global default_window=old.window)
-    end
-    global ACTIVE_CLICKER_CALIBRATION=nothing
-    global CLICKER_CALIBRATION_RESTORE=nothing
-    return nothing
 end
 
 function _clicker_minmax_tdoas(data, peaks; window,ref_channel=3)
@@ -47,17 +33,27 @@ function _clicker_method_tdoas(data,peaks;window,ref_channel=3)
     return _clicker_call(:estimate_method_tdoas,calibration,data,peaks;fs=_clicker_sample_rate(calibration),window=window,ref_channel=ref_channel)
 end
 
-function _set_clicker_calibration(device, path)
-    if !isdefined(@__MODULE__,:ClickerCalibration)
+# The only lazy loader for ClickerCalibration.jl; also used by the DolphinSpeaker wrappers.
+function _ensure_clicker_module()
+    isdefined(@__MODULE__,:ClickerCalibration) ||
         Base.include(@__MODULE__,joinpath(@__DIR__,"ClickerCalibration.jl"))
-    end
-    # Validate before changing the existing active device.
-    calibration=_clicker_call(:load_calibration,path;device=device)
+    return nothing
+end
+
+# A function, not a const: config.jl and this file are included many times.
+_clicker_default_path(device)=joinpath(@__DIR__,"calibrations","clicker_20260209_$(device).json")
+
+# References (not copies) to every non-const global of the including module.
+function _clicker_global_snapshot()
+    mod=@__MODULE__
+    return Dict{Symbol,Any}(n=>getglobal(mod,n) for n in names(mod;all=true)
+        if !startswith(String(n),"#") && isdefined(mod,n) && !isconst(mod,n))
+end
+
+_clicker_changed_names(before)=Symbol[n for (n,v) in before if !(isdefined(@__MODULE__,n) && getglobal(@__MODULE__,n)===v)]
+
+function _activate_clicker_calibration!(device, calibration)
     set_device__ophk_acoustic_D3_clicker()
-    global CLICKER_CALIBRATION_RESTORE=(c=c,
-        default_c=isdefined(@__MODULE__,:default_c) ? default_c : nothing,
-        tdoa=isdefined(@__MODULE__,:default_getTDOA_func) ? default_getTDOA_func : nothing,
-        window=isdefined(@__MODULE__,:default_window) ? default_window : nothing)
     global ACTIVE_CLICKER_CALIBRATION=calibration
     global c=calibration["sound_speed_m_s"]
     global default_c=c
@@ -70,6 +66,33 @@ function _set_clicker_calibration(device, path)
     global default_getTDOA_func=calibration["method"]=="minmax2" ? _clicker_minmax_tdoas : _clicker_method_tdoas
     global FILE_device_ID="ophk_acoustic_D3_clicker_$(device)"
     return calibration
+end
+
+"""
+    with_clicker_calibration(f, device; calibration_path=_clicker_default_path(device))
+
+Run `f()` with clicker `device` ("A" or "B") active, then restore every global the activation
+changed. Returns `f()`'s value. Blocks nest and are exception safe; a bad path changes nothing.
+Run calibrated work inside the block, leave no tasks running after it, and do not call `set_device__*` inside it.
+"""
+function with_clicker_calibration(f,device::AbstractString;calibration_path=_clicker_default_path(device))
+    _ensure_clicker_module()
+    calibration=_clicker_call(:load_calibration,calibration_path;device=device)  # validate before touching any global
+    before=_clicker_global_snapshot()
+    changed=Symbol[]
+    try
+        try
+            _activate_clicker_calibration!(device,calibration)
+        finally
+            append!(changed,_clicker_changed_names(before))
+        end
+        return f()
+    finally
+        # Names first defined during activation are not in `before`; they are left as they are.
+        for n in changed
+            setglobal!(@__MODULE__,n,before[n])
+        end
+    end
 end
 
 function calibrated_tdoa2dir(tdoas,receivers,fs,calibration;return_residual=false)
