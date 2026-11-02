@@ -105,6 +105,10 @@ Change setting for new device(D3):
 ```
 set_device__ophk_acoustic_D3()
 ```
+Clicker-calibrated D3 devices A/B (see [docs/clicker_calibration.md](docs/clicker_calibration.md)):
+```
+set_device__ophk_acoustic_D3_clicker_A()   # or set_device__ophk_acoustic_D3_clicker_B()
+```
 
 Process data:
 ```

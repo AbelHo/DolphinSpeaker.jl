@@ -48,8 +48,7 @@ end
         geometry=C.clicker_geometry();fs=192000.0
         before=snapshot(L)
         L.with_clicker_calibration("A";calibration_path=pa) do
-            @test L.c==ca["sound_speed_m_s"]
-            @test L.default_c==L.c
+            @test L.c==1540 && L.default_c==1540   # uncalibrated globals are left alone
             @test L.imsize==(1520,2704)
             @test L.ref_channel==3
             angles=[0.15 -0.1; -0.18 0.2; 0.0 0.0]
@@ -72,11 +71,10 @@ end
             @test_throws ArgumentError L.tdoa2dir(tdoas,permutedims(geometry).*2,fs)
             # Nested block: B inside A, and A is active again afterwards.
             L.with_clicker_calibration("B";calibration_path=pb) do
-                @test L.c==1560.0
+                @test L.active_clicker_calibration()["sound_speed_m_s"]==1560.0
                 @test L.active_clicker_calibration()["device"]=="B"
             end
             @test L.active_clicker_calibration()["device"]=="A"
-            @test L.c==ca["sound_speed_m_s"]
         end
         @test same(L,before)
         @test L.c==1540
@@ -109,16 +107,52 @@ end
             C.write_json(pa,matched)
             L.with_clicker_calibration("A";calibration_path=pa) do
                 @test L.impulsive_band_pass==[1000,Inf]
-                @test L.default_window==(-300:700)
-                actual_angles,actual_delays=L.detection2angle(waveform,[301],permutedims(geometry);fs=fs)
+                @test L.window_impulsive==(-300:700)
+                # The pipeline passes window=window_impulsive (aspod.jl); the fitted estimator checks it.
+                actual_angles,actual_delays=L.detection2angle(waveform,[301],permutedims(geometry);fs=fs,window=L.window_impulsive)
                 expected_delays=C.estimate_method_tdoas(matched,waveform,[301];fs=fs)
                 @test actual_delays==expected_delays
                 direct=C.project_tdoas(matched,expected_delays;fs=fs)
                 expected=hcat(getproperty.(direct,:x),getproperty.(direct,:y))
                 @test L.angle2px(actual_angles)≈expected atol=1e-9
-                @test_throws ErrorException L.detection2angle(waveform,[301],permutedims(geometry);fs=96000)
+                @test_throws ErrorException L.detection2angle(waveform,[301],permutedims(geometry);fs=96000,window=L.window_impulsive)
             end
             @test same(L,before)
         end
     end
+end
+
+# Runs last: it leaves the test module on a plain D3 setter.
+@testset "persistent A/B setters switch themselves off on any later setter" begin
+    L=CalibratedLegacyTest; C=ClickerCalibration
+    tdoas=[0.0 0.0 0.0]; receivers=permutedims(C.clicker_geometry()); fs=192000.0
+    original_tdoa=L.default_getTDOA_func
+    for (device,setter) in (("A",L.set_device__ophk_acoustic_D3_clicker_A),("B",L.set_device__ophk_acoustic_D3_clicker_B))
+        setter()
+        calibration=L.active_clicker_calibration()
+        @test calibration["device"]==device
+        @test L.FILE_device_ID=="ophk_acoustic_D3_clicker_$(device)"
+        @test L.default_getTDOA_func===L._clicker_tdoas
+        expected=only(C.project_tdoas(calibration,tdoas;fs=fs))
+        @test L.angle2px(L.tdoa2dir(tdoas,receivers,fs))≈[expected.x expected.y] atol=1e-9
+        L.set_device__ophk_acoustic_D3()
+        @test L.active_clicker_calibration()===nothing
+        @test L.impulsive_band_pass==[5000,Inf]
+        @test L.angle2px([0.0 0.0])==[L.imsize[2]/2 L.imsize[1]/2]
+    end
+    # A switched-off wrapper calls the estimator that was in place before the first activation.
+    @test L.CLICKER_UNCALIBRATED_TDOA===original_tdoa
+    data=sin.(0.01 .* (1:1001)) .* [1.0 0.5 0.2]
+    @test L.default_getTDOA_func(data,[400];window=-50:50,ref_channel=3)==original_tdoa(data,[400];window=-50:50,ref_channel=3)
+    # A block inside a persistent setting restores it afterwards.
+    L.set_device__ophk_acoustic_D3_clicker_A()
+    L.with_clicker_calibration(:B) do
+        @test L.active_clicker_calibration()["device"]=="B"
+    end
+    @test L.active_clicker_calibration()["device"]=="A"
+    # A bad path changes nothing.
+    L.set_device__ophk_acoustic_D3()
+    @test_throws Exception L.set_device__ophk_acoustic_D3_clicker_A(calibration_path="missing.json")
+    @test L.active_clicker_calibration()===nothing
+    @test L.impulsive_band_pass==[5000,Inf]
 end

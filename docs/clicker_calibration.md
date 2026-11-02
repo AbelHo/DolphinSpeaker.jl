@@ -142,36 +142,57 @@ cached waveforms. Acoustic descriptors are descriptive and never exclude events.
 
 ## Apply a fitted device
 
+Persistent, like any other device setter:
+
 ```julia
-using DolphinSpeaker
-with_clicker_calibration("A") do          # or "B"; calibration_path=... overrides the committed JSON
-    # detection2angle, tdoa2dir, angle2px, ... use the calibrated device here
+using DolphinSpeaker                     # or include("src/run_example.jl")
+set_device__ophk_acoustic_D3_clicker_A() # or _B; calibration_path=... overrides the committed JSON
+run_contiguous_folders(folder; res_dir=res_dir)
+set_device__ophk_acoustic_D3()           # any later setter switches the calibration off
+```
+
+Scoped, restoring everything afterwards:
+
+```julia
+with_clicker_calibration("A") do          # or "B", :A, :B
+    run_contiguous_folders(folder; res_dir=res_dir)
 end
 ```
 
-`with_clicker_calibration(f, device; calibration_path=...)` activates the corrected
-peak method, sound speed, relative channel delays, camera rotation/projection and
-measured image dimensions for the duration of `f()`, returns `f()`'s value, then
-restores every global the activation changed (also after an exception, and for
-nested blocks). A bad `calibration_path` fails before anything changes.
-No `set_device__*` setter is involved or modified.
-Localization and pixel conversion apply each correction once, and only in
-`tdoa2dir` and `angle2px`; `angle2pxd` and `tdoa2dir_ls` stay uncalibrated.
-Refined presets use their selected GCC or SRP estimator with the calibration's
-sample rate and trained window, preserving the clicker1 kHz high-pass preprocessing.
-The fitted delays and camera rotation are applied only in projection.
+Both start from `set_device__ophk_acoustic_D3_clicker()` and add the calibrated peak
+method, relative channel delays, camera rotation/projection and measured image
+dimensions (`imsize`, `fov_angle`, `default_getTDOA_func`, `FILE_device_ID`).
+A bad `calibration_path` fails before anything changes. No existing setter is modified.
+
+How it switches off: the activation remembers the `rx_vect` and `fov_angle` arrays it
+set, and `active_clicker_calibration()` returns the calibration only while both are
+still in place. Every `set_device__*` setter (and re-including `config.jl`) replaces at
+least one of them. `default_getTDOA_func` becomes a wrapper that then falls back to the
+estimator in place before the first activation. The check is two `===` comparisons per call.
+
+What is calibrated:
+
+- Only `tdoa2dir`, `angle2px` and the default TDOA estimator. `angle2pxd`, `tdoa2dir_ls`,
+  `c`, `default_c` and `default_window` stay uncalibrated; the calibrated functions read
+  sound speed and geometry from the JSON.
+- Refined presets use their fitted GCC or SRP estimator with the calibration's sample rate,
+  and it requires the trained window: pass `window=window_impulsive` (-300:700), as the
+  pipeline does. Each correction is applied once, in projection.
 
 Usage rules:
 
-- Run calibrated work inside the block.
-- Don't leave tasks running after the block ends; they would see the restored settings.
-- Don't call `set_device__*` inside it. Nothing detects this: a D3 setter keeps the same
-  geometry, so the calibration stays active on top of the new settings, and globals the
-  setter changed that activation did not touch are not restored after the block.
-- Only `tdoa2dir`/`angle2px` are calibrated: `angle2px(tdoa2dir_ls(...))` (e.g.
-  `run_multitdoa.jl`) would project uncalibrated angles through the calibrated camera,
-  and a custom `getTDOA_func` passed to `detection2angle` gets the fitted delay offsets
-  of the calibration's own estimator. Keep such code outside the block.
+- Detection settings can be changed after the setter by assigning globals directly
+  (`impulsive_band_pass`, `dist_impulsive`, ...); that keeps the calibration. Calling another
+  `set_device__*`, including `set_device__ophk_acoustic_D3()`, switches it off. Changing
+  `window_impulsive` makes the fitted GCC/SRP estimator throw.
+- Editing `rx_vect` or `fov_angle` in place does not switch the calibration off.
+- `angle2px(tdoa2dir_ls(...))` (e.g. `run_multitdoa.jl`) would project uncalibrated
+  angles through the calibrated camera, and a custom `getTDOA_func` passed to
+  `detection2angle` gets the fitted delay offsets. Run such code under another setter.
+- Setters that do not reset `imsize` keep the calibrated 1520x2704 after a switch, as
+  existing setters already leave each other's values.
+- Blocks: leave no tasks running after the block ends; a `set_device__*` call inside a block
+  switches the calibration off for the rest of it.
 
 The no-argument defaults load separate committed A GCC and B SRP calibration JSONs from
 this recording. These are provisional fits with substantial outliers, not a
