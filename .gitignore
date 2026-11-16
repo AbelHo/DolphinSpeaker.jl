@@ -16,3 +16,6 @@
 /calibration_runs/
 __pycache__/
 docs/error_archive.log
+
+# uv Python environment
+/.venv/

@@ -1,0 +1,26 @@
+[project]
+name = "dolphinspeaker-py"
+version = "0.1.0"
+description = "Python helpers for DolphinSpeaker.jl (calibration review, overlays, checkerboard intrinsics, GoPro metadata)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy>=2.2",
+    "scipy>=1.14",
+    "opencv-python-headless>=4.10,<5",
+    "pillow>=10",
+    "matplotlib>=3.8",
+    "pandas>=2.2",
+    "plotly>=5.20",
+    "scikit-learn>=1.5",
+]
+
+[project.optional-dependencies]
+# Pool/bioacoustic simulation (synth_bioacoustic.py).
+synth = ["scaper>=1.6", "pyroomacoustics>=0.7", "soundfile>=0.12"]
+# Not included: cuML (test_cuml_direct.py) needs the RAPIDS conda channel.
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = ["pytest>=8"]
