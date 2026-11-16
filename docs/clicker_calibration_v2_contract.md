@@ -33,6 +33,7 @@ v1 field names are kept wherever the existing projection code reads them (`proje
 | `lens` | object | `{"family": "pinhole" \| "fisheye" \| "superview", "params": {...}, "source": "<intrinsics.json path + sha256>" \| "clicker_fit_only"}` |
 | `lens_mode` | string or null | GPMF `VFOV` lens mode (e.g. `"W"`, `"S"`, `"L"`) from moov/udta GPMF; T1 found `"S"` (SuperView) on every A and B clip |
 | `zfov_deg` | number or null | GPMF `ZFOV` of the calibration recording. It differs between recordings (A: 122.113 always; B: 138.034 on 2026-02-06/09, 122.113 on 2025-05-19 and 2026-11-13), so it is part of the lens identity |
+| `eis_mode` | string or null | GPMF `EISA` of the calibration recording (T1b): `"HS Boost"` ↔ ZFOV 122.113 (all A; B 2025-05 and 2026-11), `"HS EIS"` ↔ ZFOV 138.034 (B 2026-02). EIS (`EISE=Y`) is on in every clip; it is part of the lens identity |
 | `camera_identity` | object | `{"CAME": hex, "CASN": serial, "LINF": lens id}` from `tools/gpmf_lens_info.py` (A: CASN C3441325988007; B: CASN C3441327549773) |
 | `camera_chain` | string | e.g. `"gamma_1265-2051"` (A) or `"beta_0059-0133"` (B) |
 | `valid_from`, `valid_until` | ISO date or null | the mounting validity window; the runner warns outside it |
@@ -119,7 +120,7 @@ write_valid_detection_pixels(csv_path; out_path=replace(csv_path, ".csv"=>"_vali
   - runs `run_contiguous_folders_2` inside `with_clicker_calibration_2`;
   - asserts the calibration is active before and after;
   - checks the video resolution against the profile;
-  - checks the GPMF lens identity against the profile. It compares `VFOV` (`lens_mode`) and `ZFOV` (`zfov_deg`, tolerance 0.01°) of every video chapter, read with `tools/gpmf_lens_info.py`. A mismatch is an error, because the intrinsics differ: B's 2026-02 profile at ZFOV 138.034 must not run on B's 2026-11 clips at ZFOV 122.113. If the lens is unknown it warns. It also records the `CASN` serial in `calibration_used.json` and errors if it differs from `camera_identity.CASN`;
+  - checks the GPMF lens identity against the profile. It compares `VFOV` (`lens_mode`), `ZFOV` (`zfov_deg`, tolerance 0.01°) and `EISA` (`eis_mode`) of every video chapter, read with `tools/gpmf_lens_info.py`. A mismatch is an error, because the intrinsics differ: B's 2026-02 profile at ZFOV 138.034 must not run on B's 2026-11 clips at ZFOV 122.113. If the lens is unknown it warns. It also records the `CASN` serial in `calibration_used.json` and errors if it differs from `camera_identity.CASN`;
   - warns outside the validity window;
   - writes `calibration_used.json` into the results folder.
 - `default_v2_path(device)` is `src/clicker_calibration/calibrations/clicker_20260209_$(device)_v2.json`. That file is created by T3; until it exists, tests use a fixture under `test/clicker_calibration/fixtures/`.
