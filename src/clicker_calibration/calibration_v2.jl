@@ -141,6 +141,8 @@ function validate_calibration_2(raw; device=nothing)
     identity = _v2_key(cal, "camera_identity", "")
     _v2_require(identity isa AbstractDict && all(k -> get(identity, k, nothing) === nothing || get(identity, k, nothing) isa AbstractString, ("CAME", "CASN", "LINF")),
         "camera_identity must be an object whose CAME, CASN and LINF are strings or null")
+    eis = get(cal, "eis_mode", nothing)
+    _v2_require(eis === nothing || eis isa AbstractString, "eis_mode must be a string or null")
     chain = _v2_key(cal, "camera_chain", "")
     _v2_require(chain isa AbstractString && !isempty(chain), "camera_chain must be a non-empty string")
     from = _v2_date(_v2_key(cal, "valid_from", ""), "valid_from")
@@ -237,10 +239,18 @@ end
 """
     _v2_gpmf_lens_infos(videos; python=ENV CLICKER_PYTHON or "python3") -> Vector{Union{Dict,Nothing}}
 
-Run `python3 -I tools/gpmf_lens_info.py VIDEO...` once (it prints one JSON line per file: VFOV, ZFOV, CASN, CAME, ...).
+Run `python -I tools/gpmf_lens_info.py VIDEO...` once (it prints one JSON line per file: VFOV, ZFOV, CASN, CAME, and
+`udta_gpmf` with EISA, ...). `python` is `_v2_default_python()`.
 Entry `i` is the parsed record of `videos[i]`, or `nothing` (with an `@warn`) when the tool is missing or fails.
 """
-function _v2_gpmf_lens_infos(videos::AbstractVector{<:AbstractString}; python=get(ENV, "CLICKER_PYTHON", "python3"))
+# CLICKER_PYTHON, else the repo uv environment (docs/python_environment.md) when it exists, else python3.
+function _v2_default_python()
+    haskey(ENV, "CLICKER_PYTHON") && return ENV["CLICKER_PYTHON"]
+    venv = abspath(joinpath(@__DIR__, "..", "..", ".venv", "bin", "python"))
+    return isfile(venv) ? venv : "python3"
+end
+
+function _v2_gpmf_lens_infos(videos::AbstractVector{<:AbstractString}; python=_v2_default_python())
     none = Union{Dict{String,Any},Nothing}[nothing for _ in videos]
     tool = joinpath(@__DIR__, "..", "..", "tools", "gpmf_lens_info.py")
     isfile(tool) || (@warn "GPMF lens tool not found; lens identity unchecked" tool; return none)
@@ -259,11 +269,20 @@ _v2_gpmf_lens_info(video::AbstractString; kwargs...) = only(_v2_gpmf_lens_infos(
 
 _v2_str(x) = x === nothing ? nothing : string(x)
 
+# EISA (stabilization mode, e.g. "HS Boost") lives in the udta GPMF summary of the tool's record.
+function _v2_eisa(info)
+    info === nothing && return nothing
+    value = get(info, "EISA", nothing)
+    value === nothing && (value = get(get(info, "udta_gpmf", Dict()), "EISA", nothing))
+    value isa AbstractVector && (value = isempty(value) ? nothing : first(value))
+    return _v2_str(value)
+end
+
 """
     _v2_validate_video(calibration; width, height, lens_infos=nothing, recording_date=nothing) -> NamedTuple
 
 Per-recording checks. Errors (`ErrorException`): resolution differs from the profile; for any chapter, when both
-sides are known, GPMF `VFOV` differs from `lens_mode`, `ZFOV` differs from `zfov_deg` by more than 0.01°, or `CASN`
+sides are known, GPMF `VFOV` differs from `lens_mode`, `ZFOV` differs from `zfov_deg` by more than 0.01°, `EISA` differs from `eis_mode`, or `CASN`
 differs from `camera_identity.CASN`. `lens_infos` holds one parsed `gpmf_lens_info.py` record (or `nothing`) per
 chapter. Warnings (`@warn`): lens identity unknown, recording date outside `valid_from..valid_until`.
 Returns `(warnings, lens, in_validity_window)`; `lens` has the observed `lens_mode`, `zfov_deg`, `casn`
@@ -276,13 +295,17 @@ function _v2_validate_video(calibration::AbstractDict; width, height, lens_infos
     want_mode = get(calibration, "lens_mode", nothing)
     want_zfov = get(calibration, "zfov_deg", nothing)
     want_casn = get(get(calibration, "camera_identity", Dict()), "CASN", nothing)
-    modes = Any[]; zfovs = Any[]; casns = Any[]
+    want_eis = get(calibration, "eis_mode", nothing)
+    modes = Any[]; zfovs = Any[]; casns = Any[]; eiss = Any[]
     unknown = false
     for (i, info) in enumerate(something(lens_infos, Any[]))
         vfov = info === nothing ? nothing : _v2_str(get(info, "VFOV", nothing))
         zfov = info === nothing ? nothing : get(info, "ZFOV", nothing)
         casn = info === nothing ? nothing : _v2_str(get(info, "CASN", nothing))
-        (vfov === nothing || zfov === nothing) && (unknown = true)
+        eis = _v2_eisa(info)
+        (vfov === nothing || zfov === nothing || eis === nothing) && (unknown = true)
+        eis !== nothing && (push!(eiss, eis); want_eis !== nothing && string(want_eis) != eis &&
+            error("Chapter $i GPMF stabilization mode (EISA) \"$eis\" differs from the calibration profile eis_mode \"$want_eis\"; the intrinsics differ, refusing to run"))
         vfov !== nothing && (push!(modes, vfov); want_mode !== nothing && string(want_mode) != vfov &&
             error("Chapter $i GPMF lens mode (VFOV) \"$vfov\" differs from the calibration profile \"$want_mode\"; the intrinsics differ, refusing to run"))
         zfov isa Real && (push!(zfovs, Float64(zfov)); want_zfov !== nothing && abs(Float64(zfov) - Float64(want_zfov)) > 0.01 &&
@@ -291,7 +314,7 @@ function _v2_validate_video(calibration::AbstractDict; width, height, lens_infos
             error("Chapter $i camera serial (CASN) $casn differs from the calibration profile camera_identity.CASN $want_casn; refusing to run"))
     end
     if lens_infos === nothing || unknown
-        push!(warnings, "lens identity (GPMF VFOV/ZFOV) unknown for at least one chapter; the profile's lens could not be fully checked")
+        push!(warnings, "lens identity (GPMF VFOV/ZFOV/EISA) unknown for at least one chapter; the profile's lens could not be fully checked")
     end
     in_window = nothing
     if recording_date !== nothing
@@ -302,8 +325,8 @@ function _v2_validate_video(calibration::AbstractDict; width, height, lens_infos
         in_window || push!(warnings, "recording date $d is outside the profile validity window ($(from) .. $(until)); the camera mount may have changed")
     end
     foreach(w -> @warn(w), warnings)
-    lens = (lens_mode=unique(modes), zfov_deg=unique(zfovs), casn=unique(casns),
-            profile_lens_mode=want_mode, profile_zfov_deg=want_zfov, profile_casn=want_casn)
+    lens = (lens_mode=unique(modes), zfov_deg=unique(zfovs), casn=unique(casns), eis_mode=unique(eiss),
+            profile_lens_mode=want_mode, profile_zfov_deg=want_zfov, profile_casn=want_casn, profile_eis_mode=want_eis)
     return (warnings=warnings, lens=lens, in_validity_window=in_window)
 end
 

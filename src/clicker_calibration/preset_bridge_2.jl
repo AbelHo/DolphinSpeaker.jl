@@ -102,7 +102,7 @@ end
 
 Run `run_contiguous_folders_2` (exact-time frames, drift-aware sync, NaN-safe overlay CSV) on `folder` inside
 `with_clicker_calibration_2`. Before any heavy work it refuses a video whose resolution or GPMF lens mode
-disagrees with the profile (`python3 -I tools/gpmf_lens_info.py`: VFOV, ZFOV within 0.01°, CASN of every chapter; unavailable → `@warn`) and warns outside the profile's
+disagrees with the profile (`python -I tools/gpmf_lens_info.py`, python = `CLICKER_PYTHON`, else the repo `.venv`, else `python3`: VFOV, ZFOV within 0.01°, EISA, CASN of every chapter; unavailable → `@warn`) and warns outside the profile's
 validity window. It asserts the calibration is active before and after the run and writes
 `calibration_used.json` into the results folder (`res_dir/<folder name>`). Returns what
 `run_contiguous_folders_2` returns with `flag_return=true`; remaining `kwargs` go to it.
@@ -123,7 +123,7 @@ function _run_contiguous_folders_calibrated(folder,device,res_dir,c_m_s,calibrat
     isempty(vidlist) && error("No video files found in $folder")
 
     geometries=[_v2_video_geometry(v) for v in vidlist]
-    lens_infos=_clicker_call(:_v2_gpmf_lens_infos,vidlist)   # python3 -I tools/gpmf_lens_info.py, all chapters in one call
+    lens_infos=_clicker_call(:_v2_gpmf_lens_infos,vidlist)   # gpmf_lens_info.py, all chapters in one call
     date=_clicker_call(:_v2_recording_date,vidlist[1];creation_time=geometries[1].creation_time)
     for (v,g) in zip(vidlist,geometries)   # every chapter must match the profile; lens mode and date come from the first
         (g.width,g.height)==(Int(profile["width"]),Int(profile["height"])) ||
@@ -140,8 +140,8 @@ function _run_contiguous_folders_calibrated(folder,device,res_dir,c_m_s,calibrat
             "calibration_path"=>abspath(calibration_path),"profile_sha256"=>_clicker_call(:sha256_file,calibration_path),
             "c_m_s"=>Float64(c_m_s),"detection_preset"=>string(detection),
             "tdoa_estimator"=>_v2_estimator_name(default_getTDOA_func),"sync"=>string(sync),
-            "lens_mode"=>checks.lens.lens_mode,"zfov_deg"=>checks.lens.zfov_deg,"casn"=>checks.lens.casn,
-            "profile_lens_mode"=>checks.lens.profile_lens_mode,"profile_zfov_deg"=>checks.lens.profile_zfov_deg,"profile_casn"=>checks.lens.profile_casn,
+            "lens_mode"=>checks.lens.lens_mode,"zfov_deg"=>checks.lens.zfov_deg,"casn"=>checks.lens.casn,"eis_mode"=>checks.lens.eis_mode,
+            "profile_lens_mode"=>checks.lens.profile_lens_mode,"profile_zfov_deg"=>checks.lens.profile_zfov_deg,"profile_casn"=>checks.lens.profile_casn,"profile_eis_mode"=>checks.lens.profile_eis_mode,
             "gpmf_lens_info"=>lens_infos,
             "video_resolution"=>[geometries[1].width,geometries[1].height],"recording_date"=>date===nothing ? nothing : string(date),
             "valid_from"=>get(profile,"valid_from",nothing),"valid_until"=>get(profile,"valid_until",nothing),
