@@ -317,6 +317,177 @@ def stream_key_census(path, idx=None):
     return counts, n_devc[0]
 
 
+ORIENT_KEYS = ('CORI', 'IORI')
+
+
+def _quat_samples(payload, type_char, size, repeat, scale):
+    """Decode a CORI/IORI payload: `repeat` samples of `size` bytes, each `size//2` signed int16.
+
+    Values are divided by the STRM's SCAL (one value, or one per component). Returns a list of
+    per-sample lists of floats (raw components, not normalized).
+    """
+    if type_char != 's' or size < 2 or size % 2:
+        raise ValueError('unexpected orientation type %r size %d' % (type_char, size))
+    comp = size // 2
+    vals = struct.unpack('>%dh' % (repeat * comp), payload[:repeat * size])
+    out = []
+    for i in range(repeat):
+        s = []
+        for k in range(comp):
+            sc = 1.0
+            if scale:
+                sc = scale[k] if len(scale) == comp else scale[0]
+            s.append(vals[i * comp + k] / float(sc))
+        out.append(s)
+    return out
+
+
+def parse_orientation_packet(payload):
+    """Parse one gpmd packet (one DEVC block) for CORI and IORI samples.
+
+    Returns {'CORI': [[w,x,y,z], ...], 'IORI': [...]} with samples in stream order. Each STRM's SCAL
+    applies to the CORI/IORI in that STRM. Timing is not decided here; see orientation_series().
+    """
+    out = {'CORI': [], 'IORI': []}
+
+    def walk_strm(strm_bytes):
+        pos, n = 0, len(strm_bytes)
+        scale = None
+        found = []
+        while pos + 8 <= n:
+            key = strm_bytes[pos:pos + 4].decode('latin-1', errors='replace')
+            tchar = chr(strm_bytes[pos + 4])
+            size = strm_bytes[pos + 5]
+            repeat = struct.unpack('>H', strm_bytes[pos + 6:pos + 8])[0]
+            pos += 8
+            length = size * repeat
+            if pos + length > n:
+                break
+            payload = strm_bytes[pos:pos + length]
+            if key == 'SCAL' and tchar in _NUM_FMT:
+                fmt, width = _NUM_FMT[tchar]
+                scale = [struct.unpack(fmt, payload[i * size:i * size + width])[0] for i in range(repeat)]
+            elif key in ORIENT_KEYS:
+                found.append((key, tchar, size, repeat, payload))
+            pos += (length + 3) & ~3
+        for key, tchar, size, repeat, payload in found:
+            out[key].extend(_quat_samples(payload, tchar, size, repeat, scale))
+
+    def walk(data, depth=0):
+        pos, n = 0, len(data)
+        while pos + 8 <= n:
+            key = data[pos:pos + 4].decode('latin-1', errors='replace')
+            tchar = chr(data[pos + 4])
+            size = data[pos + 5]
+            repeat = struct.unpack('>H', data[pos + 6:pos + 8])[0]
+            pos += 8
+            length = size * repeat
+            if pos + length > n:
+                break
+            if tchar == '\x00' and depth < 4:
+                if key == 'STRM':
+                    walk_strm(data[pos:pos + length])
+                else:
+                    walk(data[pos:pos + length], depth + 1)
+            pos += (length + 3) & ~3
+
+    walk(payload)
+    return out
+
+
+def read_gpmd_packets(path, idx=None):
+    """(pts_s, duration_s, size_bytes) for each packet of the gpmd stream, from ffprobe headers only."""
+    if idx is None:
+        pr = probe(path)
+        idx = next((s['index'] for s in pr.get('streams', []) if s.get('codec_tag_string') == 'gpmd'), None)
+        if idx is None:
+            raise RuntimeError('no gpmd stream')
+    cmd = ['ffprobe', '-v', 'error', '-select_streams', str(idx), '-show_packets',
+           '-show_entries', 'packet=pts_time,duration_time,size', '-of', 'csv=p=0', path]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        raise RuntimeError('ffprobe packets failed: ' + res.stderr.strip()[:300])
+    rows = []
+    for line in res.stdout.splitlines():
+        parts = line.strip().split(',')
+        if len(parts) < 3 or parts[0] in ('', 'N/A'):
+            continue
+        pts = float(parts[0])
+        dur = float(parts[1]) if parts[1] not in ('', 'N/A') else None
+        rows.append((pts, dur, int(parts[2])))
+    # fill missing durations from the next pts
+    for i, (pts, dur, size) in enumerate(rows):
+        if dur is None:
+            nxt = rows[i + 1][0] if i + 1 < len(rows) else pts
+            rows[i] = (pts, max(nxt - pts, 0.0), size)
+    return rows
+
+
+def orientation_series(path, idx=None):
+    """All CORI/IORI samples of a clip with timestamps.
+
+    Timing convention: a gpmd packet is one DEVC (one second of data). Its pts (ffprobe pts_time, the
+    same time base as the video file) and duration are known. Sample i of n in that packet gets
+    t = pts + i * duration / n (samples spread evenly, starting at the packet's pts). The device's own
+    STMP clock is not used for timing.
+
+    Returns (rows, meta). rows: list of (t_s, [w,x,y,z] CORI, [w,x,y,z] IORI), both normalized.
+    """
+    if idx is None:
+        pr = probe(path)
+        idx = next((s['index'] for s in pr.get('streams', []) if s.get('codec_tag_string') == 'gpmd'), None)
+        if idx is None:
+            raise RuntimeError('no gpmd stream')
+    packets = read_gpmd_packets(path, idx)
+    cmd = ['ffmpeg', '-v', 'error', '-i', path, '-map', '0:%d' % idx, '-c', 'copy', '-f', 'rawvideo', 'pipe:1']
+    res = subprocess.run(cmd, capture_output=True)
+    if res.returncode != 0:
+        raise RuntimeError('ffmpeg gpmd read failed: ' + res.stderr.decode('utf-8', 'replace')[:300])
+    data = res.stdout
+    total = sum(p[2] for p in packets)
+    if total != len(data):
+        raise RuntimeError('packet sizes (%d) do not match demuxed bytes (%d)' % (total, len(data)))
+    rows = []
+    meta = {'packets': len(packets), 'stream_index': idx, 'missing_cori': 0, 'missing_iori': 0,
+            'count_mismatch': 0, 'samples': 0, 'scale_note': 'per-STRM SCAL'}
+    off = 0
+    for pts, dur, size in packets:
+        blk = data[off:off + size]
+        off += size
+        o = parse_orientation_packet(blk)
+        if not o['CORI']:
+            meta['missing_cori'] += 1
+        if not o['IORI']:
+            meta['missing_iori'] += 1
+        n_c, n_i = len(o['CORI']), len(o['IORI'])
+        if n_c != n_i:
+            meta['count_mismatch'] += 1
+        n = min(n_c, n_i)
+        if n == 0:
+            continue
+        for i in range(n):
+            t = pts + i * dur / n
+            c = _normalize(o['CORI'][i])
+            r = _normalize(o['IORI'][i])
+            rows.append((t, c, r))
+        meta['samples'] += n
+    return rows, meta
+
+
+def _normalize(q):
+    norm = sum(x * x for x in q) ** 0.5
+    if norm == 0:
+        return [1.0, 0.0, 0.0, 0.0]
+    return [x / norm for x in q]
+
+
+def write_orientation_csv(rows, out_csv):
+    with open(out_csv, 'w', newline='') as fh:
+        fh.write('t_s,cori_w,cori_x,cori_y,cori_z,iori_w,iori_x,iori_y,iori_z\n')
+        for t, c, r in rows:
+            fh.write('%.6f,%s\n' % (t, ','.join('%.9f' % v for v in c + r)))
+
+
 def _count_keys(data, counts, n_devc, depth=0, max_depth=12):
     """Recursively count FourCC occurrences in a GPMF byte string; n_devc[0] counts DEVC blocks."""
     pos, n = 0, len(data)
@@ -346,7 +517,23 @@ def main(argv=None):
                     help='print every moov/udta/GPMF tag as one JSON line {file, tags} (no normal record)')
     ap.add_argument('--stream-keys', action='store_true',
                     help='print FourCC occurrence counts over the whole gpmd stream as one JSON line per file')
+    ap.add_argument('--orientation-dir', help='write <stem>_orientation.csv (CORI/IORI time series) into this '
+                                              'directory and print one JSON metadata line per file')
     args = ap.parse_args(argv)
+
+    if args.orientation_dir:
+        os.makedirs(args.orientation_dir, exist_ok=True)
+        for p in args.files:
+            p = os.path.abspath(p)
+            rows, meta = orientation_series(p)
+            stem = os.path.splitext(os.path.basename(p))[0]
+            out_csv = os.path.join(args.orientation_dir, stem + '_orientation.csv')
+            write_orientation_csv(rows, out_csv)
+            meta.update({'file': p, 'csv': out_csv, 'duration_s': rows[-1][0] - rows[0][0] if rows else None,
+                         't_first_s': rows[0][0] if rows else None})
+            print(json.dumps(meta, sort_keys=True))
+            sys.stdout.flush()
+        return 0
 
     if args.dump_udta or args.stream_keys:
         for p in args.files:

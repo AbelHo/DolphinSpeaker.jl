@@ -153,6 +153,48 @@ class TestKeyCensus(unittest.TestCase):
         self.assertNotIn('CORI', counts)
 
 
+def _s16(vals):
+    return struct.pack('>%dh' % len(vals), *vals)
+
+
+class TestOrientationParser(unittest.TestCase):
+    def _devc(self):
+        # STRM 1: SCAL 32767 (one value) then CORI with 3 quaternion samples (w,x,y,z int16)
+        cori = _s16([32767, 0, 0, 0,  32767, 0, 2, 0,  0, 32767, 0, 0])
+        strm1 = (klv('SCAL', 's', 2, 1, _s16([32767])) + klv('CORI', 's', 8, 3, cori))
+        # STRM 2: IORI with a per-component SCAL (4 values), 2 samples
+        iori = _s16([16384, 0, 0, 0,  0, 0, 16384, 0])
+        strm2 = (klv('SCAL', 's', 2, 4, _s16([32767, 32767, 16384, 32767])) + klv('IORI', 's', 8, 2, iori))
+        return container('DEVC', container('STRM', strm1) + container('STRM', strm2)
+                         + klv('STMP', 'J', 8, 1, struct.pack('>Q', 12345)))
+
+    def test_cori_iori_scaled_and_in_order(self):
+        o = g.parse_orientation_packet(self._devc())
+        self.assertEqual(len(o['CORI']), 3)
+        self.assertEqual(len(o['IORI']), 2)
+        self.assertEqual(o['CORI'][0], [1.0, 0.0, 0.0, 0.0])
+        self.assertAlmostEqual(o['CORI'][1][2], 2 / 32767.0, places=12)
+        self.assertEqual(o['CORI'][2], [0.0, 1.0, 0.0, 0.0])
+        # per-component SCAL: component 2 (index 2) uses 16384
+        self.assertAlmostEqual(o['IORI'][0][0], 16384 / 32767.0, places=9)
+        self.assertAlmostEqual(o['IORI'][1][2], 16384 / 16384.0, places=9)
+
+    def test_packet_without_orientation_gives_empty_lists(self):
+        data = container('DEVC', container('STRM', klv('ACCL', 's', 6, 1, _s16([1, 2, 3]))))
+        o = g.parse_orientation_packet(data)
+        self.assertEqual(o, {'CORI': [], 'IORI': []})
+
+    def test_truncated_packet_is_ignored(self):
+        data = self._devc()
+        o = g.parse_orientation_packet(data[:-6])
+        self.assertLessEqual(len(o['CORI']), 3)
+
+    def test_normalize(self):
+        q = g._normalize([2.0, 0.0, 0.0, 0.0])
+        self.assertEqual(q, [1.0, 0.0, 0.0, 0.0])
+        self.assertAlmostEqual(sum(x * x for x in g._normalize([1.0, 1.0, 1.0, 1.0])), 1.0)
+
+
 class TestNames(unittest.TestCase):
     def test_gopro_name_pattern(self):
         m = g._NAME_RE.match('GH011265.MP4')
