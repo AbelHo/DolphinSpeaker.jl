@@ -1,0 +1,92 @@
+{
+  "schema_version": "clicker-physical-calibration/2.0",
+  "device": "B",
+  "method": "agnostic",
+  "estimator_spec": {
+    "method": "agnostic",
+    "sample_rate_hz": 192000.0
+  },
+  "physical_channels": [
+    3,
+    4,
+    5
+  ],
+  "reference_channel": 3,
+  "reference_physical_channel": 5,
+  "geometry_m": [
+    [
+      0.09000000000000001,
+      -0.05196152422706631,
+      0.0
+    ],
+    [
+      6.363451432349441e-18,
+      0.10392304845413264,
+      0.0
+    ],
+    [
+      -0.09,
+      -0.05196152422706633,
+      0.0
+    ]
+  ],
+  "relative_delay_offsets_s": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "sound_speed_m_s": 1530.0,
+  "sound_speed_role": "runtime_environment",
+  "rotation_array_to_camera": [
+    [
+      1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "rotation_euler_xyz_rad": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "width": 2704,
+  "height": 1520,
+  "camera": {
+    "fx": 1500.0,
+    "fy": 1500.0,
+    "cx": 1351.5,
+    "cy": 759.5,
+    "k1": 0.0,
+    "k2": 0.0
+  },
+  "lens": {
+    "family": "pinhole",
+    "params": {},
+    "source": "clicker_fit_only"
+  },
+  "lens_mode": "S",
+  "camera_chain": "beta_0059-0133",
+  "valid_from": "2026-02-09",
+  "valid_until": null,
+  "model_ladder_choice": "M0",
+  "metrics": {},
+  "provenance": {
+    "note": "synthetic test fixture, not a fitted profile"
+  },
+  "zfov_deg": 138.034,
+  "camera_identity": {
+    "CAME": null,
+    "CASN": "C3441327549773",
+    "LINF": null
+  }
+}

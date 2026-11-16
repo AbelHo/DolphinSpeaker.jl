@@ -13,6 +13,9 @@ module DolphinSpeaker
     include("run_example.jl")
     export process_one_set, process_folder, process_dir, run_contiguous_folders
 
+    include("run_example_2.jl")
+    export run_contiguous_folders_2
+
     # from dsp.jl
     export extrema_in_file
 
@@ -22,6 +25,7 @@ module DolphinSpeaker
     # from config.jl
     export set_device__ophk_acoustic_D3, set_device__calf_hk, set_device__hk_clicker, set_device__ophk_acoustic_D3_clicker
     export with_clicker_calibration, set_device__ophk_acoustic_D3_clicker_A, set_device__ophk_acoustic_D3_clicker_B
+    export with_clicker_calibration_2, run_contiguous_folders_calibrated, default_v2_path
 
     # Thin wrappers: ClickerCalibration.jl loads lazily via preset_bridge.jl's _ensure_clicker_module.
     """Run the independent clicker calibration workflow; see docs/clicker_calibration.md."""

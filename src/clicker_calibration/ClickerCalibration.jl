@@ -19,4 +19,6 @@ export prepare_fit_annotation_input
 export predeclare_observation_policy
 export project_calibration_events
 export run_full_clicker_calibration
+include("calibration_v2.jl")
+export CalibrationV2, load_calibration_2, validate_calibration_2, CLICKER_SITE_SOUND_SPEED_M_S
 end
