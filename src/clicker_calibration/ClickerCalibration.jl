@@ -21,4 +21,6 @@ export project_calibration_events
 export run_full_clicker_calibration
 include("calibration_v2.jl")
 export CalibrationV2, load_calibration_2, validate_calibration_2, CLICKER_SITE_SOUND_SPEED_M_S
+include("folder_sync.jl")
+export fit_folder_sync_affine, video_time_from_recorder
 end
