@@ -31,28 +31,94 @@ function _rc2_detection_times(rec,detection_type,nrows,fps)
     return nothing
 end
 
-# (scale, offset_s, mode): t_video = scale*t_recorder + offset. mode is :affine or :constant.
-function _rc2_sync_from_info(info,delays)
-    constant=(scale=1.0,offset=Float64(delays),mode=:constant)
+# Chapter table from the sync JSON's video_timeline.files (T5): where each chapter starts on the global video
+# timeline and how many frames it adds to the concatenated overlay video. `nothing` when it does not describe `vidlist`.
+function _rc2_timeline(info,vidlist)
+    files=try info["video_timeline"]["files"] catch; return nothing end
+    files isa AbstractVector && length(files)==length(vidlist) && !isempty(files) || return nothing
+    rows=NamedTuple[]; cum=0
+    for (f,v) in zip(files,vidlist)
+        keys_ok=all(k->get(f,k,nothing) isa Real && isfinite(f[k]),("global_start_s","first_pts_s","n_frames"))
+        keys_ok && get(f,"path","")!="" && abspath(string(f["path"]))==abspath(string(v)) || return nothing
+        push!(rows,(global_start_s=Float64(f["global_start_s"]),audio_start_s=Float64(something(get(f,"audio_start_s",0.0),0.0)),
+            first_pts_s=Float64(f["first_pts_s"]),n_frames=Int(f["n_frames"]),cum_before=cum))
+        cum+=Int(f["n_frames"])
+    end
+    issorted(r.global_start_s for r in rows) || return nothing
+    return rows
+end
+
+# (scale, offset_s, mode, timeline): t_video = scale*t_recorder + offset. mode is :affine or :constant.
+# timeline is the chapter table (affine only); the constant delay keeps the original flat frame mapping.
+function _rc2_sync_from_info(info,delays,vidlist=String[])
+    constant=(scale=1.0,offset=Float64(delays),mode=:constant,timeline=nothing)
     if info!==nothing && get(info,"status","")=="valid" && all(k->get(info,k,nothing) isa Real && isfinite(info[k]),("scale","offset_s"))
         @info "Affine sync: scale=$(info["scale"]) offset=$(info["offset_s"]) s, drift=$(get(info,"drift_ppm",missing)) ppm, rms=$(get(info,"rms_residual_s",missing)) s"
-        return (scale=Float64(info["scale"]),offset=Float64(info["offset_s"]),mode=:affine)
+        timeline=_rc2_timeline(info,vidlist)
+        if timeline===nothing && length(vidlist)>1
+            @warn "Sync JSON has no usable video_timeline for these chapters; using the flat frame mapping (frames may be off by about 2 after chapter 1)"
+        end
+        return (scale=Float64(info["scale"]),offset=Float64(info["offset_s"]),mode=:affine,timeline=timeline)
     end
     info===nothing || @warn "Affine sync not valid (status=$(get(info,"status","missing"))); using the constant delay $(delays) s"
+    length(vidlist)>1 && @warn "Constant delay: flat frame mapping over $(length(vidlist)) chapters; chapter audio and video durations differ by tens of ms, so frames may be off by about 2 after chapter 1"
     return constant
 end
 
-function _rc2_sync_model(sync,delays,vidlist,audlist,res_dir2)
+# Frames (0-based Int, index in the concatenated overlay video) for recorder times `t_rec` (s on the concatenated
+# audio). Affine with a chapter table: global video time -> (chapter, local time) like prep_match_frame
+# (local = t - global_start + audio_start), frame = frames of earlier chapters + floor((local - first_pts)*fps),
+# clamped into the chapter. Otherwise the flat floor(t_video*fps). Returns (frames, n_clamped).
+function _rc2_frames(model,t_rec,fps)
+    tv=model.scale .* t_rec .+ model.offset
+    model.timeline===nothing && return (floor.(Int,tv .* fps),0)
+    files=model.timeline; starts=[f.global_start_s for f in files]; clamped=0
+    frames=map(tv) do t
+        i=searchsortedlast(starts,t)
+        i==0 && return floor(Int,t*fps)   # before the first chapter: flat
+        f=files[i]
+        k=floor(Int,(t-f.global_start_s+f.audio_start_s-f.first_pts_s)*fps)
+        (k<0 || k>=f.n_frames) && (clamped+=1)
+        f.cum_before+clamp(k,0,f.n_frames-1)
+    end
+    return (frames,clamped)
+end
+
+# A cached sync_affine.json is reused only when it is valid and its recorded inputs (path, size, mtime of every
+# video and recorder file) equal the current files.
+function _rc2_sync_cache_ok(cached,vidlist,audlist)
+    cached isa AbstractDict && get(cached,"status","")=="valid" || return false
+    inputs=get(cached,"inputs",nothing); inputs isa AbstractDict || return false
+    for (key,list) in (("videos",vidlist),("recorders",audlist))
+        recs=get(inputs,key,nothing)
+        recs isa AbstractVector && length(recs)==length(list) || return false
+        for (r,p) in zip(recs,list)
+            current=_clicker_call(:_fsync_file_record,p)
+            r isa AbstractDict && all(k->get(r,k,nothing)==current[k],("path","size_bytes","mtime_utc")) || return false
+        end
+    end
+    return true
+end
+
+function _rc2_sync_model(sync,delays,vidlist,audlist,res_dir2;refit=false)
     sync in (:affine,:constant) || throw(ArgumentError("sync must be :affine or :constant"))
-    sync===:constant && return _rc2_sync_from_info(nothing,delays)
-    info=try
+    sync===:constant && return _rc2_sync_from_info(nothing,delays,vidlist)
+    out_path=joinpath(res_dir2,"sync_affine.json")
+    info=nothing
+    try
         _ensure_clicker_module()
-        _clicker_call(:fit_folder_sync_affine,vidlist,audlist;out_path=joinpath(res_dir2,"sync_affine.json"))
+        if !refit && isfile(out_path)
+            cached=try _clicker_call(:read_json,out_path) catch; nothing end
+            if _rc2_sync_cache_ok(cached,vidlist,audlist)
+                @info "Reusing cached $out_path (inputs unchanged; refit=true forces a new fit)"
+                info=cached
+            end
+        end
+        info===nothing && (info=_clicker_call(:fit_folder_sync_affine,vidlist,audlist;out_path=out_path))
     catch err
         @warn "fit_folder_sync_affine failed; using the constant delay" exception=(err,catch_backtrace())
-        nothing
     end
-    return _rc2_sync_from_info(info,delays)
+    return _rc2_sync_from_info(info,delays,vidlist)
 end
 
 # recursively run all folder if given an array of folders
@@ -83,16 +149,21 @@ warning unless its status is `"valid"`; `sync=:constant` is the original constan
 reads it; the overlay never sees the raw CSV, and `pixel_filter=false` throws if any row has a non-finite
 frame/px/py (one NaN would abort `overlay_annotations_on_video` with an `InexactError`).
 
-Frame convention (differs from `run_contiguous_folders`, which draws 1-2 frames late): the written `frame` is the
-0-based integer `floor(t_video·fps)`, no `+1`, where `t_video = scale·(t_in_file + cumulative_audio_duration) + offset`
-(`video_time_from_recorder`) for `sync=:affine`, or `t_in_file + cumulative_audio_duration + delay` for
-`sync=:constant` (`scale=1, offset=delay`). `t_in_file` is the exact detection time (`pind_good_inS`), not a rounded frame.
+Frame convention (differs from `run_contiguous_folders`, which draws 1-2 frames late): the written `frame` is a
+0-based integer index into the concatenated overlay video, no `+1`. With `t_video = scale·(t_in_file +
+cumulative_audio_duration) + offset` (`video_time_from_recorder`), `sync=:affine` maps `t_video` to a chapter and
+local time through the sync JSON's `video_timeline.files` like `prep_match_frame` (`local = t_video - global_start +
+audio_start`) and writes `frames of earlier chapters + floor((local - first_pts)·fps)`, so chapter audio/video
+duration differences do not accumulate. The constant delay (`sync=:constant`, or the fallback, with a warning for
+several chapters) keeps the flat `floor((t_in_file + cumulative_audio_duration + delay)·fps)`. `t_in_file` is the exact
+detection time (`pind_good_inS`), not a rounded frame. A valid `sync_affine.json` in the results folder whose recorded
+inputs (path, size, mtime) still match is reused instead of the ~13 min refit; `sync_refit=true` forces a refit.
 The overlay's temporary frames go to `res_dir/<folder>/tmp_overlay` (not `/tmp`; keyword `tmpdir`), removed afterwards.
 Returns, with `flag_return=true`, the original's named tuple plus `sync_model` and `overlay_pixels`.
 """
 function run_contiguous_folders_2(folname; res_dir="", overlay_radius=32, detection_types = 1:2,
     flag_overlayvideo=true, flag_overlayimages=false, flag_return = false,
-    flag_spectro=false, spectro_height=200, sync=:affine, pixel_filter=true, tmpdir=nothing, kwargs...)
+    flag_spectro=false, spectro_height=200, sync=:affine, pixel_filter=true, tmpdir=nothing, sync_refit=false, kwargs...)
     sync in (:affine,:constant) || throw(ArgumentError("sync must be :affine or :constant"))
     isdefined(@__MODULE__,:write_valid_detection_pixels) ||
         error("run_contiguous_folders_2 needs write_valid_detection_pixels (src/detection_pixels_valid.jl)")
@@ -109,7 +180,8 @@ function run_contiguous_folders_2(folname; res_dir="", overlay_radius=32, detect
         end
     end
 
-    sync_model = _rc2_sync_model(sync, delays, vidlist, audlist, res_dir2)
+    sync_model = _rc2_sync_model(sync, delays, vidlist, audlist, res_dir2; refit=sync_refit)
+    n_clamped = 0
     fps = get_fps(vidlist[1])
     detection_pixels = joinpath(res_dir2, "detection_pixels.csv")
     open( detection_pixels, "w") do io
@@ -122,7 +194,8 @@ function run_contiguous_folders_2(folname; res_dir="", overlay_radius=32, detect
                     times = _rc2_detection_times(res, detection_type, length(rounded_frames), fps)
                     # exact time when known; otherwise undo the original's 1-origin rounded frame
                     times === nothing && (times = (rounded_frames .- 1) ./ fps)
-                    frames = floor.(Int, (sync_model.scale .* (cum_duration .+ times) .+ sync_model.offset) .* fps)   # 0-based
+                    frames, nc = _rc2_frames(sync_model, cum_duration .+ times, fps)   # 0-based, index in the concatenated video
+                    n_clamped += nc
                     writedlm(io, [frames res[detection_type][2]], ',')
                 end
                 cum_duration += get_duration(audlist[ind])
@@ -135,6 +208,7 @@ function run_contiguous_folders_2(folname; res_dir="", overlay_radius=32, detect
     detection_pixels_df[:, ["r", "g", "b"]] = detection_pixels_df[:, ["r", "g", "b"]] .* 255.0 # convert to 0-255 range
     CSV.write(splitext(detection_pixels) |> x-> x[1]*"__color255_webui"*x[2], detection_pixels_df)
 
+    n_clamped > 0 && @warn "$n_clamped detection rows fell outside their chapter's frames (audio is slightly longer than video) and were clamped to the first/last frame"
     # The overlay never reads the raw CSV: a single NaN row aborts it with InexactError.
     info = get_media_info(vidlist[1])
     video_stream = first(filter(s -> get(s, "codec_type", "") == "video", info["streams"]))
