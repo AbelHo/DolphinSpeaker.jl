@@ -290,12 +290,74 @@ def _csv_row(rec):
     return row
 
 
+def dump_udta_gpmf(path):
+    """Every decoded tag of moov/udta/GPMF as {FourCC: value}. Read-only, header-sized read."""
+    _, _, tags = read_udta(path)
+    return tags or {}
+
+
+def stream_key_census(path, idx=None):
+    """Count every GPMF FourCC over the WHOLE gpmd stream (no -t). Returns {key: occurrences}, n_devc.
+
+    Only the packet data is copied (-c copy); no video is decoded. Per-frame EIS/orientation streams
+    show up as CORI/IORI/GRAV/... with many samples.
+    """
+    if idx is None:
+        pr = probe(path)
+        idx = next((s['index'] for s in pr.get('streams', []) if s.get('codec_tag_string') == 'gpmd'), None)
+        if idx is None:
+            raise RuntimeError('no gpmd stream')
+    cmd = ['ffmpeg', '-v', 'error', '-i', path, '-map', '0:%d' % idx, '-c', 'copy', '-f', 'rawvideo', 'pipe:1']
+    res = subprocess.run(cmd, capture_output=True)
+    if res.returncode != 0:
+        raise RuntimeError('ffmpeg gpmd read failed: ' + res.stderr.decode('utf-8', 'replace')[:300])
+    counts = {}
+    n_devc = [0]
+    _count_keys(res.stdout, counts, n_devc)
+    return counts, n_devc[0]
+
+
+def _count_keys(data, counts, n_devc, depth=0, max_depth=12):
+    """Recursively count FourCC occurrences in a GPMF byte string; n_devc[0] counts DEVC blocks."""
+    pos, n = 0, len(data)
+    while pos + 8 <= n:
+        key = data[pos:pos + 4].decode('latin-1', errors='replace')
+        tchar = chr(data[pos + 4])
+        size = data[pos + 5]
+        repeat = struct.unpack('>H', data[pos + 6:pos + 8])[0]
+        pos += 8
+        length = size * repeat
+        if pos + length > n:
+            break
+        counts[key] = counts.get(key, 0) + 1
+        if key == 'DEVC':
+            n_devc[0] += 1
+        if tchar == '\x00' and depth < max_depth:
+            _count_keys(data[pos:pos + length], counts, n_devc, depth + 1, max_depth)
+        pos += (length + 3) & ~3
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('files', nargs='+')
     ap.add_argument('--jsonl', help='also write one JSON line per file to this path')
     ap.add_argument('--csv', help='also write a CSV summary to this path')
+    ap.add_argument('--dump-udta', action='store_true',
+                    help='print every moov/udta/GPMF tag as one JSON line {file, tags} (no normal record)')
+    ap.add_argument('--stream-keys', action='store_true',
+                    help='print FourCC occurrence counts over the whole gpmd stream as one JSON line per file')
     args = ap.parse_args(argv)
+
+    if args.dump_udta or args.stream_keys:
+        for p in args.files:
+            p = os.path.abspath(p)
+            if args.dump_udta:
+                print(json.dumps({'file': p, 'tags': dump_udta_gpmf(p)}, sort_keys=True))
+            if args.stream_keys:
+                counts, n_devc = stream_key_census(p)
+                print(json.dumps({'file': p, 'devc_count': n_devc, 'key_counts': counts}, sort_keys=True))
+            sys.stdout.flush()
+        return 0
 
     records = []
     for p in args.files:

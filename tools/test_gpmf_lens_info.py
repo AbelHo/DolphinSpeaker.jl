@@ -135,6 +135,24 @@ class TestUdtaGpmf(unittest.TestCase):
         self.assertIsNone(rec['VFOV'])
 
 
+class TestKeyCensus(unittest.TestCase):
+    def test_counts_nested_fourccs_and_devc_blocks(self):
+        devc1 = container('DEVC', klv('CORI', 's', 2, 4, b'\x00' * 8) + klv('IORI', 's', 2, 4, b'\x00' * 8))
+        devc2 = container('DEVC', klv('CORI', 's', 2, 4, b'\x00' * 8) + klv('EISA', 'c', 1, 6, b'HS EIS'))
+        counts, n_devc = {}, [0]
+        g._count_keys(devc1 + devc2, counts, n_devc)
+        self.assertEqual(n_devc[0], 2)
+        self.assertEqual(counts['CORI'], 2)
+        self.assertEqual(counts['IORI'], 1)
+        self.assertEqual(counts['EISA'], 1)
+
+    def test_truncated_tail_is_ignored(self):
+        data = container('DEVC', klv('CORI', 's', 2, 4, b'\x00' * 8))
+        counts, n_devc = {}, [0]
+        g._count_keys(data[:-4], counts, n_devc)
+        self.assertNotIn('CORI', counts)
+
+
 class TestNames(unittest.TestCase):
     def test_gopro_name_pattern(self):
         m = g._NAME_RE.match('GH011265.MP4')
