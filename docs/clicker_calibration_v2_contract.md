@@ -31,7 +31,9 @@ v1 field names are kept wherever the existing projection code reads them (`proje
 | `width`, `height` | int | 2704, 1520 |
 | `camera` | object | `fx, fy, cx, cy, k1, k2`: always present, the pinhole or radial view; exact for the `pinhole` family |
 | `lens` | object | `{"family": "pinhole" \| "fisheye" \| "superview", "params": {...}, "source": "<intrinsics.json path + sha256>" \| "clicker_fit_only"}` |
-| `lens_mode` | string or null | GPMF lens mode (e.g. `"W"`, `"S"`, `"L"`) when known |
+| `lens_mode` | string or null | GPMF `VFOV` lens mode (e.g. `"W"`, `"S"`, `"L"`) from moov/udta GPMF; T1 found `"S"` (SuperView) on every A and B clip |
+| `zfov_deg` | number or null | GPMF `ZFOV` of the calibration recording. It differs between recordings (A: 122.113 always; B: 138.034 on 2026-02-06/09, 122.113 on 2025-05-19 and 2026-11-13), so it is part of the lens identity |
+| `camera_identity` | object | `{"CAME": hex, "CASN": serial, "LINF": lens id}` from `tools/gpmf_lens_info.py` (A: CASN C3441325988007; B: CASN C3441327549773) |
 | `camera_chain` | string | e.g. `"gamma_1265-2051"` (A) or `"beta_0059-0133"` (B) |
 | `valid_from`, `valid_until` | ISO date or null | the mounting validity window; the runner warns outside it |
 | `model_ladder_choice` | string | `"M0"` to `"M3"` (Step 2) |
@@ -41,7 +43,27 @@ v1 field names are kept wherever the existing projection code reads them (`proje
 `lens.params` per family:
 - `pinhole`: `{}`; uses `camera`.
 - `fisheye`: OpenCV equidistant model, `{"fx","fy","cx","cy","k1","k2","k3","k4"}`.
-- `superview`: `{"inner": {<pinhole or fisheye params>}, "inner_family": "pinhole"|"fisheye", "sensor_width_px", "remap_coeffs": [a1,a3,a5,...]}`. The inner model projects onto a 4:3 sensor frame, then the odd polynomial `x' = Σ a_k x^k` (normalized horizontal coordinate) maps it to output pixels. The exact definition belongs to T2/T3 and must be written into `tools/checkerboard_intrinsics.py` and `constrained_fit.jl`.
+- `superview`: `{"inner_family": "pinhole"|"fisheye", "inner": {fx, fy, cx, cy, k1, k2} (pinhole) or {fx, fy, cx, cy, k1, k2, k3, k4} (fisheye), all in SENSOR px, "sensor_width_px": Ws (nominal 4/3·height), "output_width_px": W, "remap_coeffs": [a1, a3, a5, ...]}`.
+  This is the exact definition, used identically by `tools/checkerboard_intrinsics.py` (T2, Python) and `constrained_fit.jl` (T3, Julia). Camera coordinates are x right, **y up**, z forward, with xn = X/Z and yn = Y/Z.
+  - **Project:**
+    1. `(xs, y) = inner_project(xn, yn)` on the 4:3 sensor frame, which shares the output's height and vertical coordinate.
+    2. `s = (xs − (Ws−1)/2)/(Ws/2)`.
+    3. `t = Σ_k a_(2k−1)·s^(2k−1)`.
+    4. `x = (W−1)/2 + t·W/2`; `y` is unchanged.
+    5. Valid only if `dt/ds > 0` at `s`; otherwise the result is invalid (NaN, status `invalid_distortion`).
+  - **Unproject:**
+    1. Get `t` from `x`.
+    2. Solve the odd polynomial for `s` by bisection-guarded Newton.
+    3. `xs = (Ws−1)/2 + s·Ws/2`.
+    4. `inner_unproject(xs, y)`.
+    Invalid input returns `(NaN, NaN)`.
+  - **Properties:** with `a = [Ws/W]` the result is the inner model with cx shifted (a pure translation), and `Σa = 1` maps the sensor edges to the output edges. T2's default inner constraint is `fx = fy` (square sensor pixels); `fx ≠ fy` is only a compared variant.
+- `fisheye` (also the inner fisheye) is OpenCV equidistant with **+y up**:
+  - `θ = atan(hypot(xn, yn))` and `θd = θ(1 + k1θ² + k2θ⁴ + k3θ⁶ + k4θ⁸)`;
+  - `x = cx + fx·(θd/r)·xn` and `y = cy − fy·(θd/r)·yn`, with `r = hypot(xn, yn)`;
+  - valid only if `dθd/dθ > 0`.
+  OpenCV's own y-down camera frame must be converted when the fitted parameters are written.
+- Pinhole unprojection never fails. For the other families, invalid unprojection returns `(NaN, NaN)` and the ray is invalid; it is never clamped.
 
 ## Julia types and dispatch (inside `module ClickerCalibration`)
 
@@ -97,7 +119,7 @@ write_valid_detection_pixels(csv_path; out_path=replace(csv_path, ".csv"=>"_vali
   - runs `run_contiguous_folders_2` inside `with_clicker_calibration_2`;
   - asserts the calibration is active before and after;
   - checks the video resolution against the profile;
-  - checks the GPMF lens mode against the profile when both are known;
+  - checks the GPMF lens identity against the profile. It compares `VFOV` (`lens_mode`) and `ZFOV` (`zfov_deg`, tolerance 0.01°) of every video chapter, read with `tools/gpmf_lens_info.py`. A mismatch is an error, because the intrinsics differ: B's 2026-02 profile at ZFOV 138.034 must not run on B's 2026-11 clips at ZFOV 122.113. If the lens is unknown it warns. It also records the `CASN` serial in `calibration_used.json` and errors if it differs from `camera_identity.CASN`;
   - warns outside the validity window;
   - writes `calibration_used.json` into the results folder.
 - `default_v2_path(device)` is `src/clicker_calibration/calibrations/clicker_20260209_$(device)_v2.json`. That file is created by T3; until it exists, tests use a fixture under `test/clicker_calibration/fixtures/`.
