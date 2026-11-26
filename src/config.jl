@@ -320,6 +320,59 @@ function set_device__hydromoth()
     # global DEFAULT_fname2timestamp_func = aufname -> fname2dt_date_time(aufname; skip_front=3) 
     global CHANNELS_RELEVANT = findall(eachcol(rx_vect) .|> x-> !any(isnan.(x)))
 end
+
+"""
+    set_device__hydromoth_dugong(; sensitivity=:high_recall)
+
+Configure the HydroMoth tonal detector for candidate dugong calls, using the
+1,329 manually drawn Sibu Tengah Raven boxes from April/June 2026: 957
+chirps, 311 trills and 61 whistles.
+
+* 800–16,000 Hz search (recall margin beyond most drawn frequency bounds).
+* 20 ms FFT frames (~50 Hz bin spacing), retaining several frames for most
+  70–200 ms chirps while resolving longer, modulated trills.
+* :high_recall (default): auto threshold +5 dB above median; disable the
+  legacy per-frame narrowband veto to retain harmonic-rich calls.
+* :balanced: auto threshold +8 dB plus the existing narrowband veto;
+  more selective, but possibly misses faint or harmonic-rich calls.
+
+These parameters are unvalidated candidate-detector priors, not species
+identification or measured detection performance. Drawn Raven boxes are not
+instantaneous acoustic bandwidth. No raw WAVs or SNR data were provided.
+The preset detects candidate tonal frames, not chirp/trill/whistle types.
+
+Call after loading DolphinSpeaker, before detect_tonal or
+detect_impulseNtonal. The original set_device__hydromoth() is unchanged.
+A sample rate >32 kHz is required for a 16 kHz upper search limit; 48 kHz
+or higher is recommended.
+"""
+function set_device__hydromoth_dugong(; sensitivity::Symbol=:high_recall)
+    sensitivity in (:high_recall, :balanced) ||
+        throw(ArgumentError("sensitivity must be :high_recall or :balanced; got $sensitivity"))
+
+    # Preserve HydroMoth's existing filename time parser, reference channel,
+    # boat, and impulsive settings.
+    set_device__hydromoth()
+
+    global threshold_tonal = nothing           # automatic noise-relative threshold
+    global tonal_band_pass = [800, 16_000]      # Hz, recall-oriented search
+    global nfft_inS = 0.02                      # 20 ms STFT windows
+    global window_tonal = 0.02                  # keep the window configuration aligned
+    global percent_quiet = 0.01                 # existing quiet-frame baseline
+
+    if sensitivity === :high_recall
+        global tonal_threshold_median = 5      # dB above median FFT peak
+        global freq_width_db = 6               # not used when veto disabled
+        global freq_maxbandwidth = Inf         # do not reject strong harmonics
+    else
+        global tonal_threshold_median = 8      # dB, more selective
+        global freq_width_db = 3
+        global freq_maxbandwidth = 15_000      # legacy per-frame bandwidth veto
+    end
+    return nothing
+end
+
+
 #~ default
     impulsive_band_pass = [1000, Inf] #fs/2*.98]
     threshold_impulsive = nothing #.1# .003#calf_hk
