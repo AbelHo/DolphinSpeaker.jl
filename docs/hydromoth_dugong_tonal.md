@@ -1,93 +1,110 @@
-# HydroMoth dugong tonal detector preset
+# HydroMoth dugong chirp / trill tonal detector preset
 
-The new `set_device__hydromoth_dugong(; sensitivity=:high_recall)` preset
-is defined in `src/config.jl` and exported from `DolphinSpeaker`.
-It calls the existing `set_device__hydromoth()` first to retain the
-HydroMoth filename timestamp parser, reference channel and non-tonal
-configurations. It does **not** alter `set_device__hydromoth()`.
+`set_device__hydromoth_dugong` configures candidate tonal-frame detection
+for **chirps and trills** in HydroMoth audio. Whistles are **not a target**
+of this revision. Frequency filtering alone cannot exclude all whistles
+because their frequency ranges overlap; this is not a call-type classifier.
+
+This is a follow-up to the broad 800–16,000 Hz / 20 ms / +5 dB preset.
+The revised default focuses on the annotated chirp/trill frequency region,
+uses 10 ms frames for short chirps, and reinstates a correctly scaled
+frequency-width filter to reject broad-band background frames.
 
 ## Usage
 
 ```julia
 using DolphinSpeaker
 
-set_device__hydromoth_dugong()                       # default high recall
-# set_device__hydromoth_dugong(sensitivity=:balanced) # more selective
+# A single pass for chirps and trills (balanced false-alarm control).
+set_device__hydromoth_dugong()
 
-# Start the existing detection pipeline after applying this preset:
-# DolphinSpeaker.detect_tonal("/path/to/20260408_100000.WAV", "/path/to/output")
+# To favor short chirps:
+set_device__hydromoth_dugong(call_type=:chirp)
+
+# To favor the lower-frequency, longer trills:
+set_device__hydromoth_dugong(call_type=:trill)
+
+# If recall is more important than false alarms:
+set_device__hydromoth_dugong(call_type=:trill, sensitivity=:high_recall)
+
+# Then call the existing tonal detection pipeline:
+# DolphinSpeaker.detect_tonal("/path/to/recording.WAV", "/path/to/results")
 ```
 
-**Required sampling rate:** more than 32 kHz to cover the upper search
-boundary of 16 kHz. Prefer 48 kHz or higher. Confirm the actual WAV
-header before running. Configuration globals affect calls made *after*
-the setter; any explicit keyword arguments in detector calls take
-precedence.
+Configuration globals are applied to subsequent detector calls. An explicit
+keyword parameter in `detect_tonal` overrides the corresponding global.
+The original `set_device__hydromoth()` remains unchanged.
 
-## Preset values
+## Proposed parameter sets
 
-| Setting | High recall (default) | Balanced | Why |
-|---|---:|---:|---|
-| `tonal_band_pass` | [800, 16000] Hz | same | Includes most chirp, trill and whistle frequency regions with margins |
-| `nfft_inS` | 0.02 s | same | ~50 Hz Fourier-bin spacing; frames short enough for most labeled chirps |
-| `threshold_tonal` | `nothing` | same | Use existing automatic relative threshold |
-| `tonal_threshold_median` | +5 dB | +8 dB | Lower threshold improves candidate recall at the cost of more false alarms |
-| `percent_quiet` | 0.01 | same | Existing 1% low-energy baseline calculation |
-| `freq_width_db` | 6 (veto off) | 3 | Existing per-frame narrowband comparison |
-| `freq_maxbandwidth` | `Inf` | 15,000 | Recall mode bypasses the current narrowband veto; balanced mode enables it |
-
-`window_tonal` is set to 0.02 s to match the FFT window but the current
-`detect_tonal` implementation does not actually use this keyword to
-compute the spectrogram; `nfft_inS` is the operative parameter.
-`tonal_segment_threshold` and `tonal_segment_thresh_continue` remain
-unchanged, because annotation duration distributions cannot calibrate
-their Gaussian-convolution units.
-
-**Important implementation detail:** the existing
-`detect_tonal` code's narrowband test uses the second frequency-bin
-**value** rather than the **frequency-bin spacing** when scaling
-the number of bins in its width estimate. Consequently,
-`freq_maxbandwidth` should not be interpreted as a properly calibrated
-physical bandwidth without correcting that implementation. The default
-high-recall mode bypasses this filter rather than applying a possibly
-misleading box-width cutoff. The balanced mode is a conservative
-heuristic, not a calibrated bandwidth filter.
-
-## Basis in the Raven annotation data
-
-Three Sibu Tengah Raven selection tables contain 1,743 selections,
-including **1,329 primary chirp/trill/whistle boxes**:
-
-| Type | Boxes | Duration p05–p95 | Median peak frequency |
+| Parameter | Chirp + trill (default) | Chirp | Trill |
 |---|---:|---:|---:|
-| Chirp | 957 | ~0.069–0.196 s | ~3.94 kHz |
-| Trill | 311 | ~0.164–2.770 s | ~3.38 kHz |
-| Whistle | 61 | ~0.072–1.108 s | ~3.28 kHz |
+| `tonal_band_pass` (Hz) | 1,200–10,500 | 1,200–10,500 | 1,200–6,500 |
+| `nfft_inS` | 0.010 s | 0.010 s | 0.020 s |
+| FFT frequency resolution at 48 kHz | ~100 Hz | ~100 Hz | ~50 Hz |
+| `tonal_threshold_median` balanced | +7 dB | +7 dB | +7 dB |
+| `freq_width_db` | 6 dB | 6 dB | 6 dB |
+| `freq_maxbandwidth` balanced | 3,000 Hz | 2,500 Hz | 2,000 Hz |
+| `percent_quiet` | 0.05 | 0.05 | 0.05 |
+| `threshold_tonal` | `nothing` | `nothing` | `nothing` |
 
-These ranges explain the lower search boundary, the need to avoid
-duration-based hard cutoffs and the interest in high recall on faint calls.
-Some drawn frequency rectangles extend beyond 12 kHz, justifying a
-broader candidate-search region than the typical peak values.
-The previously supplied JSON acoustic profile contains the complete
-quantiles and original notes.
+Set `sensitivity=:high_recall` in any profile to use +4 dB above the
+median frame score and `freq_maxbandwidth=Inf` (bandwidth veto disabled).
+This will usually produce more candidates, including more false positives.
+The default is `:balanced`.
 
-This is **not** a validated dugong-only acoustic classifier:
-the Raven shapes are hand-drawn selection rectangles, not instantaneous
-frequency contours, and the original WAV audio was not available in
-this task. Some whistle annotations are uncertain, harmonic rectangles
-may overlap the fundamentals, and acoustic SNR/source identity are
-unknown. The output of the existing detector is tonal frames/segments;
-chirp/trill/whistle classification and false-positive rejection need
-additional validated audio examples. The detector thresholds should be
-benchmarked on held-out WAVs (event precision/recall and false positives
-per verified recording hour).
+## Evidence from manually drawn Raven selections
 
-## Test
+The three Raven tables contain 957 annotated chirps and 311 trills,
+for 1,268 primary calls of the two current target types.
+
+| Annotation statistic | Chirp (n=957) | Trill (n=311) |
+|---|---:|---:|
+| Duration median | 0.118 s | 0.638 s |
+| Duration p05–p95 | 0.069–0.196 s | 0.164–2.770 s |
+| Raven peak frequency median | 3.938 kHz | 3.375 kHz |
+| Peak frequency p05–p95 | 2.344–8.531 kHz | 2.156–5.438 kHz |
+| Drawn lower bound p05 | 1.269 kHz | 1.322 kHz |
+| Drawn upper bound p95 | 9.402 kHz | 6.087 kHz |
+| Drawn frequency width median | 2.108 kHz | 1.601 kHz |
+
+Values are **Raven box metadata**, not measured instantaneous spectral
+bandwidth, acoustic SNR, intra-trill pulse rates or validation results.
+Some chirps are faint and trills can be shorter than 300 ms. Hard event-
+duration gates would miss some genuine annotations. Long-duration trills
+may require combining successive tonal frames downstream.
+
+## Detector fixes in this branch
+
+The old per-frame bandwidth test multiplied the number of bins by
+`freqss[2]` (the absolute frequency of the second bin), which is not
+the FFT-bin spacing. It also mixed a vector score with a transposed
+bandwidth mask, potentially creating unintended broadcasting, and
+unconditionally dropped the final detected frame. These are corrected.
+A short-recording edge case in the quiet-frame baseline now uses at least
+one frame instead of the entire recording. The frequency-bin indexing is
+one-based and clipped at Nyquist. Returned sample indices are also
+one-based for downstream array indexing.
+
+Even with these mechanical fixes, this is an **unvalidated candidate
+detector preset**. The provided Raven labels contain no matching raw WAV
+samples, so no true precision, recall, false-positive rate, or optimal
+threshold can be inferred. Verify on held-out labeled HydroMoth WAVs,
+especially faint chirps, overlapping chirp/trill morphologies and
+background sounds. Compare per-event recall and false positives/hour.
+
+For the default 10,500 Hz upper edge, use at least a 24 kHz sampling
+rate (48 kHz is a useful target). A lower sample rate causes the detector
+to clip the band at Nyquist; a lower band edge above Nyquist raises an
+error. `window_tonal` is set for consistency but `nfft_inS` actually
+controls the spectrogram window in the current implementation.
+
+## Tests
 
 ```bash
 julia --project=. test/test_hydromoth_dugong_preset.jl
 ```
 
-This tests both sensitivity modes, invalid-mode rejection, the retained
-HydroMoth timestamp function and repeatability. It is an isolated preset
-test, not an evaluation on raw audio.
+The test covers profile switching, invalid options, one-channel synthetic
+chirp and trill signals, score/mask shapes and zero-detection behavior.
+Synthetic tests are only software regression checks, not field validation.
