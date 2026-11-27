@@ -226,13 +226,18 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     @info ("Duration: " * string(size(data,1)/fs) *"seconds")
 
     nfft = nextfastfft(round(Int, nfft_inS*fs))
-    freq_filt = 2:Int(nfft÷2+1)
+    freq_filt = 2:(nfft ÷ 2 + 1)
     if !isnothing(band_pass)
-        bp_top = band_pass[2]
-        isinf(band_pass[2]) && (bp_top = fs/2)
-        
-        freq_filt = Int(round(band_pass[1]/fs*nfft)):Int(round(bp_top/fs*nfft)) #50:140
-        freq_filt[begin]==0 && (freq_filt=1:freq_filt[end])
+        # Spectrogram frequency bins are 1-based (bin 1 is DC).
+        # Clamp to Nyquist so the preset also works on 24 kHz audio.
+        bp_top = min(band_pass[2], fs / 2)
+        0 <= band_pass[1] < bp_top ||
+            throw(ArgumentError("tonal band_pass must lie below Nyquist ($(fs / 2) Hz)"))
+        first_bin = max(2, ceil(Int, band_pass[1] * nfft / fs) + 1)
+        last_bin = min(nfft ÷ 2 + 1, floor(Int, bp_top * nfft / fs) + 1)
+        first_bin <= last_bin ||
+            throw(ArgumentError("tonal band_pass has no FFT bins at this sampling rate"))
+        freq_filt = first_bin:last_bin
     end
     # filter_weight = digitalfilter(Bandpass(band_pass[1],band_pass[2], fs=fs), Butterworth(butterworth_size)) #Bandpass(5000,14000, fs=fs)
 
@@ -257,11 +262,10 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     if percent_quiet > 0
         @debug percent_quiet
         # mag_max = mag_max .- mean(sort(mag_max, dims=2)[:,1:round(Int,size(mag_max,2) * percent_quiet)], dims=2)
-        num_bins = round(Int,size(mag_max,2) * percent_quiet)
-        if num_bins < 1
-            @warn "!! Using ONE time bin only as specified quiet segment percentage is smaller than one time bin."
-            num_bins = size(mag_max,2)
-        end
+        # Use at least one quiet time frame, not the *entire* recording,
+        # when percent_quiet is smaller than one STFT hop.
+        num_bins = clamp(round(Int, size(mag_max, 2) * percent_quiet),
+                         1, size(mag_max, 2))
         quietest = maximum(mag_max[:,sortperm(sum(mag_max, dims=1)[:])[1:num_bins]], dims=2)
         mag_max = mag_max .- quietest
         # median_noise = median(mag_max, dims=2)
@@ -274,9 +278,11 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
 
     #~ filtering for small bandwidth timeframe only
     maxi_t = maximum(mag, dims=1)
-    @debug freqss[2]
-    small_bands = (sum((maxi_t .- mag ) .< freq_width_db, dims=1) .*freqss[2] ) .< freq_maxbandwidth
-    small_bands = [ele==0 ? -Inf : 0 for ele in small_bands]
+    bin_width_hz = length(freqss) >= 2 ? freqss[2] - freqss[1] : fs / nfft
+    width_hz = vec(sum((maxi_t .- mag) .< freq_width_db, dims=1)) .* bin_width_hz
+    # 1-D mask: one width decision per time frame. The former code used
+    # freqss[2] (an absolute frequency) instead of the FFT bin spacing.
+    small_bands = ifelse.(width_hz .< freq_maxbandwidth, 0.0, -Inf)
     # @debug size(fft_max)
     # @debug size(small_bands)
     if isnothing(thresh_tonal)
@@ -284,9 +290,8 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
         @info "__auto thresholding: " * string(thresh_tonal)
     end
     # @debug size(small_bands)
-    output_res = fft_max .+ small_bands'
-    tonal_indices = findall( >(thresh_tonal), output_res)
-    tonal_indices = tonal_indices[1:end-1] #FIXME #tempsolution
+    output_res = fft_max .+ small_bands
+    tonal_indices = findall(>(thresh_tonal), output_res)
 
     num_detection = length(tonal_indices)
     @info "Num of Tonals Detected: " * string(num_detection)
@@ -301,7 +306,8 @@ function detect_tonal(aufname_data_fs::Tuple, res_dir=nothing;
     end
     
     peak_freqs = map(x->freqss[x.I[1]], argmax(mag_max, dims=1)[:]) #freqss[argmax(mag_max[:,tonal_indices], dims=1)]
-    pind_good = round.(Int, pind_good_inS.*fs)
+    # STFT timestamps are zero-based, but downstream sample arrays are 1-based.
+    pind_good = clamp.(round.(Int, pind_good_inS .* fs) .+ 1, 1, size(data, 1))
     return (;fft_max, time_index , tonal_indices, pind_good_inS, freqss, num_detection, percent_quiet, freq_maxbandwidth, threshold=thresh_tonal, ppeak=fft_max[tonal_indices], quietest, aufname, fs, outfname, pind_good, len_data=size(data,1), band_pass, output_res, peak_freqs)#, maxi_t, mag)#, mag_max, specs) #mag, mag_ft, mag_mean, mag_max, 
     # return (;pind=, ppeak, pind_good, pind_good_inS, threshold_indices)
 end
